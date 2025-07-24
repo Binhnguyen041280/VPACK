@@ -57,7 +57,7 @@ const ProcessingRegionForm = ({ handleAnalyzeRegions }) => {
       return;
     }
     try {
-      const response = await fetch('http://127.0.0.1:8080/run-select-roi', {
+      const response = await fetch('http://127.0.0.1:8080/api/hand_detection/select-roi', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ videoPath: selectedVideoPath || videoPath, cameraId: selectedCamera })
@@ -90,7 +90,7 @@ const ProcessingRegionForm = ({ handleAnalyzeRegions }) => {
       return;
     }
     try {
-      const response = await fetch('http://127.0.0.1:8080/run-select-roi', {
+      const response = await fetch('http://127.0.0.1:8080/api/hand_detection/select-roi', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ videoPath: selectedVideoPath || videoPath, cameraId: selectedCamera })

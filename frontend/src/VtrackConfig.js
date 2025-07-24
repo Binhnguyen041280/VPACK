@@ -68,18 +68,13 @@ const VtrackConfig = () => {
     console.log("Phân tích vùng:", videoPath, qrSize);
   };
 
-  // ✅ ENHANCED: Helper function để get correct input path based on source type
+  // ✅ ENHANCED: Helper function để get correct input path based on source type (NO NVR)
   const getInputPathForSource = (source) => {
     if (!source) return "";
     
     let resultPath = "";
     
     switch (source.source_type) {
-      case 'nvr':
-        // NVR: Use working directory for downloaded videos
-        resultPath = `/Users/annhu/vtrack_app/V_Track/nvr_downloads/${source.name}`;
-        console.log(`🔗 NVR Path Mapping: ${source.path} → ${resultPath}`);
-        break;
       case 'local':
         // Local: Use actual file system path
         resultPath = source.path;

@@ -117,13 +117,6 @@ const ConfigForm = ({
           setSourceCameras(cameras);
           return cameras;
         }
-      } else if (sourceData.source_type === 'nvr') {
-        // For NVR sources, get cameras from config
-        const nvrCameras = sourceData.config?.selected_cameras || [];
-        console.log("🔗 NVR cameras:", nvrCameras);
-        setSourceCameras(nvrCameras);
-        setSelectedCameras(nvrCameras);
-        return nvrCameras;
       }
       
       return [];
@@ -321,11 +314,6 @@ const ConfigForm = ({
         name: 'LOCAL STORAGE',
         color: 'bg-blue-600'
       },
-      nvr: {
-        icon: '🔗',
-        name: 'NVR/DVR SYSTEM',
-        color: 'bg-purple-600'
-      },
       cloud: {
         icon: '☁️',
         name: 'CLOUD STORAGE',
@@ -340,8 +328,6 @@ const ConfigForm = ({
     if (!source) return "";
     
     switch (source.source_type) {
-      case 'nvr':
-        return `/Users/annhu/vtrack_app/V_Track/nvr_downloads/${source.name}`;
       case 'local':
         return source.path;
       case 'cloud':
@@ -390,25 +376,12 @@ const ConfigForm = ({
               <strong>Path:</strong> {activeSource.path}
             </div>
             
-            {/* NVR-specific information */}
-            {activeSource.source_type === 'nvr' && activeSource.config && (
-              <div className="text-gray-300 text-sm mb-2">
-                <strong>Protocol:</strong> {activeSource.config.protocol?.toUpperCase() || 'ONVIF'}
-                {activeSource.config.auto_sync && (
-                  <span className="ml-2 px-1 py-0.5 bg-green-700 text-green-200 rounded text-xs">
-                    Auto-Sync
-                  </span>
-                )}
-              </div>
-            )}
-            
             <div className="text-gray-300 text-sm mb-2">
               <strong>Added:</strong> {formatDate(activeSource.created_at)}
             </div>
             
             {/* ✅ UPDATED: Camera Information */}
             {(activeSource.source_type === 'local' || 
-              activeSource.source_type === 'nvr' || 
               activeSource.source_type === 'cloud') && (
               <div className="text-gray-300 text-sm mb-3">
                 <strong>Cameras:</strong>{' '}
@@ -436,8 +409,7 @@ const ConfigForm = ({
                   <span className="text-blue-300">Loading cameras...</span>
                 ) : (
                   <span className="text-gray-400">
-                    {activeSource.source_type === 'nvr' ? 'No cameras discovered' : 
-                     activeSource.source_type === 'cloud' ? 'No cameras synced' :
+                    {activeSource.source_type === 'cloud' ? 'No cameras synced' :
                      'No camera folders detected'}
                   </span>
                 )}
@@ -475,7 +447,7 @@ const ConfigForm = ({
         )}
       </div>
 
-      {/* ✅ FIX: Input Path Section - DISTINGUISH NVR vs LOCAL */}
+      {/* ✅ FIX: Input Path Section - DISTINGUISH CLOUD vs LOCAL */}
       <div className="mb-6 p-4 bg-gray-700 rounded-lg">
         <h3 className="text-lg font-bold text-white mb-3">Input Video Path</h3>
         
@@ -485,19 +457,7 @@ const ConfigForm = ({
               <strong>Source:</strong> {activeSource.name}
             </div>
             
-            {activeSource.source_type === 'nvr' ? (
-              <>
-                <div className="text-sm text-gray-300 mb-1">
-                  <strong>NVR Connection:</strong> {activeSource.path}
-                </div>
-                <div className="text-sm text-gray-300 mb-1">
-                  <strong>Working Directory:</strong> {getWorkingPathForSource(activeSource)}
-                </div>
-                <div className="mt-2 text-xs text-blue-300">
-                  🔗 NVR videos will be downloaded to working directory for processing
-                </div>
-              </>
-            ) : activeSource.source_type === 'local' ? (
+            {activeSource.source_type === 'local' ? (
               <>
                 <div className="text-sm text-gray-300 mb-1">
                   <strong>File System Path:</strong> {activeSource.path}
@@ -665,7 +625,7 @@ const ConfigForm = ({
         </button>
       </div>
 
-      {/* Enhanced AddSourceModal with NVR support */}
+      {/* Enhanced AddSourceModal */}
       {showAddSourceModal && (
         <AddSourceModal
           show={showAddSourceModal}
@@ -693,7 +653,7 @@ const ConfigForm = ({
   );
 };
 
-// Enhanced Update Source Modal Component (supports NVR)
+// Enhanced Update Source Modal Component
 const SimpleUpdateSourceModal = ({ 
   show, 
   source, 
@@ -740,27 +700,6 @@ const SimpleUpdateSourceModal = ({
             setSelectedCameras(validSelectedCameras);
           }
         }
-      } else if (source.source_type === 'nvr') {
-        // NVR source: re-test connection to discover cameras
-        const testData = {
-          source_type: 'nvr',
-          path: source.path,
-          config: source.config || {}
-        };
-        
-        const response = await testSourceConnection(testData);
-        if (response.accessible && response.cameras) {
-          const cameraNames = response.cameras.map(cam => 
-            cam.name || cam.id || `Camera ${response.cameras.indexOf(cam) + 1}`
-          );
-          setDetectedCameras(cameraNames);
-          
-          // Keep existing selected cameras that are still available
-          const validSelectedCameras = selectedCameras.filter(cam => 
-            cameraNames.includes(cam)
-          );
-          setSelectedCameras(validSelectedCameras);
-        }
       } else if (source.source_type === 'cloud') {
         // ✅ NEW: Cloud source handling
         alert('Cloud camera detection is handled automatically. Please refresh the page to see latest cameras.');
@@ -793,18 +732,6 @@ const SimpleUpdateSourceModal = ({
         success: response.accessible,
         message: response.message
       });
-      
-      // Auto-discover cameras on successful test for NVR
-      if (response.accessible && source.source_type === 'nvr' && response.cameras) {
-        const cameraNames = response.cameras.map(cam => 
-          cam.name || cam.id || `Camera ${response.cameras.indexOf(cam) + 1}`
-        );
-        setDetectedCameras(cameraNames);
-        setTestResult(prev => ({
-          ...prev,
-          message: `${prev.message} - Found ${response.cameras.length} camera(s)`
-        }));
-      }
       
     } catch (error) {
       setTestResult({
@@ -844,7 +771,6 @@ const SimpleUpdateSourceModal = ({
   const getSourceTypeInfo = (sourceType) => {
     const sourceTypes = {
       local: { icon: '📁', name: 'LOCAL STORAGE' },
-      nvr: { icon: '🔗', name: 'NVR/DVR SYSTEM' },
       cloud: { icon: '☁️', name: 'CLOUD STORAGE' }
     };
     return sourceTypes[sourceType] || { icon: '❓', name: 'UNKNOWN' };
@@ -879,38 +805,18 @@ const SimpleUpdateSourceModal = ({
           {/* Path Info */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              {source.source_type === 'nvr' ? 'NVR Address' : 'Path'}
+              Path
             </label>
             <div className="w-full p-3 border border-gray-600 rounded bg-gray-700 text-white break-all">
               {path}
             </div>
           </div>
 
-          {/* NVR Configuration Display */}
-          {source.source_type === 'nvr' && source.config && (
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                NVR Configuration
-              </label>
-              <div className="p-3 bg-gray-700 rounded space-y-2">
-                <div className="text-sm text-gray-300">
-                  <strong>Protocol:</strong> {source.config.protocol?.toUpperCase() || 'ONVIF'}
-                </div>
-                <div className="text-sm text-gray-300">
-                  <strong>Username:</strong> {source.config.username || 'Not set'}
-                </div>
-                <div className="text-sm text-gray-300">
-                  <strong>Auto-sync:</strong> {source.config.auto_sync ? 'Enabled' : 'Disabled'}
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Camera Selection */}
           <div className="mb-4">
             <div className="flex justify-between items-center mb-3">
               <label className="block text-sm font-medium text-gray-300">
-                {source.source_type === 'nvr' ? 'Discovered Cameras' : 'Camera Folders'}
+                {source.source_type === 'cloud' ? 'Synced Cameras' : 'Camera Folders'}
               </label>
               <button
                 type="button"
@@ -918,14 +824,14 @@ const SimpleUpdateSourceModal = ({
                 disabled={isDetecting}
                 className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-3 py-1 rounded text-xs"
               >
-                {isDetecting ? 'Scanning...' : source.source_type === 'nvr' ? 'Rediscover' : 'Rescan'}
+                {isDetecting ? 'Scanning...' : source.source_type === 'cloud' ? 'Refresh' : 'Rescan'}
               </button>
             </div>
             
             {isDetecting ? (
               <div className="text-center py-4">
                 <div className="text-gray-400 text-sm">
-                  {source.source_type === 'nvr' ? 'Discovering cameras...' : 'Detecting cameras...'}
+                  {source.source_type === 'cloud' ? 'Refreshing cameras...' : 'Detecting cameras...'}
                 </div>
               </div>
             ) : detectedCameras.length > 0 ? (
@@ -939,18 +845,13 @@ const SimpleUpdateSourceModal = ({
                       className="rounded"
                     />
                     <span className="text-white text-sm">{camera}</span>
-                    {camera.status && (
-                      <span className={`px-2 py-1 text-xs rounded ${camera.status === 'Connected' ? 'bg-green-600' : 'bg-red-600'}`}>
-                        {camera.status}
-                      </span>
-                    )}
                   </label>
                 ))}
               </div>
             ) : (
               <div className="text-center py-4 bg-gray-700 rounded">
                 <div className="text-gray-400 text-sm">
-                  {source.source_type === 'nvr' ? 'No cameras discovered' : 'No camera folders detected'}
+                  {source.source_type === 'cloud' ? 'No cameras synced' : 'No camera folders detected'}
                 </div>
               </div>
             )}

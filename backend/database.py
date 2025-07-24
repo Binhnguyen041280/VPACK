@@ -101,7 +101,7 @@ def update_database():
         """)
         cursor.execute("UPDATE processing_config SET db_path = ?, run_default_on_start = 0 WHERE db_path IS NULL OR run_default_on_start IS NULL", (DB_PATH,))
 
-        # 🆕 PHASE 4: Add camera_paths column to processing_config
+        # Add camera_paths column to processing_config
         try:
             cursor.execute("ALTER TABLE processing_config ADD COLUMN camera_paths TEXT DEFAULT '{}'")
             print("✅ Added camera_paths column to processing_config")
@@ -159,7 +159,7 @@ def update_database():
             )
         """)
 
-        # 🆕 PHASE 4: Create sync_status table for auto-sync management
+        # Create sync_status table for auto-sync management (Cloud sources)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS sync_status (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -180,7 +180,7 @@ def update_database():
         """)
         print("✅ Created sync_status table")
 
-        # 🆕 PHASE 4: Create downloaded_files table for tracking downloaded content
+        # Create downloaded_files table for tracking downloaded content
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS downloaded_files (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -202,7 +202,7 @@ def update_database():
         """)
         print("✅ Created downloaded_files table")
 
-        # 🆕 PHASE 4 OPTIMIZED: Create last_downloaded_file table for efficient tracking
+        # Create last_downloaded_file table for efficient tracking
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS last_downloaded_file (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -326,11 +326,11 @@ def update_database():
             )
         """)
 
-        # Tạo bảng video_sources
+        # Tạo bảng video_sources (support local + cloud only)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS video_sources (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                source_type TEXT NOT NULL,
+                source_type TEXT NOT NULL CHECK(source_type IN ('local', 'cloud')),
                 name TEXT NOT NULL,
                 path TEXT NOT NULL,
                 config TEXT,
@@ -340,7 +340,8 @@ def update_database():
                 parent_folder_id TEXT
             )
         """)
-        # 🆕 PHASE 1: Add folder depth tracking columns
+        
+        # Add folder depth tracking columns
         try:
             cursor.execute("ALTER TABLE video_sources ADD COLUMN folder_depth INTEGER DEFAULT 0")
             print("✅ Added folder_depth column to video_sources")
@@ -352,20 +353,19 @@ def update_database():
             print("✅ Added parent_folder_id column to video_sources")
         except sqlite3.OperationalError:
             pass  # Column already exists
-        # 🆕 PHASE 1: Create indexes for lazy folder tree (AFTER column migration)
+            
+        # Create indexes for lazy folder tree
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_video_sources_folder_depth ON video_sources(folder_depth)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_video_sources_parent_folder ON video_sources(parent_folder_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_video_sources_source_type_active ON video_sources(source_type, active)")
         print("✅ Created indexes for lazy folder tree performance")
 
-        # Tích hợp migration Phase 3: Multiple Camera Support
-
-        # 1. Update index cho video_sources
+        # Update index cho video_sources
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_video_sources_active ON video_sources(active)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_video_sources_source_type ON video_sources(source_type)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_video_sources_created_at ON video_sources(created_at)")
 
-        # 3. Tạo table camera_configurations
+        # Tạo table camera_configurations
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS camera_configurations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -387,7 +387,7 @@ def update_database():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_camera_configurations_source_id ON camera_configurations(source_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_camera_configurations_selected ON camera_configurations(is_selected)")
 
-        # 7. Create view active_cameras
+        # Create view active_cameras
         cursor.execute("""
             CREATE VIEW IF NOT EXISTS active_cameras AS
             SELECT 
@@ -407,7 +407,7 @@ def update_database():
             WHERE vs.active = 1 AND cc.is_selected = 1
         """)
 
-        # 8. Create trigger update_camera_configurations_timestamp
+        # Create trigger update_camera_configurations_timestamp
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS update_camera_configurations_timestamp
             AFTER UPDATE ON camera_configurations
@@ -417,7 +417,7 @@ def update_database():
             END
         """)
 
-        # 🆕 PHASE 4: Create trigger to update sync_status timestamp
+        # Create trigger to update sync_status timestamp
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS update_sync_status_timestamp
             AFTER UPDATE ON sync_status
@@ -427,7 +427,7 @@ def update_database():
             END
         """)
 
-        # 🆕 PHASE 4: Create trigger to update last_downloaded_file timestamp
+        # Create trigger to update last_downloaded_file timestamp
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS update_last_downloaded_file_timestamp
             AFTER UPDATE ON last_downloaded_file
@@ -437,7 +437,7 @@ def update_database():
             END
         """)
 
-        # 🆕 PHASE 4: Create view for sync dashboard
+        # Create view for sync dashboard (Cloud sources only)
         cursor.execute("""
             CREATE VIEW IF NOT EXISTS sync_dashboard AS
             SELECT 
@@ -458,13 +458,13 @@ def update_database():
             FROM video_sources vs
             LEFT JOIN sync_status ss ON vs.id = ss.source_id
             LEFT JOIN downloaded_files df ON vs.id = df.source_id
-            WHERE vs.active = 1 AND vs.source_type IN ('nvr', 'cloud')
+            WHERE vs.active = 1 AND vs.source_type = 'cloud'
             GROUP BY vs.id, vs.name, vs.source_type, vs.path, ss.sync_enabled, 
                      ss.last_sync_timestamp, ss.next_sync_timestamp, ss.sync_interval_minutes,
                      ss.last_sync_status, ss.last_sync_message, ss.files_downloaded_count, ss.total_download_size_mb
         """)
 
-        # 🆕 PHASE 4 OPTIMIZED: Create view for efficient camera tracking
+        # Create view for efficient camera tracking (Cloud sources only)
         cursor.execute("""
             CREATE VIEW IF NOT EXISTS camera_sync_status AS
             SELECT 
@@ -483,23 +483,23 @@ def update_database():
             FROM video_sources vs
             LEFT JOIN last_downloaded_file ldf ON vs.id = ldf.source_id
             LEFT JOIN sync_status ss ON vs.id = ss.source_id
-            WHERE vs.active = 1 AND vs.source_type IN ('nvr', 'cloud')
+            WHERE vs.active = 1 AND vs.source_type = 'cloud'
             ORDER BY vs.name, ldf.camera_name
         """)
 
         conn.commit()
         conn.close()
-        print(f"🎉 PHASE 4 OPTIMIZED: Database updated successfully at {DB_PATH}")
+        print(f"🎉 Database updated successfully at {DB_PATH}")
         print("✅ Added camera_paths column to processing_config")
         print("✅ Created sync_status table for auto-sync management")
         print("✅ Created downloaded_files table for file tracking")
         print("✅ Created last_downloaded_file table for efficient tracking")
         print("✅ Created indexes and views for performance")
-        print(f"🎉 PHASE 1: Database updated successfully at {DB_PATH}")
         print("✅ Added folder_depth and parent_folder_id columns to video_sources")
         print("✅ Created indexes for lazy folder tree performance")
         print("✅ Added helper functions for folder depth management")
         print("🔒 Added user_sessions and auth_audit tables for security")
+        print("✅ Updated source_type constraint to support local and cloud only")
         
     except Exception as e:
         print(f"Error updating database: {e}")
@@ -680,7 +680,7 @@ def get_auth_audit(user_email: str = None, limit: int = 100) -> List[Dict]:
         logger.error(f"Failed to get auth audit: {e}")
         return []
 
-# 🆕 PHASE 4: Helper functions for database operations
+# Helper functions for database operations
 
 def update_camera_paths(source_id: int, camera_paths: dict):
     """Update camera_paths in processing_config for a source"""
@@ -704,7 +704,7 @@ def update_camera_paths(source_id: int, camera_paths: dict):
         return False
 
 def initialize_sync_status(source_id: int, sync_enabled: bool = True, interval_minutes: int = 10):
-    """Initialize sync status for a new source"""
+    """Initialize sync status for a new source (Cloud sources only)"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -757,7 +757,7 @@ def get_sync_status(source_id: int):
         print(f"Error getting sync status: {e}")
         return None
 
-# 🆕 PHASE 4 OPTIMIZED: Helper functions for efficient file tracking
+# Helper functions for efficient file tracking
 
 def update_last_downloaded_file(source_id: int, camera_name: str, latest_file_info: dict, total_count: int, total_size_mb: float):
     """Update last downloaded file info for a camera"""
@@ -856,7 +856,7 @@ def get_camera_download_stats(source_id: int):
             'cameras_count': 0
         }
 
-# 🆕 PHASE 1: Helper functions for lazy folder tree
+# Helper functions for lazy folder tree
 
 def create_source_with_folder_info(source_data, selected_folders=None):
     """Create video source with lazy folder tree information"""

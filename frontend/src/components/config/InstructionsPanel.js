@@ -196,7 +196,7 @@ const InstructionsPanel = ({
     try {
       if (currentStep === "packing") {
         console.log("Calling /run-select-roi for retry with videoPath:", videoPath, "cameraId:", cameraId);
-        const response = await fetch('http://localhost:8080/run-select-roi', {
+        const response = await fetch('http://localhost:8080/api/hand_detection/select-roi', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ videoPath, cameraId }),
@@ -221,7 +221,7 @@ const InstructionsPanel = ({
         }
       } else if (currentStep === "mvd") {
         console.log("Calling /run-qr-detector for retry with videoPath:", videoPath, "cameraId:", cameraId, "roiFramePath:", analysisResult.roi_frame);
-        const response = await fetch('http://localhost:8080/run-qr-detector', {
+        const response = await fetch('http://localhost:8080/api/qr_detection/select-qr-roi', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ videoPath, cameraId, roiFramePath: analysisResult.roi_frame }),

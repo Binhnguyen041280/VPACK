@@ -9,10 +9,7 @@ import time
 from modules.db_utils import find_project_root, get_db_connection
 from modules.scheduler.db_sync import db_rwlock
 from modules.sources.path_manager import PathManager
-from modules.sources.nvr_client import NVRClient
 from database import update_database, DB_PATH, initialize_sync_status
-from modules.sources.nvr_downloader import NVRDownloader
-from modules.sources.auto_sync_service import AutoSyncService
 # 🆕 NEW: Cloud endpoints module
 from modules.sources.cloud_endpoints import cloud_bp
 # 🔒 SECURITY: Import security modules
@@ -524,24 +521,10 @@ def has_video_files(path, max_depth=2):
     
     return check_directory(path, 0)
 
-# ✅ FIX: Helper function để map path cho các source type khác nhau
+# ✅ FIX: Helper function để map path cho các source type khác nhau (NO NVR)
 def get_working_path_for_source(source_type, source_name, source_path):
     """Map source connection info to actual working directory"""
-    if source_type == 'nvr':
-        # NVR: source_path is connection URL, working path is download directory
-        working_path = os.path.join(BASE_DIR, "nvr_downloads", source_name)
-        print(f"🔗 NVR Path Mapping: {source_path} → {working_path}")
-        
-        # Create directory if it doesn't exist
-        try:
-            os.makedirs(working_path, exist_ok=True)
-            print(f"📁 Created/verified NVR directory: {working_path}")
-        except Exception as e:
-            print(f"❌ Failed to create NVR directory {working_path}: {e}")
-            
-        return working_path
-        
-    elif source_type == 'local':
+    if source_type == 'local':
         # Local: source_path is actual file system path
         working_path = source_path
         print(f"📁 Local Path Mapping: {source_path} → {working_path}")
@@ -729,7 +712,7 @@ def get_cameras():
                 for camera in detected_cameras:
                     cameras.append({"name": camera, "path": os.path.join(video_root, camera)})
             
-            elif source_type in ['network', 'cloud', 'camera']:
+            elif source_type in ['cloud', 'camera']:
                 # For other source types, use source name as camera
                 cameras.append({"name": active_source['name'], "path": active_source['path']})
         else:
@@ -794,7 +777,7 @@ def save_config():
                     
                     print(f"Found active source: {source_name} ({source_type})")
                     
-                    # Apply proper path mapping
+                    # Apply proper path mapping (NO NVR)
                     correct_working_path = get_working_path_for_source(source_type, source_name, source_path)
                     
                     if video_root != correct_working_path:
@@ -1009,7 +992,7 @@ def save_video_sources():
             # Get source ID for database operations
             source_id = path_manager.get_source_id_by_name(name)
             
-            # Calculate correct working path and update processing_config
+            # Calculate correct working path and update processing_config (NO NVR)
             working_path = get_working_path_for_source(source_type, name, path)
             
             # Update processing_config.input_path to point to working path
@@ -1066,16 +1049,6 @@ def save_video_sources():
                 except Exception as camera_error:
                     print(f"Camera detection failed: {camera_error}")
                     cursor.execute("UPDATE processing_config SET selected_cameras = '[]' WHERE id = 1")
-                    
-            elif source_type == 'nvr':
-                # Handle NVR cameras
-                selected_cameras = config_data.get('selected_cameras', [])
-                if selected_cameras:
-                    cursor.execute("""
-                        UPDATE processing_config 
-                        SET selected_cameras = ? 
-                        WHERE id = 1
-                    """, (json.dumps(selected_cameras),))
             
             conn.commit()
             conn.close()
@@ -1099,183 +1072,9 @@ def save_video_sources():
         print(f"Failed to save sources: {str(e)}")
         return jsonify({"error": f"Failed to save sources: {str(e)}"}), 500
 
-# 🆕 HELPER FUNCTIONS TO ADD TO config.py
-
-def update_camera_paths(camera_paths_dict):
-    """
-    Update camera paths mapping in processing_config
-    
-    Args:
-        camera_paths_dict (dict): Camera name -> directory path mapping
-    """
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Update camera_paths column in processing_config
-        cursor.execute("""
-            UPDATE processing_config 
-            SET camera_paths = ? 
-            WHERE id = 1
-        """, (json.dumps(camera_paths_dict),))
-        
-        conn.commit()
-        conn.close()
-        
-        print(f"✅ Camera paths updated: {camera_paths_dict}")
-        
-    except Exception as e:
-        print(f"❌ Failed to update camera paths: {e}")
-
-def get_nvr_download_status(source_id):
-    """
-    Get current download status for NVR source
-    
-    Args:
-        source_id (int): Source database ID
-        
-    Returns:
-        dict: Download status information
-    """
-    try:
-        downloader = NVRDownloader(mock_mode=True)
-        stats = downloader.get_download_statistics(source_id)
-        
-        # Get sync status
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT sync_enabled, sync_interval_minutes, last_sync_time, last_sync_status
-            FROM sync_status WHERE source_id = ?
-        """, (source_id,))
-        
-        sync_row = cursor.fetchone()
-        conn.close()
-        
-        if sync_row:
-            sync_enabled, interval, last_sync, last_status = sync_row
-            stats['sync_status'] = {
-                'enabled': bool(sync_enabled),
-                'interval_minutes': interval,
-                'last_sync_time': last_sync,
-                'last_sync_status': last_status
-            }
-        else:
-            stats['sync_status'] = {
-                'enabled': False,
-                'interval_minutes': None,
-                'last_sync_time': None,
-                'last_sync_status': None
-            }
-        
-        return stats
-        
-    except Exception as e:
-        print(f"❌ Failed to get NVR download status: {e}")
-        return {
-            'total_files': 0,
-            'total_size': 0,
-            'cameras_count': 0,
-            'sync_status': {'enabled': False}
-        }
-
-# 🆕 NEW API ENDPOINT TO ADD TO config.py
-
-@config_bp.route('/get-nvr-status/<int:source_id>', methods=['GET'])
-def get_nvr_status(source_id):
-    """
-    Get NVR source download status and statistics
-    
-    Args:
-        source_id (int): Source database ID via URL parameter
-        
-    Returns:
-        JSON: NVR status information
-    """
-    try:
-        status = get_nvr_download_status(source_id)
-        
-        return jsonify({
-            "source_id": source_id,
-            "download_stats": status,
-            "timestamp": datetime.now().isoformat()
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            "error": f"Failed to get NVR status: {str(e)}",
-            "source_id": source_id
-        }), 500
-
-@config_bp.route('/trigger-nvr-sync/<int:source_id>', methods=['POST'])
-def trigger_manual_nvr_sync(source_id):
-    """
-    Manually trigger NVR sync for testing/debugging
-    
-    Args:
-        source_id (int): Source database ID via URL parameter
-        
-    Returns:
-        JSON: Sync results
-    """
-    try:
-        # Get source info
-        path_manager = PathManager()
-        source = path_manager.get_source_by_id(source_id)
-        
-        if not source or source['source_type'] != 'nvr':
-            return jsonify({
-                "error": f"NVR source {source_id} not found"
-            }), 404
-        
-        # Get working path and cameras
-        working_path = get_working_path_for_source(
-            source['source_type'], 
-            source['name'], 
-            source['path']
-        )
-        
-        selected_cameras = source['config'].get('selected_cameras', [])
-        
-        # Trigger download
-        downloader = NVRDownloader(mock_mode=True, testing_intervals=True)
-        
-        download_config = {
-            'source_id': source_id,
-            'name': source['name'],
-            'selected_cameras': selected_cameras,
-            'working_path': working_path
-        }
-        
-        results = downloader.download_recordings(download_config)
-        
-        # Update sync status
-        if results['success']:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE sync_status 
-                SET last_sync_time = ?, last_sync_status = ?
-                WHERE source_id = ?
-            """, (datetime.now().isoformat(), 'success', source_id))
-            conn.commit()
-            conn.close()
-        
-        return jsonify({
-            "message": "Manual sync completed",
-            "source_id": source_id,
-            "results": results
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            "error": f"Manual sync failed: {str(e)}",
-            "source_id": source_id
-        }), 500
-
 @config_bp.route('/test-source', methods=['POST'])  
 def test_source_connection():
-    """Test connectivity for all source types including NVR/DVR"""
+    """Test connectivity for local and cloud source types only"""
     try:
         # Ensure we have valid JSON request
         if not request.is_json:
@@ -1302,7 +1101,7 @@ def test_source_connection():
                 "source_type": "unknown"
             }), 400
         
-        # Handle different source types
+        # Handle different source types (NO NVR)
         if source_type == 'local':
             # Existing local path validation
             source_config = {
@@ -1327,17 +1126,8 @@ def test_source_connection():
                 "source_type": source_type
             }), 200
             
-        elif source_type == 'nvr':
-            # 🆕 NEW: NVR connection testing + camera discovery
-            from modules.sources.nvr_client import NVRClient
-            
-            nvr_client = NVRClient()
-            result = nvr_client.test_connection_and_discover_cameras(data)
-            
-            return jsonify(result), 200
-            
         elif source_type == 'cloud':
-            # 🆕 NEW: Cloud connection testing + folder discovery
+            # ✅ Cloud connection testing + folder discovery
             from modules.sources.cloud_manager import CloudManager
             cloud_manager = CloudManager(provider='google_drive')
             result = cloud_manager.test_connection_and_discover_folders(data)
@@ -1346,14 +1136,14 @@ def test_source_connection():
         else:
             return jsonify({
                 "accessible": False,
-                "message": f"Unknown source type: {source_type}",
+                "message": f"Source type '{source_type}' not supported. Only 'local' and 'cloud' are available.",
                 "source_type": source_type
             }), 400
         
     except ImportError as e:
         return jsonify({
             "accessible": False,
-            "message": f"NVR module not available: {str(e)}",
+            "message": f"Required module not available: {str(e)}",
             "source_type": data.get('source_type', 'unknown')
         }), 500
         
@@ -1661,12 +1451,6 @@ def refresh_cameras():
                 # Also check existing selected_cameras in config
                 cameras = config_data.get('selected_cameras', [])
                 print(f"☁️ Using existing cloud cameras: {cameras}")
-                
-        elif source_type == 'nvr':
-            # NVR: Get from config
-            config_data = active_source.get('config', {})
-            cameras = config_data.get('selected_cameras', [])
-            print(f"🔗 NVR cameras from config: {cameras}")
         
         # Update processing_config if cameras found
         if cameras:
@@ -1755,10 +1539,6 @@ def get_camera_status():
                 working_path = source['path']
                 if os.path.exists(working_path):
                     source_cameras = detect_camera_folders(working_path)
-                    
-            elif source['source_type'] == 'nvr':
-                config_data = source.get('config', {})
-                source_cameras = config_data.get('selected_cameras', [])
         
         # Check sync status
         cameras_synced = set(processing_cameras) == set(source_cameras)
