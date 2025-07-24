@@ -1,0 +1,152 @@
+V_Track/
+├── backend/                    # Thư mục chứa mã backend (Python/Flask)
+│   ├── app.py                  # File chính của Flask app
+│   ├── update_database.py      # Script khởi tạo và cập nhật CSDL
+│   ├── modules/                # Các module chức năng của backend
+│   │   ├── csv_parser/         # Module xử lý CSV
+│   │   │   ├── __init__.py
+│   │   │   └── csv_parser.py
+│   │   ├── db_utils/           # Module xử lý cơ sở dữ liệu
+│   │   │   ├── __init__.py
+│   │   │   └── db_utils.py
+│   │   ├── query/              # Module xử lý truy vấn
+│   │   │   ├── __init__.py
+│   │   │   ├── query.py
+│   │   │   └── results.py
+│   │   ├── config/             # Module xử lý cấu hình
+│   │   │   ├── __init__.py
+│   │   │   └── config.py
+│   │   └── program/            # Module xử lý chương trình
+│   │       ├── __init__.py
+│   │       ├── program.py
+│   │       ├── file_lister.py
+│   │       ├── event_detector.py
+│   │       ├── Frame_Sampler.py
+│   │       └── cutter.py
+│   └── database/               # Thư mục chứa cơ sở dữ liệu
+│       └── events.db           # File CSDL SQLite
+├── frontend/                   # Thư mục chứa mã frontend (React)
+│   ├── src/                    # Mã nguồn React
+│   │   ├── components/         # Các component UI
+│   │   │   ├── result/         # Component kết quả
+│   │   │   │   ├── CutVideoSection.js
+│   │   │   │   └── ResultList.js
+│   │   │   ├── query/          # Component truy vấn
+│   │   │   │   ├── ColumnSelectorModal.js
+│   │   │   │   ├── TimeAndQuerySection.js
+│   │   │   │   ├── TextInputSection.js
+│   │   │   │   └── FileInputSection.js
+│   │   │   ├── ui/             # Component UI chung
+│   │   │   │   └── SearchModelSelector.js
+│   │   │   ├── program/        # Component tab "Chương trình" (tách từ Dashboard.js)
+│   │   │   │   ├── ProgramTab.js        # Giao diện tab "Chương trình"
+│   │   │   │   └── FileList.js          # Component danh sách file
+│   │   │   └── config/         # Component tab "Cấu hình" (tách từ VtrackConfig.js)
+│   │   │       ├── GeneralInfoForm.js   # Giao diện "Thông tin chung"
+│   │   │       ├── ConfigForm.js        # Giao diện "Cấu hình"
+│   │   │       └── CameraDialog.js      # Hộp thoại xác nhận camera
+│   │   ├── hooks/              # Thư mục chứa custom hooks
+│   │   │   ├── useProgramLogic.js       # Logic tab "Chương trình" (tách từ Dashboard.js)
+│   │   │   └── useVtrackConfig.js       # Logic tab "Cấu hình" (tách từ VtrackConfig.js)
+│   │   ├── api.js              # Hàm gọi API
+│   │   ├── AccountComponent.js # Component tab "Tài khoản"
+│   │   ├── VtrackConfig.js     # Component tab "Cấu hình" (đã tách)
+│   │   ├── QueryComponent.js   # Component tab "Truy vấn"
+│   │   ├── Dashboard.js        # Component chính (đã tách tab "Chương trình")
+│   │   ├── Sidebar.js          # Component thanh điều hướng
+│   │   ├── Title.js            # Component tiêu đề
+│   │   ├── App.js              # Component chính của React app
+│   │   ├── index.js            # File khởi tạo React app
+│   │   ├── App.css             # CSS cho App.js
+│   │   ├── index.css           # CSS chính
+│   │   ├── logo.svg            # File logo
+│   │   ├── setupTests.js       # File cấu hình test
+│   │   └── reportWebVitals.js  # Script báo cáo hiệu suất web
+│   ├── tailwind.config.js      # Cấu hình Tailwind CSS
+│   ├── postcss.config.js       # Cấu hình PostCSS
+│   ├── package.json            # Cấu hình dự án Node.js
+│   └── node_modules/           # Dependency của Node.js
+├── resources/                  # Thư mục chứa tài nguyên (dữ liệu đầu vào/đầu ra)
+│   ├── Inputvideo/             # Video đầu vào
+│   │   ├── Cam2/               # Thư mục camera
+│   │   │   └── video4.mp4
+│   │   ├── Cam3/               # Thư mục camera
+│   │   │   └── Vid27032025/    # Thư mục video
+│   │   │       └── Ghi Màn hình 2025-03-27 lúc 07.59.56.mov
+│   │   └── test.mp4
+│   └── output_clips/           # Video đầu ra
+├── docs/                       # Thư mục chứa tài liệu
+│   └── README.md               # Tài liệu mô tả dự án
+└── package-lock.json           # File khóa phiên bản dependency
+
+### Đánh giá tổng quan (kết hợp từ Grok, ChatGPT, Gemini)
+
+**Điểm mạnh:**
+- Cấu trúc rõ ràng, tách biệt backend (`backend/`) và frontend (`frontend/`), tài nguyên (`resources/`), tài liệu (`docs/`).
+- Backend chia module chức năng (`csv_parser`, `db_utils`, `query`, `config`, `program`), frontend chia component (`result`, `query`, `ui`, `program`, `config`) và hooks (`useProgramLogic`, `useVtrackConfig`).
+- Tách logic và giao diện (custom hooks, components), tuân thủ **Single Responsibility Principle**.
+- Mỗi file dưới 150 dòng, dễ quản lý và bảo trì.
+- Sử dụng `tailwind.css` giúp giao diện gọn nhẹ, dễ tùy chỉnh.
+
+**Điểm yếu:**
+- Thiếu file `requirements.txt` cho backend, gây khó khăn khi cài đặt dependencies.
+- Thiếu thư mục kiểm thử (`tests/`) cho cả backend và frontend.
+- Thiếu thư mục `services/` để quản lý API trong frontend.
+- Thiếu tài liệu chi tiết (`INSTALL.md`, sơ đồ luồng dữ liệu).
+- Chưa có cơ chế dọn dẹp file cũ trong `output_clips/`, có thể gây tốn dung lượng.
+- Chưa tối ưu hiệu suất (state management, lazy loading) và bảo mật (xác thực, kiểm tra dữ liệu).
+
+---
+
+### Đề xuất cải thiện phù hợp nhất
+
+Dựa trên mục đích dự án (xử lý video với các chương trình "Lần đầu", "Chỉ định", "Mặc định"), quy mô dự án (nhỏ, cá nhân), người triển khai (Alan), và yêu cầu sử dụng phần mềm/tiện ích miễn phí, tôi đề xuất các cải tiến sau:
+
+#### 1. **Backend (Flask)**
+- **Thêm file `requirements.txt`:** Tạo file này bằng lệnh `pip freeze > requirements.txt` để dễ cài đặt dependencies (miễn phí, cần thiết cho Alan và người dùng).
+- **Tách `storage/`:** Chuyển `database/` thành `storage/database/` để quản lý dữ liệu rõ ràng hơn.
+- **Logging chi tiết:** Thêm logging vào `event_detector.py`, `file_lister.py` (dùng thư viện `logging` của Python, miễn phí) để debug dễ dàng.
+- **Dọn dẹp file cũ:** Thêm script đơn giản trong `program.py` để xóa file cũ hơn 30 ngày trong `output_clips/` (dùng `os` và `time`, miễn phí).
+
+#### 2. **Frontend (React)**
+- **Thêm thư mục `services/`:** Chuyển `api.js` vào `frontend/src/services/api.js` để quản lý API (miễn phí, giúp Alan tổ chức code tốt hơn).
+- **Tối ưu hiệu suất:** Sử dụng `React.memo` cho các component nhỏ (`FileList.js`, `CameraDialog.js`) để giảm render không cần thiết (miễn phí, phù hợp quy mô nhỏ).
+- **Xử lý lỗi:** Hiển thị thông báo lỗi chi tiết từ API (dùng `alert` hoặc toast library miễn phí như `react-toastify`) để cải thiện UX.
+
+#### 3. **Quản lý tài nguyên (`resources/`)**
+- **Thêm `README.md`:** Tạo `resources/README.md` mô tả cách quản lý video (miễn phí, giúp Alan và người dùng hiểu rõ).
+- **Dọn dẹp file cũ:** Đã đề xuất ở backend, áp dụng cho `output_clips/` để tiết kiệm dung lượng.
+
+#### 4. **Tài liệu (`docs/`)**
+- **Thêm `INSTALL.md`:** Tạo file `docs/INSTALL.md` hướng dẫn cài đặt backend (`pip install -r requirements.txt`, `python app.py`) và frontend (`npm install`, `npm start`) (miễn phí, cần thiết cho Alan và người dùng).
+- **Sơ đồ luồng dữ liệu:** Dùng công cụ miễn phí như **Draw.io** (truy cập qua web) để vẽ sơ đồ luồng dữ liệu (input video → quét → xử lý → output), lưu vào `docs/DATAFLOW.md`.
+
+#### 5. **Kiểm thử**
+- **Thêm thư mục `tests/`:** Tạo `backend/tests/` và `frontend/tests/`. Dùng `unittest` (miễn phí) cho backend và `Jest` (miễn phí, đi kèm React) cho frontend để viết unit test cơ bản (phù hợp quy mô nhỏ, giúp Alan đảm bảo chất lượng code).
+
+#### 6. **Bảo mật cơ bản**
+- **Kiểm tra dữ liệu đầu vào:** Thêm kiểm tra đơn giản trong `program.py` và `file_lister.py` (dùng `os.path` để kiểm tra đường dẫn hợp lệ, miễn phí).
+- **Xác thực đơn giản:** Nếu cần, dùng `HTTP Basic Auth` (miễn phí, tích hợp trong Flask) để bảo vệ các endpoint nhạy cảm (phù hợp quy mô nhỏ).
+
+---
+
+### Tóm tắt đề xuất cải thiện (phù hợp nhất)
+
+| **Khu vực**       | **Cải thiện**                                                                 |
+|-------------------|-------------------------------------------------------------------------------|
+| **Backend**       | Thêm `requirements.txt`, tách `storage/`, thêm logging, dọn dẹp file cũ.     |
+| **Frontend**      | Tạo `services/`, dùng `React.memo`, hiển thị lỗi chi tiết (react-toastify).  |
+| **Resources**     | Thêm `README.md`, dọn dẹp file cũ trong `output_clips/`.                     |
+| **Docs**          | Thêm `INSTALL.md`, vẽ sơ đồ luồng dữ liệu (Draw.io).                         |
+| **Kiểm thử**      | Thêm `tests/` với `unittest` (backend) và `Jest` (frontend).                 |
+| **Bảo mật**       | Kiểm tra dữ liệu đầu vào, thêm `HTTP Basic Auth` (nếu cần).                  |
+
+---
+
+### Lý do chọn các cải tiến này
+- **Mục đích dự án:** Xử lý video, cần quản lý tài nguyên (`Inputvideo`, `output_clips`) hiệu quả, đảm bảo tính ổn định và dễ sử dụng.
+- **Quy mô nhỏ:** Các giải pháp đơn giản, miễn phí (Draw.io, unittest, Jest, react-toastify) phù hợp với dự án cá nhân.
+- **Người triển khai (Alan):** Các công cụ và cải tiến dễ sử dụng, không đòi hỏi học hỏi phức tạp, giúp Alan quản lý dự án hiệu quả.
+- **Người dùng:** Tài liệu (`INSTALL.md`, `README.md`) và xử lý lỗi chi tiết giúp người dùng dễ tiếp cận.
+
+Bạn có muốn tôi triển khai chi tiết một trong các cải tiến trên không? Nếu không, chúng ta có thể tiếp tục với lỗi trên UI.

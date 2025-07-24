@@ -1,0 +1,11 @@
+mediapipe
+opencv-
+pyzbar
+apscheduler
+flask-sockets
+gevent-websocket
+gevent
+onvif-zeep==0.2.12
+python-onvif-zeep==0.2.12
+WSDiscovery==2.0.0
+netifaces==0.11.0

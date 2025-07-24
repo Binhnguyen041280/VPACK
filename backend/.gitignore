@@ -1,0 +1,4 @@
+.env
+*.env
+modules/sources/tokens/*
+modules/sources/audit_logs/*

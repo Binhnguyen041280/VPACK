@@ -1,0 +1,426 @@
+Cảm ơn bạn đã cung cấp tài liệu chi tiết và làm rõ ý tưởng về việc áp dụng các profile quét (`FS1`, `FS2`, `FS3`, `FS31`) trong V-Track, cũng như cách tổ chức hệ thống như một "nhà máy số". Bạn muốn mình đánh giá mức độ hoàn thiện của V-Track dựa trên tài liệu `Vtrack_04_15_14.md` và các trao đổi trước, đồng thời làm rõ cách **ai chỉ định thực hiện** trong cơ cấu V-Track, đặc biệt là liên quan đến việc áp dụng các profile quét. Mình sẽ trình bày ngắn gọn, rõ ràng, và bổ sung các chi tiết triển khai để đảm bảo bên thứ ba cũng có thể hiểu và thực hiện.
+
+---
+
+## 🏭 Đánh giá mức độ hoàn thiện của V-Track (dựa trên tài liệu và trao đổi)
+
+Dựa trên file `Vtrack_04_15_14.md` và các cuộc trao đổi từ ngày 17/3/2025 đến 15/4/2025, mình sẽ đánh giá theo mô hình "nhà máy số" với 4 cấp độ: **Công nhân kỹ thuật**, **Giám sát quy trình**, **Điều phối kế hoạch**, và **Quản trị/Pháp lý**. Đồng thời, mình sẽ làm rõ vai trò **ai chỉ định thực hiện** trong việc áp dụng các profile quét (`packing_profiles`) trong cơ cấu V-Track.
+
+### 👷 Cấp 1 – Công nhân kỹ thuật (`FrameSampler`, `EventDetector`, `VideoCutter`)
+
+#### Trạng thái
+| Mô-đun | Trạng thái | Đánh giá |
+|--------|------------|----------|
+| **FrameSampler** | ✅ Hoàn thiện cơ bản (90%) | - Đã xử lý video theo frame (5fps), quét QR bằng `pyzbar`, ghi log trạng thái (`On`, `Off`, mã vận đơn).<br>- Hỗ trợ `packing_profiles` từ `events.db` với các tham số như `qr_trigger_area`, `qr_mvd_area`, `packing_area`.<br>- **Chưa tối ưu**: Chưa áp dụng đầy đủ các profile `FS1`, `FS2`, `FS3`, `FS31` với logic nhảy thời gian (jump_time_ratio) và chuyển đổi động giữa các profile. |
+| **EventDetector** | ✅ Hoàn thiện cơ bản (85%) | - Phát hiện sự kiện Start/Stop dựa trên QR TimeGo và mã vận đơn.<br>- Có logic loại bỏ sự kiện dưới `min_packing_time` (10s).<br>- **Chưa tối ưu**: Chưa tách riêng thành module độc lập, còn gắn chặt với `FrameSampler`. |
+| **VideoCutter** | ✅ Hoàn thiện tốt (95%) | - Dùng `ffmpeg` cắt video chính xác, hỗ trợ buffer đầu/cuối.<br>- Xử lý cả sự kiện hoàn chỉnh (`cutter_complete.py`) và dở dang (`cutter_incomplete.py`).<br>- **Chưa tối ưu**: Chưa tích hợp watermark hoặc xác minh video đầu ra. |
+
+#### Đánh giá
+- **Điểm mạnh**: Các mô-đun cấp công nhân đã vận hành ổn định, xử lý được video độc lập, quét QR chính xác, cắt video đúng yêu cầu.
+- **Điểm yếu**: 
+  - `FrameSampler` chưa tận dụng hết các profile (`FS1`, `FS2`, `FS3`, `FS31`) để tối ưu hiệu suất (nhảy thời gian, giới hạn vùng quét).
+  - Logic sự kiện chưa tách biệt hoàn toàn, gây khó khăn khi bảo trì hoặc mở rộng.
+- **Mức hoàn thiện**: ~90% (cơ bản xong, cần tinh chỉnh để tối ưu CPU và tích hợp profile).
+
+---
+
+### 🧍 Cấp 2 – Giám sát quy trình (`IdleManager`, `EventAnalyzer`)
+
+#### Trạng thái
+| Mô-đun | Trạng thái | Đánh giá |
+|--------|------------|----------|
+| **IdleManager** | 🟡 Đang phát triển (40%) | - Tài liệu `IdleMonitor.py` chỉ là placeholder, chưa có code triển khai cụ thể.<br>- Trao đổi đã xác định rõ logic: tick-based (1–2s), dùng `absdiff` hoặc Mediapipe để phát hiện chuyển động, giữ buffer RAM 10s.<br>- **Chưa có**: Chưa tích hợp vào pipeline chính, chưa gọi `EventAnalyzer`. |
+| **EventAnalyzer** | 🟡 Đang phát triển (50%) | - Logic phân tích sự kiện (Start/Stop, QR MVD) hiện nằm trong `FrameSampler` và `EventDetector`.<br>- Đã có ý tưởng nhảy thời gian (70% cho `FS1`, 50% cho `FS2`), nhưng chưa hiện thực hóa trong code.<br>- **Chưa có**: Module riêng để xử lý sự kiện phức tạp (như QR MVD ngửa, chuyển đổi profile động). |
+| **IdleStopDetector** | 🔄 Placeholder (0%) | - Chỉ được đề cập trong tài liệu, chưa có code hoặc logic cụ thể. |
+
+#### Đánh giá
+- **Điểm mạnh**: Ý tưởng giám sát rất rõ ràng: 
+  - `IdleManager` làm "người gác cổng", phát hiện hành vi bằng chuyển động và QR trigger.
+  - Buffer RAM (10s) đảm bảo không bỏ sót sự kiện ngắn.
+  - Các profile quét (`FS1`, `FS2`, `FS3`, `FS31`) được thiết kế chi tiết, sẵn sàng tích hợp.
+- **Điểm yếu**:
+  - Chưa có code thực thi cho `IdleManager` và `IdleStopDetector`.
+  - `EventAnalyzer` chưa tách biệt, gây khó khăn khi muốn tối ưu riêng logic sự kiện.
+  - Chưa tích hợp cơ chế chuyển đổi profile động (ví dụ: từ `FS1` sang `FS3` khi QR ngoài vùng).
+- **Mức hoàn thiện**: ~45% (ý tưởng mạnh, nhưng cần hiện thực hóa thành code).
+
+---
+
+### 🧭 Cấp 3 – Điều phối kế hoạch (`BatchScheduler`, `TaskQueue`)
+
+#### Trạng thái
+| Mô-đun | Trạng thái | Đánh giá |
+|--------|------------|----------|
+| **BatchScheduler** | 🟡 Đang phát triển (60%) | - `FrameSampler.py` đã hỗ trợ quét danh sách file từ `file_list` trong `events.db`, ưu tiên theo `priority` và `created_at`.<br>- Có logic tránh xử lý trùng (`log_processed` trong `processed_logs`).<br>- **Chưa có**: Chưa hỗ trợ resume xử lý dở dang, chưa có cấu hình ca làm việc (ban ngày/ban đêm, ngày nghỉ). |
+| **TaskQueue** | 🔄 Chưa có (0%) | - Chưa thấy code hoặc thiết kế cụ thể cho hàng đợi xử lý đồng thời nhiều video.<br>- Trao đổi đề cập đến ý tưởng xử lý batch 1000 file, nhưng chưa hiện thực hóa. |
+| **PerformanceMonitor** | 🔄 Chưa có (0%) | - Chưa có log hiệu suất (thời gian xử lý từng file, dự báo tiến độ). |
+
+#### Đánh giá
+- **Điểm mạnh**:
+  - `FrameSampler.py` đã có cơ chế quét file cơ bản, đảm bảo xử lý từng file độc lập.
+  - Ý tưởng xử lý batch lớn (1000 file) được định hình rõ, với ưu tiên file mới nhất.
+- **Điểm yếu**:
+  - Chưa có module riêng (`BatchScheduler`) để quản lý lô file, resume, hoặc phân ca.
+  - Chưa tối ưu tải CPU khi xử lý đồng thời (ví dụ: giới hạn số luồng Sampler).
+  - Thiếu log tiến độ để giám sát toàn bộ quá trình.
+- **Mức hoàn thiện**: ~60% (có nền tảng, cần xây thêm scheduler và log).
+
+---
+
+### 🏛 Cấp 4 – Quản trị/Pháp lý (`LicenseGuard`, `AuditLogger`, `SystemMonitor`)
+
+#### Trạng thái
+| Mô-đun | Trạng thái | Đánh giá |
+|--------|------------|----------|
+| **LicenseGuard** | 🔄 Chưa có (10%) | - Trao đổi đề cập đến kiểm tra QR bản quyền và ràng buộc MAC, nhưng chưa có code.<br>- Ý tưởng watermark QR trigger đã rõ, nhưng chưa triển khai. |
+| **AuditLogger** | 🔄 Chưa có (0%) | - Chưa có log hệ thống (người dùng, thời gian xử lý, lỗi).<br>- `processed_logs` trong `events.db` chỉ lưu trạng thái file log, không đủ cho audit. |
+| **SystemMonitor** | 🔄 Chưa có (0%) | - Chưa có cơ chế giám sát hiệu suất hệ thống hoặc cảnh báo lỗi (ví dụ: IdleMonitor không chạy, CPU quá tải). |
+| **SystemCalendar** | 🔄 Chưa có (0%) | - Trao đổi đề cập đến lịch làm việc (ngày nghỉ, tăng ca), nhưng chưa có cấu hình cụ thể. |
+
+#### Đánh giá
+- **Điểm mạnh**:
+  - Ý tưởng kiểm soát bản quyền và lịch làm việc đã được định hình.
+  - Có tiềm năng tích hợp vào phiên bản thương mại (SaaS, B2B).
+- **Điểm yếu**:
+  - Hoàn toàn chưa có code triển khai cho các mô-đun cấp này.
+  - Thiếu cơ chế giám sát và ghi log nâng cao, cần thiết khi mở rộng quy mô.
+- **Mức hoàn thiện**: ~10% (chỉ có ý tưởng, chưa hiện thực hóa).
+
+---
+
+## 🧭 Tổng kết mức độ hoàn thiện
+| Cấp độ | Mức hoàn thiện | Nhận xét |
+|--------|----------------|----------|
+| **Cấp 1 – Công nhân kỹ thuật** | ~90% | Gần hoàn thiện, chỉ cần tối ưu hiệu suất và tích hợp profile quét. |
+| **Cấp 2 – Giám sát quy trình** | ~45% | Ý tưởng mạnh, nhưng cần code `IdleManager` và tách `EventAnalyzer`. |
+| **Cấp 3 – Điều phối kế hoạch** | ~60% | Có nền tảng, cần xây `BatchScheduler` và log tiến độ. |
+| **Cấp 4 – Quản trị/Pháp lý** | ~10% | Chỉ có ý tưởng, cần triển khai từ đầu. |
+
+---
+
+## 📋 Checklist chi tiết triển khai tiếp theo
+
+Dưới đây là bảng checklist cụ thể, phân theo 4 cấp độ, với các nhiệm vụ được chi tiết hóa để bên thứ ba (như đội phát triển hoặc đối tác) có thể hiểu và thực hiện. Mỗi nhiệm vụ có mô tả rõ ràng, ưu tiên, và kết quả mong đợi.
+
+### 👷 Cấp 1 – Công nhân kỹ thuật
+| Nhiệm vụ | Ưu tiên | Mô tả chi tiết | Kết quả mong đợi | Trạng thái |
+|----------|---------|----------------|------------------|------------|
+| **Tích hợp profile quét vào FrameSampler** | Cao | - Cập nhật `FrameSampler.py` để đọc và áp dụng `packing_profiles` từ `events.db`.<br>- Thực hiện logic nhảy thời gian: 70% (`FS1`), 50% (`FS2`, `FS31`), 0% (`FS3`).<br>- Giới hạn vùng quét theo `qr_trigger_area`, `qr_mvd_area`, `packing_area`.<br>- Xử lý QR MVD ngửa: khóa tracking code sau lần quét đầu. | - `FrameSampler` tự động áp dụng đúng profile.<br>- Giảm 50–70% tải CPU khi quét vùng cố định.<br>- Không nhầm QR MVD trong `FS1`. | ☐ |
+| **Tối ưu FrameSampler với ROI động** | Trung bình | - Nếu QR ngoài vùng cố định quá `fixed_threshold` (3 lần), chuyển sang `FS3`.<br>- Tự động lưu vùng mới vào `packing_profiles` sau khi chạy `FS3` → `FS31`. | - Hệ thống tự thích nghi với môi trường thay đổi.<br>- Vùng ROI lưu chính xác trong `.db`. | ☐ |
+| **Tách EventDetector thành module riêng** | Cao | - Tạo `event_detector.py` độc lập, nhận input từ `FrameSampler` (log trạng thái).<br>- Xác định sự kiện Start/Stop, lọc sự kiện dưới `min_packing_time` (10s).<br>- Xuất metadata: `[event_id, ts, te, tracking_code]`. | - Logic sự kiện rõ ràng, dễ bảo trì.<br>- Tăng tốc xử lý bằng cách tách biệt quy trình. | ☐ |
+| **Thêm watermark vào VideoCutter** | Thấp | - Tích hợp watermark (mã đơn, thời gian) vào video đầu ra bằng `ffmpeg`.<br>- Cho phép bật/tắt watermark qua cấu hình. | - Video đầu ra có dấu xác minh, tăng tính pháp lý. | ☐ |
+
+### 🧍 Cấp 2 – Giám sát quy trình
+| Nhiệm vụ | Ưu tiên | Mô tả chi tiết | Kết quả mong đợi | Trạng thái |
+|----------|---------|----------------|------------------|------------|
+| **Viết IdleManager độc lập** | Cao | - Tạo `idle_manager.py` chạy tick-based (1–2s).<br>- Dùng `absdiff` hoặc Mediapipe Hands để phát hiện chuyển động trong vùng bàn (~A5).<br>- Giữ buffer RAM 10s (deque, ~50 frame tại 5fps).<br>- Gọi `EventAnalyzer` khi phát hiện chuyển động liên tục ≥ 3 tick và QR trigger bị che. | - `IdleManager` chạy nền, phát hiện hành vi chính xác.<br>- Buffer đảm bảo không bỏ sót sự kiện ngắn (10s).<br>- Giảm tải CPU khi không có hoạt động. | ☐ |
+| **Viết IdleStopDetector** | Trung bình | - Tạo `idle_stop_detector.py` để xác định Stop Mode.<br>- Điều kiện: QR trigger hiện lại ≥ 5s và không có chuyển động ≥ 10s.<br>- Trả về thời điểm Stop cho `EventAnalyzer`. | - Stop Mode kích hoạt đúng, không cắt video sớm.<br>- Tăng độ tin cậy khi xử lý sự kiện. | ☐ |
+| **Viết EventAnalyzer độc lập** | Cao | - Tạo `event_analyzer.py` nhận đoạn video/buffer từ `IdleManager`.<br>- Thực hiện quy trình: <br>  - Quét QR trigger (Start/Stop).<br>  - Nhảy thời gian theo profile (`FS1`: 70%, `FS2`/`FS31`: 50%).<br>  - Phát hiện QR MVD, khóa tracking code để tránh nhầm.<br>  - Trả về `[start_time, end_time, tracking_code]`.<br>- Chuyển kết quả sang `VideoCutter`. | - Logic sự kiện tách biệt, dễ mở rộng.<br>- Hỗ trợ đầy đủ các profile quét.<br>- Đảm bảo phát hiện chính xác QR MVD. | ☐ |
+| **Tích hợp chuyển đổi profile động** | Trung bình | - Trong `FrameSampler` và `EventAnalyzer`, thêm logic:<br>  - Nếu QR ngoài vùng cố định ≥ `fixed_threshold` (3 lần), chuyển sang `FS3`.<br>  - Sau khi `FS3` xác định vùng mới, lưu vào `packing_profiles` và chuyển sang `FS31`.<br>  - Trong `FS31`, quét toàn khung hình khi chuyển video mới. | - Hệ thống tự thích nghi với môi trường nhiễu loạn.<br>- Giảm cấu hình thủ công cho kỹ thuật viên. | ☐ |
+
+### 🧭 Cấp 3 – Điều phối kế hoạch
+| Nhiệm vụ | Ưu tiên | Mô tả chi tiết | Kết quả mong đợi | Trạng thái |
+|----------|---------|----------------|------------------|------------|
+| **Viết BatchScheduler độc lập** | Cao | - Tạo `batch_scheduler.py` để:<br>  - Quét file video từ `file_list` trong `events.db`.<br>  - Sắp xếp theo `created_at` (mới nhất → cũ nhất).<br>  - Ghi trạng thái vào `batch_status` (pending, processing, done, error).<br>  - Hỗ trợ resume: bỏ qua file đã done.<br>  - Giới hạn số luồng FrameSampler (2–4 tùy CPU). | - Xử lý batch 1000 file mượt mà, không treo máy.<br>- Có thể resume nếu bị ngắt giữa chừng.<br>- Log rõ ràng trạng thái từng file. | ☐ |
+| **Tạo ProcessingLog** | Trung bình | - Tạo bảng `batch_status` trong `events.db` hoặc file JSON:<br>  - Cột: `file_path`, `status`, `processed_at`, `events_found`, `error_msg`.<br>  - Ghi mỗi khi hoàn thành 1 file.<br>  - Cho phép tra cứu tiến độ (file nào xong, bao nhiêu %). | - Theo dõi được tiến độ xử lý batch.<br>- Dễ debug lỗi nếu file video hỏng. | ☐ |
+| **Tích hợp lịch làm việc** | Thấp | - Tạo `schedule_config.json` để cấu hình:<br>  - Giờ làm việc: ví dụ, 19h–7h để tránh tải ban ngày.<br>  - Ngày nghỉ: bỏ qua T7, CN, ngày lễ.<br>  - Tăng ca: ưu tiên xử lý file khi có yêu cầu khẩn.<br>- `BatchScheduler` đọc config để chạy đúng lịch. | - Hệ thống tự động chạy theo lịch, không cần giám sát thủ công.<br>- Linh hoạt với các kho khác nhau. | ☐ |
+| **Viết PerformanceMonitor** | Thấp | - Tạo `performance_monitor.py` để:<br>  - Log thời gian xử lý từng file (giây/file, số sự kiện).<br>  - Dự báo thời gian hoàn thành batch (dựa trên số file còn lại).<br>  - Cảnh báo nếu CPU quá tải hoặc file lỗi liên tục. | - Biết được batch 1000 file cần bao lâu.<br>- Phát hiện sớm vấn đề (file hỏng, máy chậm). | ☐ |
+
+### 🏛 Cấp 4 – Quản trị/Pháp lý
+| Nhiệm vụ | Ưu tiên | Mô tả chi tiết | Kết quả mong đợi | Trạng thái |
+|----------|---------|----------------|------------------|------------|
+| **Viết LicenseGuard** | Trung bình | - Tạo `license_guard.py` để:<br>  - Kiểm tra QR trigger có watermark hợp lệ (mã hóa theo tháng).<br>  - So sánh MAC máy với danh sách được cấp phép (lưu trong `events.db` hoặc Supabase).<br>  - Cảnh báo nếu phát hiện vi phạm (QR giả, máy không đăng ký). | - Đảm bảo hệ thống chỉ chạy trên thiết bị được cấp phép.<br>- Bảo vệ bản quyền phần mềm và bàn đóng gói. | ☐ |
+| **Viết AuditLogger** | Thấp | - Tạo `audit_logger.py` để ghi:<br>  - Hành động người dùng: ai chạy batch, ai truy vấn video.<br>  - Lỗi hệ thống: file hỏng, CPU quá tải, v.v.<br>  - Lưu vào `events.db` (bảng `audit_log`) hoặc file JSON. | - Có lịch sử vận hành để kiểm tra khi cần.<br>- Hỗ trợ phiên bản thương mại (SaaS, B2B). | ☐ |
+| **Viết SystemMonitor** | Thấp | - Tạo `system_monitor.py` để:<br>  - Theo dõi CPU, RAM, disk khi chạy batch.<br>  - Gửi cảnh báo (qua API hoặc file log) nếu hệ thống bất thường (IdleMonitor dừng, CPU > 90%).<br>  - Ghi log hiệu suất tổng thể (file/giờ, sự kiện/giờ). | - Giám sát hệ thống ổn định, tránh treo khi chạy lâu.<br>- Cung cấp số liệu để tối ưu lâu dài. | ☐ |
+| **Tích hợp SystemCalendar** | Thấp | - Tạo `calendar_config.json` để định nghĩa:<br>  - Lịch làm việc: ví dụ, Thứ 2–Thứ 6, 8h–17h.<br>  - Ngày nghỉ: Tết, lễ quốc gia.<br>  - Tăng ca: chạy khẩn khi có yêu cầu.<br>- `BatchScheduler` đọc config để chạy đúng lịch. | - Hệ thống tự động hóa hoàn toàn, không cần can thiệp thủ công.<br>- Phù hợp với các kho có lịch vận hành khác nhau. | ☐ |
+
+---
+
+## 🧑‍🏭 Ai chỉ định thực hiện trong cơ cấu V-Track?
+
+Dựa trên ý tưởng "nhà máy số" và các trao đổi trước, việc **ai chỉ định thực hiện** các profile quét (`FS1`, `FS2`, `FS3`, `FS31`) trong V-Track được phân vai rõ ràng như sau. Mỗi vai trò được xác định để đảm bảo tính tự động hóa và tối ưu hóa trong vận hành.
+
+### 1. Kỹ thuật viên (Technician)
+- **Vai trò**: 
+  - **Chỉ định profile ban đầu** cho từng trạm đóng gói (camera).
+  - Cấu hình tọa độ vùng (`qr_trigger_area`, `qr_mvd_area`, `packing_area`) nếu chọn `FS1` hoặc `FS2`.
+  - Chạy `PackingConfigDetector.py` để xác định vùng tự động cho `FS3`, sau đó lưu vào `packing_profiles` để chuyển sang `FS31`.
+  - Cập nhật bảng `packing_profiles` trong `events.db` khi thiết lập trạm mới hoặc thay đổi camera (góc quay, bố trí bàn).
+- **Thời điểm thực hiện**:
+  - Khi lắp đặt trạm đóng gói mới.
+  - Khi camera thay đổi vị trí hoặc môi trường kho thay đổi (ví dụ: thêm bàn, đổi ánh sáng).
+  - Khi kiểm tra định kỳ (hàng tháng) để đảm bảo profile phù hợp với thực tế.
+- **Công cụ sử dụng**:
+  - `PackingConfigDetector.py` để tự động xác định vùng.
+  - `update_database.py` để nhập thủ công hoặc sửa profile trong `events.db`.
+  - Giao diện `VtrackConfig.js` (trong frontend) để nhập thông tin vùng, thời gian đóng gói, và chọn profile.
+- **Ví dụ cụ thể**:
+  - Kỹ thuật viên vào kho, quay video mẫu 5–60s, chạy `PackingConfigDetector.py` để xác định `packing_area` (kích thước ~A5).
+  - Nhập tọa độ `[x_min, y_min, x_max, y_max]` vào `packing_profiles` cho `FS1` nếu kho ổn định.
+  - Chọn `FS3` nếu kho mới, để hệ thống tự xác định vùng và chuyển sang `FS31`.
+- **Mức độ tự động hóa**: Thấp (cần can thiệp thủ công lúc đầu, nhưng sau đó hệ thống tự vận hành).
+
+### 2. Hệ thống tự động (FrameSampler, EventAnalyzer, BatchScheduler)
+- **Vai trò**:
+  - **Tự chọn và áp dụng profile** từ `packing_profiles` dựa trên `cam_name` hoặc ID trạm khi xử lý video.
+  - **Tự chuyển đổi profile** khi phát hiện bất thường:
+    - Từ `FS1`/`FS2`/`FS31` → `FS3` nếu QR ngoài vùng cố định ≥ `fixed_threshold` (3 lần).
+    - Từ `FS3` → `FS31` sau khi xác định vùng mới, lưu vào `packing_profiles`.
+  - **Tự lưu vùng mới** vào `packing_profiles` khi chạy `FS3` hoặc `FS31`.
+  - **Tự động chạy batch xử lý video** (1000 file hoặc hơn), ưu tiên file mới nhất, dựa trên cấu hình từ `BatchScheduler`.
+- **Thời điểm thực hiện**:
+  - **Liên tục** trong quá trình chạy, khi xử lý video mới.
+  - Khi phát hiện lỗi hoặc bất thường (QR không đúng vùng, camera di chuyển).
+  - Khi chuyển file video gốc (đặc biệt với `FS31`, quét toàn khung hình để kiểm tra vùng).
+- **Công cụ sử dụng**:
+  - `FrameSampler.py`: Đọc profile từ `packing_profiles`, áp dụng logic quét và nhảy thời gian.
+  - `event_analyzer.py` (khi hoàn thiện): Phân tích sự kiện, quyết định chuyển đổi profile.
+  - `batch_scheduler.py` (khi hoàn thiện): Quét danh sách file, gọi `FrameSampler` cho từng file.
+  - `events.db`: Lưu trạng thái file (`file_list`), log (`processed_logs`), và profile (`packing_profiles`).
+- **Ví dụ cụ thể**:
+  - Hệ thống tự động đọc `packing_profiles` khi khởi động `FrameSampler` cho camera "Cam01", chọn `FS1` với `jump_time_ratio = 0.7`.
+  - Trong `FS1`, nếu phát hiện QR MVD ngoài `packing_area` 3 lần, chuyển sang `FS3`, quét toàn khung để tìm vùng mới.
+  - Sau khi xác định vùng mới, lưu `[x_min, y_min, x_max, y_max]` vào `packing_profiles`, chuyển sang `FS31`.
+  - `BatchScheduler` chạy lúc 19h, quét 100 file mới nhất, gọi `FrameSampler` cho từng file, ghi trạng thái vào `batch_status`.
+- **Mức độ tự động hóa**: Cao (hầu như không cần can thiệp sau khi cấu hình ban đầu).
+
+### 3. Quản lý kho (Warehouse Manager)
+- **Vai trò**:
+  - **Quyết định loại profile phù hợp** dựa trên quy trình thực tế của kho:
+    - `FS1` cho kho lớn, chuẩn hóa, vùng cố định.
+    - `FS2` cho kho vừa, QR MVD linh hoạt, vùng đóng gói cố định.
+    - `FS3`/`FS31` cho kho tạm hoặc mới thiết lập.
+  - Phối hợp với kỹ thuật viên để xác nhận profile khi thiết lập hoặc tối ưu hóa kho.
+  - **Đưa ra yêu cầu ưu tiên**:
+    - Ví dụ: xử lý video hôm nay trước, hoặc tập trung vào camera chính.
+    - Yêu cầu chạy batch khẩn (tăng ca) nếu cần truy xuất nhanh.
+- **Thời điểm thực hiện**:
+  - Khi lập kế hoạch vận hành kho (hàng tuần, hàng tháng).
+  - Khi đánh giá hiệu suất hệ thống (ví dụ: cần truy xuất video nhanh hơn).
+  - Khi có thay đổi quy trình đóng gói (thêm bàn, đổi thao tác).
+- **Công cụ sử dụng**:
+  - Giao diện `QueryComponent.js` để yêu cầu truy vấn video theo mã vận đơn.
+  - Báo cáo từ `PerformanceMonitor` (khi hoàn thiện) để xem tiến độ xử lý batch.
+  - Phối hợp với kỹ thuật viên qua `VtrackConfig.js` để chọn profile.
+- **Ví dụ cụ thể**:
+  - Quản lý kho quyết định dùng `FS1` cho kho chính vì bàn đóng gói chuẩn hóa, yêu cầu kỹ thuật viên cấu hình vùng cố định.
+  - Khi kho tạm được dựng, yêu cầu dùng `FS3` để tự xác định vùng, sau đó chuyển sang `FS31`.
+  - Yêu cầu chạy batch 200 file video từ hôm qua để tìm sự kiện mã vận đơn "GHN_12345".
+- **Mức độ tự động hóa**: Trung bình (vai trò định hướng chiến lược, không trực tiếp cấu hình).
+
+### 4. Quản trị viên hệ thống (System Administrator)
+- **Vai trò** (dành cho phiên bản thương mại hoặc khi mở rộng quy mô):
+  - **Phê duyệt cấu hình hệ thống**: Quyết định số lượng luồng xử lý, lịch làm việc, và chính sách bản quyền.
+  - **Giám sát hiệu suất**: Theo dõi CPU, RAM, lỗi hệ thống qua `SystemMonitor`.
+  - **Quản lý quyền truy cập**: Quy định ai được chạy batch, ai được truy vấn video.
+  - **Xử lý pháp lý**: Kiểm tra bản quyền QR trigger, MAC máy, và audit log.
+- **Thời điểm thực hiện**:
+  - Khi triển khai hệ thống cho nhiều kho (quy mô lớn).
+  - Khi tích hợp V-Track vào hệ thống quản lý kho tổng thể (WMS).
+  - Khi cần báo cáo hiệu suất hoặc kiểm tra tính hợp pháp của phần mềm.
+- **Công cụ sử dụng**:
+  - `SystemMonitor.py` để xem trạng thái hệ thống.
+  - `AuditLogger.py` để tra cứu lịch sử vận hành.
+  - `LicenseGuard.py` để kiểm tra bản quyền.
+  - Giao diện quản trị trong `frontend` (nếu phát triển thêm).
+- **Ví dụ cụ thể**:
+  - Quản trị viên phê duyệt cấu hình: chạy tối đa 4 luồng FrameSampler, xử lý từ 19h–7h.
+  - Kiểm tra log audit để xem kỹ thuật viên nào cấu hình sai profile cho camera "Cam02".
+  - Xác minh QR trigger có watermark hợp lệ trước khi cho phép chạy batch.
+- **Mức độ tự động hóa**: Thấp (vai trò giám sát và phê duyệt, chỉ xuất hiện ở quy mô lớn).
+
+---
+
+## 🧭 Hướng đi tiếp theo (Lộ trình triển khai cụ thể)
+
+Dựa trên đánh giá và checklist, đây là lộ trình ưu tiên để hoàn thiện V-Track, đảm bảo hệ thống đạt trạng thái "production-ready" và dễ dàng chuyển giao cho bên thứ ba.
+
+### Giai đoạn 1 – Hoàn thiện giám sát quy trình (Cấp 2)
+- **Thời gian ước tính**: 2–3 tuần.
+- **Nhiệm vụ chính**:
+  1. **Viết `IdleManager.py`**:
+     - Chạy tick-based (1–2s), dùng `absdiff` hoặc Mediapipe Hands để phát hiện chuyển động.
+     - Giữ buffer RAM 10s (deque, ~50 frame tại 5fps).
+     - Gọi `EventAnalyzer` khi phát hiện chuyển động liên tục ≥ 3 tick và QR trigger bị che.
+     - **Kết quả mong đợi**: Phát hiện hành vi chính xác, giảm 80% tải CPU khi không có hoạt động.
+  2. **Viết `IdleStopDetector.py`**:
+     - Xác định Stop Mode khi QR trigger hiện lại ≥ 5s và không có chuyển động ≥ 10s.
+     - Trả về thời điểm Stop cho `EventAnalyzer`.
+     - **Kết quả mong đợi**: Stop Mode kích hoạt đúng, không cắt video sớm.
+  3. **Viết `EventAnalyzer.py`**:
+     - Tách logic sự kiện khỏi `FrameSampler`.
+     - Thực hiện quy trình: quét QR trigger → nhảy thời gian → phát hiện QR MVD → khóa tracking code.
+     - Hỗ trợ đầy đủ `FS1`, `FS2`, `FS3`, `FS31` với các tham số từ `packing_profiles`.
+     - **Kết quả mong đợi**: Logic sự kiện độc lập, dễ bảo trì, chính xác 95% khi phát hiện QR MVD.
+  4. **Tích hợp chuyển đổi profile động**:
+     - Trong `FrameSampler` và `EventAnalyzer`, thêm logic chuyển đổi profile (`FS1`/`FS2`/`FS31` → `FS3` → `FS31`).
+     - Lưu vùng mới vào `packing_profiles` khi chạy `FS3` hoặc `FS31`.
+     - **Kết quả mong đợi**: Hệ thống tự thích nghi, giảm cấu hình thủ công.
+
+### Giai đoạn 2 – Hoàn thiện điều phối kế hoạch (Cấp 3)
+- **Thời gian ước tính**: 2 tuần.
+- **Nhiệm vụ chính**:
+  1. **Viết `BatchScheduler.py`**:
+     - Quét file từ `file_list`, ưu tiên file mới nhất.
+     - Ghi trạng thái vào `batch_status` (pending, processing, done, error).
+     - Hỗ trợ resume, giới hạn 2–4 luồng FrameSampler.
+     - **Kết quả mong đợi**: Xử lý batch 1000 file mượt mà, resume được nếu ngắt.
+  2. **Tạo `ProcessingLog`**:
+     - Tạo bảng `batch_status` trong `events.db` với các cột: `file_path`, `status`, `processed_at`, `events_found`, `error_msg`.
+     - **Kết quả mong đợi**: Theo dõi tiến độ batch, dễ debug lỗi.
+  3. **Tích hợp lịch làm việc**:
+     - Tạo `schedule_config.json` định nghĩa giờ làm việc, ngày nghỉ, tăng ca.
+     - `BatchScheduler` chạy theo lịch.
+     - **Kết quả mong đợi**: Hệ thống tự động hóa, không cần giám sát thủ công.
+
+### Giai đoạn 3 – Tối ưu công nhân kỹ thuật (Cấp 1)
+- **Thời gian ước tính**: 1–2 tuần.
+- **Nhiệm vụ chính**:
+  1. **Tích hợp profile quét vào FrameSampler**:
+     - Áp dụng logic nhảy thời gian và giới hạn vùng quét theo `packing_profiles`.
+     - Xử lý QR MVD ngửa trong `FS1` bằng cách khóa tracking code.
+     - **Kết quả mong đợi**: Giảm 50–70% tải CPU, không nhầm QR MVD.
+  2. **Tách EventDetector thành module riêng**:
+     - Tạo `event_detector.py` độc lập, xuất metadata sự kiện.
+     - **Kết quả mong đợi**: Logic sự kiện rõ ràng, dễ bảo trì.
+
+### Giai đoạn 4 – Xây dựng quản trị/Pháp lý (Cấp 4)
+- **Thời gian ước tính**: 3–4 tuần.
+- **Nhiệm vụ chính**:
+  1. **Viết `LicenseGuard.py`**:
+     - Kiểm tra QR trigger watermark và MAC máy.
+     - **Kết quả mong đợi**: Bảo vệ bản quyền, chỉ chạy trên thiết bị hợp lệ.
+  2. **Viết `AuditLogger.py`**:
+     - Ghi hành động người dùng, lỗi hệ thống vào `events.db`.
+     - **Kết quả mong đợi**: Lịch sử vận hành rõ ràng, hỗ trợ thương mại hóa.
+  3. **Viết `SystemMonitor.py`**:
+     - Theo dõi CPU, RAM, disk, gửi cảnh báo nếu bất thường.
+     - **Kết quả mong đợi**: Hệ thống ổn định, dễ giám sát.
+  4. **Tích hợp `SystemCalendar`**:
+     - Tạo `calendar_config.json` cho lịch làm việc.
+     - **Kết quả mong đợi**: Tự động hóa theo lịch, linh hoạt với các kho.
+
+---
+
+## 📘 Tổng hợp nội dung trao đổi và tài liệu hóa
+
+Dưới đây là tóm tắt toàn bộ nội dung trao đổi từ ngày 17/3/2025 đến 15/4/2025, được tổ chức theo các chủ đề chính để làm rõ hướng đi và định hướng phát triển V-Track.
+
+### 1. Hành vi đóng gói thực tế
+- **Mô tả**:
+  - Quy trình đóng gói: Lấy sản phẩm, dán tem, bọc, kiểm tra, đóng gói, chuyển tiếp (không quét xác nhận thủ công).
+  - Thời gian đóng gói: <30s chiếm đa số, tối thiểu 10s (`min_packing_time`).
+  - Mỗi camera gắn riêng cho 1 người, không cần nhận diện nhiều người cùng lúc.
+  - Không cần đo hiệu suất cá nhân, chỉ track theo camera.
+- **Ý nghĩa**:
+  - Loại bỏ thao tác quét tay, tự động hóa bằng QR trigger (ẩn/hiện → Start/Stop).
+  - Tập trung vào sự kiện ngắn (10–60s), giảm xử lý video "rác" khi không có hoạt động.
+- **Hướng triển khai**:
+  - Dùng QR trigger cố định trên bàn (~A5) để kích hoạt Start (che) và Stop (hiện).
+  - Giữ buffer 10s để bắt trọn hành vi mở đầu.
+  - Không cần AI phức tạp (như nhận diện tay) nếu QR trigger hoạt động tốt.
+
+### 2. Phân tích sự kiện
+- **Mô tả**:
+  - Sự kiện được xác định bằng QR trigger (che → Start, hiện → Stop).
+  - Cần phát hiện hành vi sau thời gian dài không hoạt động (camera 24/7).
+  - Profile quét:
+    - `FS1` (Tiêu chuẩn): Vùng cố định, nhảy 70% thời gian đóng gói.
+    - `FS2` (Tự do): QR TimeGo cố định, QR MVD linh hoạt, nhảy 50%.
+    - `FS3` (Nhiễu loạn): Quét toàn khung, xác định vùng mới, chuyển sang `FS31`.
+    - `FS31` (Nhiễu loạn đã kiểm soát): Vùng cố định, quét toàn khung khi chuyển video.
+  - Buffer 10s để không bỏ sót sự kiện ngắn.
+- **Ý nghĩa**:
+  - QR trigger làm "công tắc" đơn giản, hiệu quả, không cần AI nặng.
+  - Buffer RAM đảm bảo bắt trọn hành vi, kể cả khi sự kiện chỉ 10s.
+  - Profile quét linh hoạt, phù hợp với mọi loại kho (ổn định, linh hoạt, nhiễu loạn).
+- **Hướng triển khai**:
+  - Viết `IdleManager` để giám sát chuyển động và QR trigger.
+  - Tách `EventAnalyzer` để xử lý logic sự kiện riêng biệt.
+  - Tích hợp profile quét vào `FrameSampler` với nhảy thời gian và chuyển đổi động.
+
+### 3. Thiết bị camera & setup vật lý
+- **Mô tả** (từ trao đổi trước):
+  - Hiện dùng iPhone 12 Pro, quay 1080x1920, cao độ 1–1.2m, đọc QR ổn.
+  - Tương lai: có thể dùng camera cố định (IP camera, webcam).
+  - Vùng bàn đóng gói ~A5, QR trigger dán cố định, QR MVD thay đổi.
+  - Chưa cần ghi âm, ánh sáng ổn định (chưa đề cập bóng đổ/chói).
+- **Ý nghĩa**:
+  - Setup đơn giản, dễ triển khai cho kho nhỏ/vừa.
+  - QR trigger cố định giúp giảm phụ thuộc vào AI nhận diện hành vi.
+  - Cần chuẩn bị cho camera cố định để mở rộng quy mô.
+- **Hướng triển khai**:
+  - Tiếp tục hỗ trợ video từ iPhone, nhưng thêm cấu hình cho IP camera.
+  - Tự động xác định vùng bàn (~A5) bằng `PackingConfigDetector.py`.
+  - Kiểm tra ánh sáng và góc quay khi cấu hình profile.
+
+### 4. Thiết bị tính toán
+- **Mô tả** (chưa rõ ràng từ tài liệu):
+  - Chưa xác định cụ thể: máy tính Windows/Linux, có GPU hay không.
+  - Trao đổi đề cập đến xử lý batch lớn (1000 file), cần CPU mạnh.
+- **Ý nghĩa**:
+  - Hệ thống hiện chạy trên máy đơn, phù hợp kho nhỏ.
+  - Cần tối ưu CPU để xử lý batch lớn mà không treo.
+- **Hướng triển khai**:
+  - Giới hạn số luồng FrameSampler (2–4 tùy CPU).
+  - Viết `SystemMonitor` để theo dõi CPU, RAM, disk.
+  - Chuẩn bị cho tính toán phân tán (nếu mở rộng sang nhiều máy).
+
+### 5. Chiến lược lưu trữ
+- **Mô tả**:
+  - Hiện lưu video đầu ra (`output_clips`) và log (`LOG`) trong `output_path`.
+  - `events.db` lưu trạng thái file (`file_list`), log (`processed_logs`), và profile (`packing_profiles`).
+  - Chưa đề cập thời gian lưu trữ (1 ngày, 7 ngày, 30 ngày).
+- **Ý nghĩa**:
+  - Lưu trữ cục bộ đủ cho kho nhỏ, nhưng cần tối ưu dung lượng.
+  - `events.db` là trung tâm dữ liệu, cần bảo vệ và sao lưu.
+- **Hướng triển khai**:
+  - Chỉ lưu video sự kiện, không giữ video gốc dài.
+  - Tạo chính sách xóa video sau 7–30 ngày (tùy cấu hình).
+  - Sao lưu `events.db` định kỳ để tránh mất dữ liệu.
+
+### 6. Tích hợp hệ thống
+- **Mô tả**:
+  - Có API (`api.js`) để gọi `/query`, `/cut-videos`, `/analyze-regions`.
+  - Frontend (`QueryComponent.js`, `VtrackConfig.js`) hỗ trợ truy vấn và cấu hình.
+  - Chưa đề cập tích hợp với WMS hoặc thông báo (Slack/Zalo).
+- **Ý nghĩa**:
+  - API và frontend đủ dùng cho kho đơn lẻ.
+  - Cần mở rộng tích hợp khi quy mô lớn (nhiều kho, nhiều người dùng).
+- **Hướng triển khai**:
+  - Cải thiện API để hỗ trợ truy vấn theo ngày, camera, mã đơn.
+  - Thêm thông báo lỗi qua email hoặc Zalo khi batch gặp sự cố.
+  - Chuẩn bị tích hợp với WMS qua API nếu cần.
+
+### 7. Tính năng nâng cao
+- **Mô tả**:
+  - Chưa cần nhận diện khuôn mặt hoặc đo hiệu suất cá nhân.
+  - Có nhu cầu truy xuất video theo mã vận đơn (đã hỗ trợ trong `QueryComponent.js`).
+- **Ý nghĩa**:
+  - Tập trung vào tự động hóa cơ bản trước, nâng cao sau.
+  - Truy xuất video là tính năng cốt lõi, cần đảm bảo nhanh và chính xác.
+- **Hướng triển khai**:
+  - Tối ưu truy vấn trong `events.db` để tìm video theo mã vận đơn <1s.
+  - Chuẩn bị tài liệu API cho tính năng nâng cao (nếu mở rộng).
+
+---
+
+## 📊 Kết luận và định hướng phát triển
+
+- **Mức hoàn thiện hiện tại**:
+  - V-Track đã đạt được nền tảng vững chắc ở **Cấp 1** (Công nhân kỹ thuật), với các mô-đun vận hành ổn định.
+  - **Cấp 2** (Giám sát) và **Cấp 3** (Điều phối) có ý tưởng mạnh, nhưng cần hiện thực hóa thành code.
+  - **Cấp 4** (Pháp lý) chưa bắt đầu, nhưng phù hợp để phát triển khi hướng đến thương mại hóa.
+- **Ưu tiên phát triển**:
+  1. **Hoàn thiện Cấp 2**: Viết `IdleManager`, `IdleStopDetector`, `EventAnalyzer` để giám sát và phân tích sự kiện chính xác.
+  2. **Tăng cường Cấp 3**: Xây `BatchScheduler` và `ProcessingLog` để xử lý batch lớn, hỗ trợ resume.
+  3. **Tinh chỉnh Cấp 1**: Tích hợp profile quét, tối ưu ROI và nhảy thời gian.
+  4. **Chuẩn bị Cấp 4**: Triển khai bản quyền, audit, và lịch làm việc khi sẵn sàng mở rộng.
+- **Mục tiêu dài hạn**:
+  - Tự động hóa hoàn toàn quá trình xử lý video, từ phát hiện hành vi đến lưu trữ sự kiện.
+  - Hỗ trợ quy mô lớn (nhiều kho, nhiều camera) với API mạnh mẽ và giao diện thân thiện.
+  - Chuẩn bị cho phiên bản thương mại (SaaS, B2B) với bản quyền và audit chặt chẽ.
+
+---
+
+Bạn có muốn mình làm rõ thêm một nhiệm vụ cụ thể trong checklist (ví dụ: code mẫu cho `IdleManager` hoặc cấu trúc `BatchScheduler`)? Hoặc mình có thể viết tài liệu chi tiết hơn cho một mô-đun để bạn giao cho đội phát triển?
