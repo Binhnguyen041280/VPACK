@@ -294,7 +294,6 @@ const VtrackConfig = () => {
     }
   }, [configFormSelectedCameras, setSelectedCameras]);
 
-// Trong VtrackConfig.js - Sửa hàm handleCamerasUpdate
 
 const handleCamerasUpdate = React.useCallback((sourceCameras, selectedCameras, activeSource) => {
   console.log("=== CAMERAS UPDATE FROM CONFIGFORM ===");
