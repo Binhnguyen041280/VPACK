@@ -8,17 +8,21 @@ import time
 import glob
 import traceback
 from datetime import datetime
-from modules.config.logging_config import get_logger
-
 
 # Đảm bảo thư mục LOG tồn tại
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 LOG_DIR = os.path.join(BASE_DIR, "resources", "output_clips", "LOG")
 os.makedirs(LOG_DIR, exist_ok=True)
 
-# Khởi tạo logger mà không sử dụng video_path
-logger = get_logger(__name__, {"module": "qr_detector"})
-logger.info("Logging initialized")
+# ✅ FIXED: Use direct logging.basicConfig instead of modules.config.logging_config
+log_file_path = os.path.join(LOG_DIR, f"qr_detector_{datetime.now().strftime('%Y-%m-%d')}.log")
+logging.basicConfig(
+    filename=log_file_path,
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+logger.info("QR Detector logging initialized")
 
 # Đường dẫn tới mô hình WeChat QRCode (tương đối)
 MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "models", "wechat_qr")
@@ -377,6 +381,8 @@ if __name__ == "__main__":
         result = select_qr_roi(video_path, camera_id, roi_frame_path, step="mvd")
         if not result["success"]:
             logger.error(result["error"])
+            sys.exit(1)
     except Exception as e:
         logger.error(f"[MVD] Lỗi khi chạy script: {str(e)}\n{traceback.format_exc()}")
         cv2.destroyAllWindows()
+        sys.exit(1)

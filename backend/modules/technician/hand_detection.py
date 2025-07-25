@@ -6,15 +6,19 @@ import json
 import os
 import glob
 from datetime import datetime
-from modules.config.logging_config import get_logger
-
 
 # Định nghĩa BASE_DIR
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-# Khởi tạo logger mà không sử dụng video_path
-logger = get_logger(__name__, {"module": "hand_detection"})
-logger.info("Logging initialized")
+# Cấu hình logging (sử dụng cách cũ - không import modules.config.logging_config)
+log_dir = os.path.join(BASE_DIR, "resources", "output_clips", "LOG")
+os.makedirs(log_dir, exist_ok=True)
+log_file_path = os.path.join(log_dir, f"hand_detection_{datetime.now().strftime('%Y-%m-%d')}.log")
+logging.basicConfig(
+    filename=log_file_path,
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
@@ -298,16 +302,21 @@ def finalize_roi(video_path, camera_id, rois):
 
 if __name__ == "__main__":
     import sys
-    if len(sys.argv) != 3:
-        print("Usage: python3 hand_detection.py <video_path> <camera_id>")
+    # ✅ SUPPORT: Accept both 2 and 3 arguments, with optional step parameter
+    if len(sys.argv) < 3 or len(sys.argv) > 4:
+        print("Usage: python3 hand_detection.py <video_path> <camera_id> [step]")
         sys.exit(1)
     
     video_path = sys.argv[1]
     camera_id = sys.argv[2]
+    step = sys.argv[3] if len(sys.argv) == 4 else "packing"  # Default to "packing"
+    
     try:
-        roi_result = select_roi(video_path, camera_id)
+        roi_result = select_roi(video_path, camera_id, step)
         if not roi_result["success"]:
             print(roi_result["error"])
+            sys.exit(1)
     except Exception as e:
         logging.error(f"Lỗi khi chạy script: {str(e)}")
         print(f"Lỗi khi chạy script: {str(e)}")
+        sys.exit(1)

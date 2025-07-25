@@ -56,14 +56,30 @@ const ProcessingRegionForm = ({ handleAnalyzeRegions }) => {
       setError("Vui lòng chọn một camera.");
       return;
     }
+    
+    setError(""); // Clear previous errors
+    
     try {
-      const response = await fetch('http://127.0.0.1:8080/api/hand_detection/select-roi', {
+      console.log("Calling /run-select-roi (subprocess) with:", {
+        videoPath: selectedVideoPath || videoPath,
+        cameraId: selectedCamera,
+        step: "packing"
+      });
+      
+      // ✅ FIXED: Use subprocess endpoint to avoid C++ OpenCV exception
+      const response = await fetch('http://127.0.0.1:8080/run-select-roi', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoPath: selectedVideoPath || videoPath, cameraId: selectedCamera })
+        body: JSON.stringify({ 
+          videoPath: selectedVideoPath || videoPath, 
+          cameraId: selectedCamera,
+          step: "packing"  // Explicitly specify step
+        })
       });
+      
       const result = await response.json();
-      console.log("Result from run-select-roi:", result);
+      console.log("Result from /run-select-roi (subprocess):", result);
+      
       if (result.success) {
         const newAnalysisResult = {
           success: true,
@@ -78,8 +94,10 @@ const ProcessingRegionForm = ({ handleAnalyzeRegions }) => {
         setShowResultModal(true);
       } else {
         setError(result.error || "Không thể chạy hand detection.");
+        console.error("Hand detection failed:", result.error);
       }
     } catch (err) {
+      console.error("Error calling /run-select-roi:", err);
       setError("Lỗi khi chạy hand detection: " + err.message);
     }
   };
@@ -89,14 +107,30 @@ const ProcessingRegionForm = ({ handleAnalyzeRegions }) => {
       setError("Vui lòng chọn video baseline.");
       return;
     }
+    
+    setError(""); // Clear previous errors
+    
     try {
-      const response = await fetch('http://127.0.0.1:8080/api/hand_detection/select-roi', {
+      console.log("Retrying /run-select-roi with:", {
+        videoPath: selectedVideoPath || videoPath,
+        cameraId: selectedCamera,
+        step: "packing"
+      });
+      
+      // ✅ FIXED: Use subprocess endpoint for retry
+      const response = await fetch('http://127.0.0.1:8080/run-select-roi', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoPath: selectedVideoPath || videoPath, cameraId: selectedCamera })
+        body: JSON.stringify({ 
+          videoPath: selectedVideoPath || videoPath, 
+          cameraId: selectedCamera,
+          step: "packing"
+        })
       });
+      
       const result = await response.json();
-      console.log("Result from run-select-roi (retry):", result);
+      console.log("Result from /run-select-roi (retry):", result);
+      
       if (result.success) {
         const newAnalysisResult = {
           success: true,
@@ -111,8 +145,10 @@ const ProcessingRegionForm = ({ handleAnalyzeRegions }) => {
         setShowResultModal(true);
       } else {
         setError(result.error || "Không thể chạy hand detection.");
+        console.error("Hand detection retry failed:", result.error);
       }
     } catch (err) {
+      console.error("Error retrying /run-select-roi:", err);
       setError("Lỗi khi chạy hand detection: " + err.message);
     }
   };
@@ -147,6 +183,7 @@ const ProcessingRegionForm = ({ handleAnalyzeRegions }) => {
       <p className="text-gray-300 mb-4">
         Tải lên video baseline (5s-5 phút) để xác định các vùng xử lý QR và đóng gói.
       </p>
+      
       <div className="mb-4">
         <button
           onClick={handleGetCameras}
@@ -155,6 +192,7 @@ const ProcessingRegionForm = ({ handleAnalyzeRegions }) => {
           Lấy danh sách camera
         </button>
       </div>
+      
       {cameraList && cameraList.length > 0 && (
         <div className="mb-4">
           <h3 className="text-lg font-bold mb-2">Chọn camera:</h3>
@@ -178,6 +216,7 @@ const ProcessingRegionForm = ({ handleAnalyzeRegions }) => {
           </div>
         </div>
       )}
+      
       <div className="mb-4">
         <label className="block mb-1">Video baseline:</label>
         <div className="relative w-full">
@@ -206,6 +245,7 @@ const ProcessingRegionForm = ({ handleAnalyzeRegions }) => {
           </button>
         </div>
       </div>
+      
       {videoPath && selectedCamera && (
         <div className="mb-4 flex justify-center">
           <button
@@ -216,6 +256,7 @@ const ProcessingRegionForm = ({ handleAnalyzeRegions }) => {
           </button>
         </div>
       )}
+      
       {showResultModal && analysisResult && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-gray-800 p-6 rounded-lg w-3/4 h-3/4 flex">
@@ -241,8 +282,11 @@ const ProcessingRegionForm = ({ handleAnalyzeRegions }) => {
           </div>
         </div>
       )}
+      
       {error && (
-        <div className="mb-4 text-red-500 text-sm">{error}</div>
+        <div className="mb-4 p-3 bg-red-600 rounded text-white text-sm">
+          <strong>Lỗi:</strong> {error}
+        </div>
       )}
     </div>
   );

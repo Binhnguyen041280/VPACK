@@ -91,7 +91,7 @@ app.config.update(
 # Initialize session
 Session(app)
 
-# 🔧 ENHANCED CORS Configuration for OAuth + Config Endpoints
+# ✅ SINGLE CORS Configuration - No duplicates
 CORS(app, 
      resources={
          r"/*": {
@@ -105,12 +105,23 @@ CORS(app,
                  "Authorization",
                  "X-Requested-With",
                  "Accept",
-                 "Origin"
+                 "Origin",
+                 "Cache-Control",      # ✅ INCLUDE: Cache-Control header
+                 "Pragma",             # ✅ INCLUDE: For cache control
+                 "Expires"             # ✅ INCLUDE: For cache control
              ],
              "supports_credentials": True,
-             "expose_headers": ["Content-Type", "Authorization"]
+             "expose_headers": [
+                 "Content-Type", 
+                 "Authorization",
+                 "Cache-Control",      # ✅ EXPOSE: Cache-Control header
+                 "Pragma",
+                 "Expires"
+             ]
          }
      })
+
+# ❌ REMOVED: @app.after_request to avoid duplicate headers
 
 # 🔧 CRITICAL: Make sessions permanent for OAuth
 @app.before_request
@@ -119,6 +130,7 @@ def make_session_permanent():
     session.permanent = True
 
 logger.info("🔑 OAuth-compatible session configuration applied")
+logger.info("✅ Single CORS configuration with Cache-Control support applied")
 
 # Đăng ký các Blueprint
 app.register_blueprint(program_bp)
