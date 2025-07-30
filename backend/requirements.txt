@@ -9,3 +9,10 @@ onvif-zeep==0.2.12
 python-onvif-zeep==0.2.12
 WSDiscovery==2.0.0
 netifaces==0.11.0
+# Existing dependencies stay the same
+google-auth==2.x.x
+google-auth-oauthlib==1.x.x  
+google-api-python-client==2.x.x
+
+# Add simple downloader
++ PyDrive2==1.15.4

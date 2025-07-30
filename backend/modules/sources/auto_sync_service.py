@@ -4,7 +4,6 @@ import time
 from datetime import datetime, timedelta
 import json
 from modules.db_utils import get_db_connection
-from modules.sources.nvr_downloader import NVRDownloader  # Assuming this exists or will be implemented
 from database import get_sync_status, initialize_sync_status
 
 logger = logging.getLogger(__name__)
@@ -13,7 +12,22 @@ class AutoSyncService:
     def __init__(self):
         self.sync_timers = {}  # Store timers for each source
         self.sync_locks = {}   # Locks to prevent concurrent syncs
-        self.downloader = NVRDownloader()
+        self.downloaders = {}  # Cache for different downloader types
+        
+    def _get_downloader_for_source(self, source_type: str):
+        """Only create downloader when needed"""
+        if source_type not in self.downloaders:
+            if source_type == 'nvr':
+                # from modules.sources.nvr_downloader import NVRDownloader  # DISABLED: Import causes issues
+                # self.downloaders[source_type] = NVRDownloader()  # DISABLED: Not using NVR downloader
+                self.downloaders[source_type] = None  # Placeholder
+            elif source_type == 'cloud':
+                from modules.sources.cloud_manager import CloudManager
+                self.downloaders[source_type] = CloudManager()
+            elif source_type == 'local':
+                # Local sources don't need special downloader
+                self.downloaders[source_type] = None
+        return self.downloaders.get(source_type)
         
     def start_auto_sync(self, source_config: dict) -> bool:
         """Start auto-sync for a source"""
@@ -77,11 +91,11 @@ class AutoSyncService:
         """Perform sync of latest recordings"""
         with self.sync_locks.get(source_id, threading.Lock()):
             try:
-                # Get source config
+                # Get source config and type
                 conn = get_db_connection()
                 cursor = conn.cursor()
                 cursor.execute("""
-                    SELECT config FROM video_sources 
+                    SELECT config, source_type FROM video_sources 
                     WHERE id = ?
                 """, (source_id,))
                 result = cursor.fetchone()
@@ -91,6 +105,7 @@ class AutoSyncService:
                     return {'success': False, 'message': 'Source not found'}
                     
                 config = json.loads(result[0])
+                source_type = result[1]
                 
                 # Update status to in_progress
                 conn = get_db_connection()
@@ -104,13 +119,19 @@ class AutoSyncService:
                 conn.commit()
                 conn.close()
                 
+                # Get appropriate downloader
+                downloader = self._get_downloader_for_source(source_type)
+                
+                if not downloader:
+                    return {'success': False, 'message': f'No downloader available for source type: {source_type}'}
+                
                 # Download last 24 hours
                 time_range = {
                     'from': datetime.now() - timedelta(hours=24),
                     'to': datetime.now()
                 }
                 
-                download_result = self.downloader.download_latest_recordings(config, time_range)
+                download_result = downloader.download_latest_recordings(config, time_range)
                 
                 # Update status
                 conn = get_db_connection()

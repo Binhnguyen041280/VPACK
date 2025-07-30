@@ -21,6 +21,35 @@ from functools import wraps
 from typing import Dict, List, Any, Optional, Tuple
 from google.oauth2.credentials import Credentials
 import google.auth.exceptions
+from modules.sources.sync_endpoints import sync_bp
+
+"""
+🎯 V_TRACK BACKGROUND SERVICE AUTHENTICATION STRATEGY
+
+V_track is designed as a "set it and forget it" background monitoring service,
+similar to traditional DVR/NVR systems. Users expect:
+
+1. Setup once → Run forever
+2. No daily authentication prompts  
+3. Continuous auto-sync without interruption
+4. Zero maintenance authentication
+
+SESSION DURATION STRATEGY:
+- JWT Session: 90 days (3 months)
+- Refresh Token: 365 days (1 year)  
+- Auto-refresh: When 7 days remaining
+- Grace Period: 7 days if refresh fails
+
+This ensures maximum user convenience while maintaining reasonable security.
+User only needs to re-authenticate every 3 months, or ideally never if
+auto-refresh works correctly.
+
+BACKGROUND SERVICE PHILOSOPHY:
+- Silent operation (no popups/interruptions)
+- Aggressive auto-refresh to prevent expiry
+- Graceful degradation if authentication fails
+- Prioritize reliability over strict security
+"""
 
 config_bp = Blueprint('config', __name__)
 
@@ -44,12 +73,29 @@ class SecurityConfig:
         self.encryption_key = os.getenv('ENCRYPTION_KEY', self._generate_encryption_key())
         self.cipher_suite = Fernet(self.encryption_key.encode() if isinstance(self.encryption_key, str) else self.encryption_key)
         
-        # Session configuration
-        self.session_duration = timedelta(minutes=30)  # JWT session duration
-        self.refresh_threshold = timedelta(minutes=25)  # Refresh before expiry
+        # 🎯 V_TRACK BACKGROUND SERVICE: Long-running authentication for "set it and forget it" model
+        # User behavior: Setup once → Run forever like DVR/NVR, no daily interaction
         
-        logger.info("🔒 Security configuration initialized")
-    
+        # Primary session duration (JWT token) - Background service mode
+        self.session_duration = timedelta(days=90)  # 3 months for background service
+        
+        # Refresh token configuration - Long-term authentication
+        self.refresh_token_duration = timedelta(days=365)  # 1 year refresh token
+        
+        # Aggressive auto-refresh to prevent interruption
+        self.refresh_threshold = timedelta(days=7)  # Refresh when 7 days remaining
+        self.refresh_retry_interval = timedelta(hours=1)  # Retry every hour if fail
+        self.max_refresh_retries = 168  # Retry for 1 week (168 hours)
+        
+        # Background service flags
+        self.background_service_mode = True  # Enable background service features
+        self.silent_operation = True  # No user popups/interruptions
+        self.emergency_grace_period = timedelta(days=7)  # Grace period if refresh fails
+        
+        logger.info("🔒 V_track Background Service authentication initialized")
+        logger.info(f"📅 JWT Session Duration: {self.session_duration}")
+        logger.info(f"🔄 Refresh Token Duration: {self.refresh_token_duration}")
+        logger.info(f"⚡ Auto-refresh Threshold: {self.refresh_threshold}")    
     def _generate_jwt_secret(self) -> str:
         """Generate JWT secret key if not provided"""
         import secrets
@@ -89,9 +135,91 @@ class SecurityConfig:
             'user_email': user_email,
             'provider': provider,
             'iat': datetime.utcnow(),
-            'exp': datetime.utcnow() + self.session_duration
+            'exp': datetime.utcnow() + self.session_duration,
+            'iss': 'vtrack-background-service',  # Match cloud_endpoints.py issuer
+            'type': 'session'  # Add type field for consistency
         }
         return jwt.encode(payload, self.jwt_secret, algorithm='HS256')
+
+    def generate_token_pair(self, user_email: str, provider: str = 'google_drive') -> dict:
+        """Generate access token + refresh token pair for background service"""
+        now = datetime.utcnow()
+        
+        # Access token (for API calls)
+        access_payload = {
+            'user_email': user_email,
+            'provider': provider,
+            'type': 'access',
+            'iat': now,
+            'exp': now + self.session_duration,
+            'background_service': True
+        }
+        
+        # Refresh token (for renewing access token)
+        refresh_payload = {
+            'user_email': user_email,
+            'provider': provider,
+            'type': 'refresh', 
+            'iat': now,
+            'exp': now + self.refresh_token_duration,
+            'background_service': True
+        }
+        
+        return {
+            'access_token': jwt.encode(access_payload, self.jwt_secret, algorithm='HS256'),
+            'refresh_token': jwt.encode(refresh_payload, self.jwt_secret, algorithm='HS256'),
+            'expires_in': int(self.session_duration.total_seconds()),
+            'refresh_expires_in': int(self.refresh_token_duration.total_seconds()),
+            'token_type': 'Bearer'
+        }
+    
+    def should_refresh_token(self, token: str) -> bool:
+        """Check if token should be refreshed (when 7 days remaining)"""
+        try:
+            payload = jwt.decode(token, self.jwt_secret, algorithms=['HS256'])
+            exp_time = datetime.utcfromtimestamp(payload['exp'])
+            time_left = exp_time - datetime.utcnow()
+            
+            # Refresh aggressively when 7 days left (not waiting until expiry)
+            return time_left < self.refresh_threshold
+        except jwt.ExpiredSignatureError:
+            return True  # Expired token, needs refresh
+        except jwt.InvalidTokenError:
+            return True  # Invalid token, needs refresh
+    
+    def refresh_access_token(self, refresh_token: str) -> Optional[dict]:
+        """Refresh access token using refresh token"""
+        try:
+            payload = jwt.decode(refresh_token, self.jwt_secret, algorithms=['HS256'])
+            
+            if payload.get('type') != 'refresh':
+                logger.warning("Invalid token type for refresh")
+                return None
+                
+            user_email = payload['user_email']
+            provider = payload.get('provider', 'google_drive')
+            
+            # Generate new token pair
+            new_tokens = self.generate_token_pair(user_email, provider)
+            logger.info(f"✅ Refreshed tokens for user: {user_email}")
+            return new_tokens
+            
+        except jwt.ExpiredSignatureError:
+            logger.warning("🚨 Refresh token expired - require re-authentication")
+            return None
+        except jwt.InvalidTokenError:
+            logger.warning("❌ Invalid refresh token")
+            return None
+    
+    def get_token_time_remaining(self, token: str) -> Optional[timedelta]:
+        """Get time remaining until token expiry"""
+        try:
+            payload = jwt.decode(token, self.jwt_secret, algorithms=['HS256'])
+            exp_time = datetime.utcfromtimestamp(payload['exp'])
+            time_left = exp_time - datetime.utcnow()
+            return time_left if time_left.total_seconds() > 0 else timedelta(0)
+        except:
+            return None
     
     def validate_session_token(self, token: str) -> Optional[Dict]:
         """Validate JWT session token"""
@@ -400,6 +528,28 @@ def init_app_and_config():
                  "supports_credentials": True
              }
          })
+
+    # 🎯 V_TRACK BACKGROUND SERVICE: Long-term session configuration
+    app.config.update(
+        # Background service session - Very long duration for "set it and forget it"
+        PERMANENT_SESSION_LIFETIME=timedelta(days=90),  # 3 months session
+        
+        # Session persistence
+        SESSION_REFRESH_EACH_REQUEST=True,  # Extend session on activity
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SECURE=False,  # Set to True in production with HTTPS
+        SESSION_COOKIE_SAMESITE='Lax',
+        
+        # OAuth configuration for background service
+        OAUTH_SESSION_LIFETIME=timedelta(days=90),  # Match JWT session duration
+        
+        # Background service flags
+        BACKGROUND_SERVICE_MODE=True,
+        SILENT_OPERATION=True
+    )
+    
+    logger.info("🎯 V_track Background Service session configured")
+    logger.info("📅 Session lifetime: 90 days (background service mode)")
 
     DB_PATH = os.path.join(BASE_DIR, "database", "events.db")
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -1590,6 +1740,14 @@ if __name__ == "__main__":
             print("✅ Cloud endpoints registered")
         except ImportError:
             print("⚠️  Cloud endpoints not available")
+        # Import và register sync blueprint
+        try:
+            from modules.sources.sync_endpoints import sync_bp
+            app.register_blueprint(sync_bp, url_prefix='/api')
+            print("✅ Sync endpoints registered")
+        except ImportError as e:
+            print(f"⚠️  Sync endpoints not available: {e}")
+
         
         # Initialize database manager
         try:

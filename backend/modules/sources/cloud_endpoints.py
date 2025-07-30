@@ -22,6 +22,10 @@ import jwt
 import secrets
 from cryptography.fernet import Fernet
 import base64
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -35,8 +39,8 @@ ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY', Fernet.generate_key())
 if isinstance(ENCRYPTION_KEY, str):
     ENCRYPTION_KEY = ENCRYPTION_KEY.encode()
 
-def generate_session_token(user_email, user_info, expires_minutes=30):
-    """Generate JWT session token instead of returning raw credentials"""
+def generate_session_token(user_email, user_info, expires_minutes=129600):  # 90 days = 90*24*60 = 129600 minutes
+    """Generate JWT session token for V_track background service (90 days duration)"""
     try:
         payload = {
             'user_email': user_email,
@@ -44,12 +48,12 @@ def generate_session_token(user_email, user_info, expires_minutes=30):
             'photo_url': user_info.get('photo_url'),
             'exp': datetime.utcnow() + timedelta(minutes=expires_minutes),
             'iat': datetime.utcnow(),
-            'iss': 'vtrack-oauth',
+            'iss': 'vtrack-background-service',  # Match with config.py issuer
             'type': 'session'
         }
         
         token = jwt.encode(payload, JWT_SECRET_KEY, algorithm='HS256')
-        logger.info(f"✅ Generated session token for: {user_email} (expires in {expires_minutes}min)")
+        logger.info(f"✅ Generated background service session token for: {user_email} (expires in {expires_minutes}min = {expires_minutes//1440} days)")
         return token
         
     except Exception as e:

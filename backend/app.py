@@ -1,6 +1,9 @@
 import os
 import sys
 from flask_cors import CORS
+from dotenv import load_dotenv
+import os
+load_dotenv()
 
 # ==================== TẮT TẤT CẢ LOGS TRƯỚC KHI IMPORT ====================
 # TensorFlow logs
@@ -64,6 +67,8 @@ from modules.scheduler.program import scheduler  # Import BatchScheduler
 
 # 🆕 NEW: Import cloud endpoints blueprint
 from modules.sources.cloud_endpoints import cloud_bp
+# 🆕 NEW: Import sync endpoints blueprint
+from modules.sources.sync_endpoints import sync_bp
 
 # Khởi tạo Flask app và DB path từ config
 app, DB_PATH, logger = init_app_and_config()
@@ -148,6 +153,18 @@ try:
 except ValueError as e:
     logger.warning(f"⚠️ Cloud blueprint already registered: {e}")
     # If already registered, skip (could be from config.py)
+    pass
+
+# 🆕 NEW: Register sync endpoints blueprint with error handling
+try:
+    app.register_blueprint(sync_bp, url_prefix='/api/sync')
+    logger.info("✅ Sync endpoints registered: /api/sync/*")
+except ValueError as e:
+    logger.warning(f"⚠️ Sync blueprint already registered: {e}")
+    # If already registered, skip
+    pass
+except ImportError as e:
+    logger.warning(f"⚠️ Sync endpoints not available: {e}")
     pass
 
 # Hàm ghi last_stop_time khi ứng dụng dừng

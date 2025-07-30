@@ -23,47 +23,205 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class GoogleDriveClient:
-    """Google Drive API client for VTrack video backup"""
+    """Google Drive API client for VTrack video backup with PyDrive2 compatibility"""
     
     # Google Drive API scopes
     SCOPES = ['https://www.googleapis.com/auth/drive.file']
     
-    def __init__(self, credentials_path='google_drive_credentials_web.json', token_path='token.json'):
+    def __init__(self, source_id=None, credentials_path='google_drive_credentials_web.json', token_path='token.json'):
         """
         Initialize Google Drive client
         
         Args:
-            credentials_path (str): Path to OAuth2 credentials file
-            token_path (str): Path to store access tokens
+            source_id (int): Source ID for loading encrypted credentials
+            credentials_path (str): Path to OAuth2 credentials file (fallback)
+            token_path (str): Path to store access tokens (fallback)
         """
+        self.source_id = source_id
         self.credentials_path = os.path.join(os.path.dirname(__file__), credentials_path)
         self.token_path = os.path.join(os.path.dirname(__file__), token_path)
         self.service = None
         self.creds = None
+        self.oauth2client_creds = None  # 🆕 NEW: PyDrive2 compatible credentials
         
-        logger.info(f"GoogleDriveClient initialized")
+        logger.info(f"GoogleDriveClient initialized with source_id: {source_id}")
         logger.info(f"Credentials path: {self.credentials_path}")
         logger.info(f"Token path: {self.token_path}")
+    
+    def load_credentials_from_storage(self):
+        """
+        🆕 NEW: Load credentials from encrypted storage (for VTrack integration)
+        
+        Returns:
+            dict: Credential data or None if not found
+        """
+        if not self.source_id:
+            return None
+            
+        try:
+            # Import here to avoid circular imports
+            from .cloud_auth import CloudAuthManager
+            
+            # Load encrypted credentials using CloudAuthManager
+            auth_manager = CloudAuthManager()
+            
+            # Get source config to find user email
+            from ...database.sync_database import sync_db
+            source = sync_db.get_source(self.source_id)
+            if not source:
+                logger.error(f"❌ Source {self.source_id} not found")
+                return None
+                
+            config = json.loads(source.get('config', '{}'))
+            user_email = config.get('user_email')
+            
+            if not user_email:
+                logger.error(f"❌ No user_email found in source {self.source_id} config")
+                return None
+            
+            # Load credentials from encrypted storage
+            tokens_dir = os.path.join(os.path.dirname(__file__), 'tokens')
+            token_filename = f"google_drive_{hashlib.md5(user_email.encode()).hexdigest()[:16]}.json"
+            token_path = os.path.join(tokens_dir, token_filename)
+            
+            if not os.path.exists(token_path):
+                logger.error(f"❌ Token file not found: {token_path}")
+                return None
+            
+            # Load and decrypt credentials
+            with open(token_path, 'r') as f:
+                storage_data = json.load(f)
+            
+            encrypted_data = storage_data.get('encrypted_data')
+            if not encrypted_data:
+                logger.error("❌ No encrypted_data found in token file")
+                return None
+            
+            # Decrypt credentials
+            decrypted_data = auth_manager.decrypt_credentials(encrypted_data)
+            if not decrypted_data:
+                logger.error("❌ Failed to decrypt credentials")
+                return None
+            
+            logger.info("✅ Credentials loaded from encrypted storage")
+            return decrypted_data
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to load credentials from storage: {e}")
+            return None
+    
+    def create_oauth2client_credentials(self, credential_data):
+        """
+        🆕 NEW: Convert google-auth credentials to oauth2client format for PyDrive2
+        
+        Args:
+            credential_data (dict): Decrypted credential data
+            
+        Returns:
+            oauth2client.client.OAuth2Credentials: PyDrive2 compatible credentials
+        """
+        try:
+            # Import oauth2client
+            from oauth2client import client
+            from oauth2client.client import GOOGLE_TOKEN_URI
+            import httplib2
+            
+            # Extract required data
+            access_token = credential_data.get('token')
+            refresh_token = credential_data.get('refresh_token')
+            client_id = credential_data.get('client_id')
+            client_secret = credential_data.get('client_secret')
+            token_uri = credential_data.get('token_uri', GOOGLE_TOKEN_URI)
+            
+            # Handle token expiry
+            token_expiry = None
+            if credential_data.get('expires_at'):
+                from datetime import datetime
+                token_expiry = datetime.fromisoformat(credential_data['expires_at'].replace('Z', '+00:00'))
+            
+            logger.info("🔄 Converting to oauth2client credentials...")
+            logger.info(f"   Client ID: {client_id[:20]}..." if client_id else "   No client_id")
+            logger.info(f"   Has refresh token: {bool(refresh_token)}")
+            logger.info(f"   Has access token: {bool(access_token)}")
+            logger.info(f"   Token expiry: {token_expiry}")
+            
+            # Create oauth2client credentials object
+            oauth2client_creds = client.OAuth2Credentials(
+                access_token=access_token,
+                client_id=client_id,
+                client_secret=client_secret,
+                refresh_token=refresh_token,
+                token_expiry=token_expiry,
+                token_uri=token_uri,
+                user_agent="VTrack-GoogleDrive-Client/1.0"
+            )
+            
+            # Refresh token if expired
+            if oauth2client_creds.access_token_expired and refresh_token:
+                logger.info("🔄 Refreshing expired access token...")
+                http = httplib2.Http()
+                oauth2client_creds.refresh(http)
+                logger.info("✅ Access token refreshed successfully")
+            
+            logger.info("✅ oauth2client credentials created successfully")
+            return oauth2client_creds
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to create oauth2client credentials: {e}")
+            return None
     
     def authenticate(self):
         """
         Authenticate with Google Drive API using OAuth2
+        Priority: 1) Encrypted storage (VTrack) 2) Local token file (fallback)
         
         Returns:
             bool: True if authentication successful, False otherwise
         """
         try:
+            # Method 1: Try loading from encrypted storage (VTrack integration)
+            if self.source_id:
+                logger.info("🔐 Attempting to load credentials from encrypted storage...")
+                credential_data = self.load_credentials_from_storage()
+                
+                if credential_data:
+                    # Create oauth2client credentials for PyDrive2
+                    self.oauth2client_creds = self.create_oauth2client_credentials(credential_data)
+                    
+                    if self.oauth2client_creds:
+                        # Also create google-auth credentials for Drive API v3
+                        from google.oauth2.credentials import Credentials
+                        self.creds = Credentials(
+                            token=credential_data.get('token'),
+                            refresh_token=credential_data.get('refresh_token'),
+                            token_uri=credential_data.get('token_uri'),
+                            client_id=credential_data.get('client_id'),
+                            client_secret=credential_data.get('client_secret'),
+                            scopes=credential_data.get('scopes', self.SCOPES)
+                        )
+                        
+                        # Build Drive service
+                        self.service = build('drive', 'v3', credentials=self.creds)
+                        logger.info("✅ Authentication successful using encrypted storage")
+                        return True
+            
+            # Method 2: Fallback to local token file
+            logger.info("🔄 Falling back to local token file authentication...")
+            
             # Load existing token if available
             if os.path.exists(self.token_path):
+                from google.oauth2.credentials import Credentials
                 self.creds = Credentials.from_authorized_user_file(self.token_path, self.SCOPES)
             
             # If no valid credentials, start OAuth flow
             if not self.creds or not self.creds.valid:
                 if self.creds and self.creds.expired and self.creds.refresh_token:
-                    logger.info("Refreshing expired credentials...")
+                    logger.info("🔄 Refreshing expired credentials...")
+                    from google.auth.transport.requests import Request
                     self.creds.refresh(Request())
                 else:
-                    logger.info("Starting OAuth2 authentication flow...")
+                    logger.info("🌐 Starting OAuth2 authentication flow...")
+                    from google_auth_oauthlib.flow import InstalledAppFlow
                     flow = InstalledAppFlow.from_client_secrets_file(
                         self.credentials_path, self.SCOPES)
                     self.creds = flow.run_local_server(port=0)
@@ -71,11 +229,11 @@ class GoogleDriveClient:
                 # Save credentials for next time
                 with open(self.token_path, 'w') as token:
                     token.write(self.creds.to_json())
-                logger.info("Credentials saved successfully")
+                logger.info("✅ Credentials saved successfully")
             
             # Build Drive service
             self.service = build('drive', 'v3', credentials=self.creds)
-            logger.info("✅ Google Drive authentication successful")
+            logger.info("✅ Fallback authentication successful")
             return True
             
         except FileNotFoundError:
@@ -85,9 +243,82 @@ class GoogleDriveClient:
             logger.error(f"❌ Authentication failed: {e}")
             return False
     
+    def get_pydrive_auth(self):
+        """
+        🆕 NEW: Get PyDrive2 compatible authentication object
+        
+        Returns:
+            GoogleAuth: PyDrive2 GoogleAuth object or None
+        """
+        try:
+            if not self.oauth2client_creds:
+                logger.error("❌ No oauth2client credentials available. Run authenticate() first.")
+                return None
+            
+            # Import PyDrive2
+            from pydrive2.auth import GoogleAuth
+            
+            # Create GoogleAuth object
+            gauth = GoogleAuth()
+            
+            # Set credentials directly
+            gauth.credentials = self.oauth2client_creds
+            
+            # Set authenticated flag
+            gauth.authenticated = True
+            
+            logger.info("✅ PyDrive2 GoogleAuth object created successfully")
+            return gauth
+            
+        except ImportError:
+            logger.error("❌ PyDrive2 not installed. Run: pip install PyDrive2")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Failed to create PyDrive2 auth: {e}")
+            return None
+    
+    def test_pydrive_connection(self):
+        """
+        🆕 NEW: Test PyDrive2 connection
+        
+        Returns:
+            dict: Test result
+        """
+        try:
+            gauth = self.get_pydrive_auth()
+            if not gauth:
+                return {"success": False, "message": "Failed to get PyDrive2 auth"}
+            
+            # Import PyDrive2
+            from pydrive2.drive import GoogleDrive
+            
+            # Create drive object
+            drive = GoogleDrive(gauth)
+            
+            # Test connection with GetAbout()
+            about = drive.GetAbout()
+            
+            user_email = about.get('user', {}).get('emailAddress', 'Unknown')
+            quota = about.get('quotaBytesTotal', 'Unknown')
+            used = about.get('quotaBytesUsed', 'Unknown')
+            
+            logger.info(f"✅ PyDrive2 connection successful: {user_email}")
+            
+            return {
+                "success": True,
+                "message": f"PyDrive2 connected successfully: {user_email}",
+                "user_email": user_email,
+                "quota_total": quota,
+                "quota_used": used
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ PyDrive2 connection test failed: {e}")
+            return {"success": False, "message": f"PyDrive2 connection failed: {str(e)}"}
+    
     def test_connection(self):
         """
-        Test Google Drive API connection
+        Test Google Drive API connection (both regular API and PyDrive2)
         
         Returns:
             dict: Connection test result
@@ -97,7 +328,7 @@ class GoogleDriveClient:
                 if not self.authenticate():
                     return {"success": False, "message": "Authentication failed"}
             
-            # Test API call - get user info
+            # Test regular Drive API v3
             about = self.service.about().get(fields='user, storageQuota').execute()
             user_email = about.get('user', {}).get('emailAddress', 'Unknown')
             
@@ -106,14 +337,21 @@ class GoogleDriveClient:
             total_gb = int(quota.get('limit', 0)) / (1024**3) if quota.get('limit') else 'Unlimited'
             used_gb = int(quota.get('usage', 0)) / (1024**3)
             
-            logger.info(f"✅ Connected to Google Drive: {user_email}")
+            logger.info(f"✅ Connected to Google Drive API v3: {user_email}")
+            
+            # Test PyDrive2 connection if oauth2client credentials available
+            pydrive_result = None
+            if self.oauth2client_creds:
+                pydrive_result = self.test_pydrive_connection()
             
             return {
                 "success": True,
                 "message": f"Connected to Google Drive: {user_email}",
                 "user_email": user_email,
                 "storage_total_gb": total_gb,
-                "storage_used_gb": round(used_gb, 2)
+                "storage_used_gb": round(used_gb, 2),
+                "pydrive2_compatible": pydrive_result.get("success", False) if pydrive_result else False,
+                "pydrive2_message": pydrive_result.get("message", "Not tested") if pydrive_result else "oauth2client credentials not available"
             }
             
         except HttpError as e:

@@ -603,34 +603,21 @@ React.useEffect(() => {
         handleSaveConfig={handleSaveConfigCustom}
       />
       
-      {/* ✅ NEW: Debug Panel (Development Only) */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="fixed bottom-4 right-4 bg-gray-800 border border-gray-600 rounded-lg p-4 text-xs">
-          <div className="text-white font-medium mb-2">🔧 Camera Debug</div>
-          <div className="text-gray-300 space-y-1">
-            <div>Form Cameras: {configFormCameras.length}</div>
-            <div>Selected: {configFormSelectedCameras.length}</div>
-            <div>Hook Cameras: {cameras.length}</div>
-            <div>Loading: {loadingCameras ? 'Yes' : 'No'}</div>
-            <div>Active Source: {activeVideoSource?.name || 'None'}</div>
-            <div>Input Path: {inputPath ? 'Set' : 'Empty'}</div>
-          </div>
-          <div className="flex gap-1 mt-2">
-            <button
-              onClick={handleDebugCameras}
-              className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
-            >
-              Debug Server
-            </button>
-            <button
-              onClick={debugAndFix}
-              className="px-2 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700"
-            >
-              Auto Fix
-            </button>
-          </div>
+      {/* 
+      {showCameraDebug && (
+        <div className="camera-debug-panel">
+          <h4>🔧 Camera Debug</h4>
+          <div>Form Cameras: {configFormCameras.length}</div>
+          <div>Selected: {configFormSelectedCameras.length}</div>
+          <div>Hook Cameras: {cameras.length}</div>
+          <div>Loading: {loadingCameras ? "Yes" : "No"}</div>
+          <div>Active Source: {activeVideoSource?.name}</div>
+          <div>Input Path: {inputPath ? "Set" : "Unset"}</div>
+          <div>Debug Server</div>
+          <div>Auto Fix</div>
         </div>
       )}
+      */}
     </div>
   );
 };
