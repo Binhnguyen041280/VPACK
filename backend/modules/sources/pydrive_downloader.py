@@ -263,7 +263,7 @@ class PyDriveDownloader:
         try:
             # Import oauth2client
             from oauth2client import client
-            from oauth2client.client import GOOGLE_TOKEN_URI
+            GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
             import httplib2
             
             # Extract required data
@@ -286,7 +286,7 @@ class PyDriveDownloader:
                     expires_at_str += '+00:00'
                 
                 try:
-                    token_expiry = datetime.fromisoformat(expires_at_str)
+                    token_expiry = datetime.fromisoformat(expires_at_str).replace(tzinfo=None)
                 except ValueError as e:
                     logger.warning(f"⚠️ Could not parse token expiry: {expires_at_str}, error: {e}")
                     token_expiry = None
@@ -409,12 +409,20 @@ class PyDriveDownloader:
     def _list_video_files(self, drive, folder_id: str) -> List[Dict]:
         """List video files in a Google Drive folder"""
         try:
+            # ✅ DEBUG: List ALL files first
+            all_files_query = f"'{folder_id}' in parents and trashed=false"
+            all_files = drive.ListFile({'q': all_files_query, 'maxResults': 100}).GetList()
+            
+            logger.info(f"🔍 DEBUG: Found {len(all_files)} total files in folder {folder_id}")
+            for file in all_files:
+                logger.info(f"   📄 {file['title']} - MIME: {file.get('mimeType', 'Unknown')}")
+            
+            # Original video query
             video_mimes = [
                 'video/mp4', 'video/avi', 'video/mov', 'video/mkv', 
-                'video/flv', 'video/wmv', 'video/m4v'
+                'video/flv', 'video/wmv', 'video/m4v', 'video/quicktime'
             ]
             
-            # Build query for video files in folder
             mime_query = " or ".join([f"mimeType='{mime}'" for mime in video_mimes])
             query = f"'{folder_id}' in parents and ({mime_query}) and trashed=false"
             

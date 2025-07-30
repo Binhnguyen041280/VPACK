@@ -134,7 +134,7 @@ def debug_authentication(source_id=88):
         try:
             # Import oauth2client
             from oauth2client import client
-            from oauth2client.client import GOOGLE_TOKEN_URI
+            GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
             import httplib2
             
             # Extract required data
@@ -157,7 +157,7 @@ def debug_authentication(source_id=88):
                     expires_at_str += '+00:00'
                 
                 try:
-                    token_expiry = datetime.fromisoformat(expires_at_str)
+                    token_expiry = datetime.fromisoformat(expires_at_str).replace(tzinfo=None)
                 except ValueError as e:
                     print(f"⚠️ Could not parse token expiry: {expires_at_str}, error: {e}")
                     token_expiry = None
