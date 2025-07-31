@@ -34,7 +34,7 @@ def get_db_connection():
             conn.execute("PRAGMA synchronous = NORMAL")   # Balanced sync (nhanh hơn FULL)
             conn.execute("PRAGMA temp_store = MEMORY")    # Temp data in memory (tăng speed)
             conn.execute("PRAGMA foreign_keys = ON")      # Enforce FK nếu cần
-            print(f"✅ DB connection success (attempt {attempt+1})")  # Debug log
+            #print(f"✅ DB connection success (attempt {attempt+1})")  # Debug log
             return conn
         except sqlite3.OperationalError as e:
             if "database is locked" in str(e) and attempt < 4:
@@ -172,6 +172,10 @@ def update_database():
                 last_sync_message TEXT,
                 files_downloaded_count INTEGER DEFAULT 0,
                 total_download_size_mb REAL DEFAULT 0.0,
+                error_severity TEXT,
+                error_type TEXT,
+                last_timer_run TEXT,
+                timer_error_count INTEGER DEFAULT 0,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (source_id) REFERENCES video_sources (id) ON DELETE CASCADE,
@@ -487,9 +491,37 @@ def update_database():
             ORDER BY vs.name, ldf.camera_name
         """)
 
+        # ==================== MINIMAL DATABASE SCHEMA UPDATES ====================
+        # Add essential fields for error recovery only
+        
+        try:
+            # Add error_count column if it doesn't exist
+            cursor.execute("ALTER TABLE sync_status ADD COLUMN error_count INTEGER DEFAULT 0")
+            print("✅ Added error_count column to sync_status")
+        except Exception:
+            pass  # Column already exists
+        
+        try:
+            # Add last_error_type column if it doesn't exist  
+            cursor.execute("ALTER TABLE sync_status ADD COLUMN last_error_type TEXT DEFAULT NULL")
+            print("✅ Added last_error_type column to sync_status")
+        except Exception:
+            pass  # Column already exists
+        
+        # Update existing records
+        cursor.execute("UPDATE sync_status SET error_count = 0 WHERE error_count IS NULL")
+        
+        # Create simple index for performance
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_sync_status_source_error 
+            ON sync_status(source_id, error_count)
+        """)
+        print("✅ Created performance index for error tracking")
+
         conn.commit()
         conn.close()
         print(f"🎉 Database updated successfully at {DB_PATH}")
+        print("✅ Minimal schema updates completed - Simple & Focused")
         print("✅ Added camera_paths column to processing_config")
         print("✅ Created sync_status table for auto-sync management")
         print("✅ Created downloaded_files table for file tracking")
@@ -962,6 +994,51 @@ def update_source_folder_depth(source_id, folder_depth, parent_folder_id=None):
     except Exception as e:
         print(f"❌ Error updating folder depth: {e}")
         return False
+
+def cleanup_sync_integrity():
+    """Clean up sync_status table to match only active cloud sources"""
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Delete all orphaned sync records
+            cursor.execute("DELETE FROM sync_status")
+            
+            # Get active cloud sources only
+            cursor.execute("""
+                SELECT id FROM video_sources 
+                WHERE active = 1 AND source_type = 'cloud'
+            """)
+            
+            cloud_sources = cursor.fetchall()
+            
+            # Create sync records for each active cloud source
+            for (source_id,) in cloud_sources:
+                try:
+                    initialize_sync_status(source_id, sync_enabled=True, interval_minutes=2)
+                except Exception as init_error:
+                    logger.warning(f"⚠️ Failed to initialize sync for source {source_id}: {init_error}")
+                    continue
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"✅ Sync integrity cleaned - {len(cloud_sources)} cloud sources")
+            return True
+            
+        except Exception as e:
+            if "database is locked" in str(e) and attempt < max_retries - 1:
+                logger.warning(f"⚠️ Database locked on cleanup attempt {attempt + 1}, retrying...")
+                import time
+                time.sleep(2)  # Wait longer for database to unlock
+                continue
+            else:
+                logger.error(f"❌ Sync cleanup failed after {attempt + 1} attempts: {e}")
+                return False
+    
+    return False
 
 if __name__ == "__main__":
     os.makedirs(DB_DIR, exist_ok=True)

@@ -69,6 +69,8 @@ from modules.scheduler.program import scheduler  # Import BatchScheduler
 from modules.sources.cloud_endpoints import cloud_bp
 # 🆕 NEW: Import sync endpoints blueprint
 from modules.sources.sync_endpoints import sync_bp
+# 🆕 NEW: Import pydrive downloader for auto-start
+from modules.sources.pydrive_downloader import pydrive_downloader
 
 # Khởi tạo Flask app và DB path từ config
 app, DB_PATH, logger = init_app_and_config()
@@ -248,6 +250,28 @@ def log_registered_routes():
         methods = ', '.join(rule.methods - {'HEAD', 'OPTIONS'})
         logger.info(f"   {methods:15} {rule.rule}")
 
+# 🆕 NEW: Auto-start function for cloud sync (Flask 2.2+ compatible)
+def initialize_auto_sync():
+    """Auto-start sync for all enabled cloud sources on backend startup"""
+    def startup_sync():
+        try:
+            # Wait for database operations to complete
+            import time
+            time.sleep(2)
+            logger.info("🚀 Starting auto-sync for all enabled cloud sources...")
+            result = pydrive_downloader.auto_start_all_enabled_sources()
+            if result.get('success'):
+                logger.info(f"✅ Auto-sync initialization completed: {result.get('started_count', 0)} sources started")
+            else:
+                logger.error(f"❌ Auto-sync initialization failed: {result.get('error', 'Unknown error')}")
+        except Exception as e:
+            logger.error(f"❌ Auto-sync startup failed: {e}")
+    
+    # Run in background thread to not block app startup
+    import threading
+    threading.Thread(target=startup_sync, daemon=True).start()
+    logger.info("🔄 Auto-sync initialization thread started")
+
 # Khởi chạy ứng dụng
 if __name__ == "__main__":
     port = 8080
@@ -262,6 +286,9 @@ if __name__ == "__main__":
     
     # 🔧 Debug: Log registered routes
     log_registered_routes()
+    
+    # ✅ NEW: Manual auto-sync initialization (Flask 2.2+ compatible)
+    initialize_auto_sync()
     
     try:
         app.run(
