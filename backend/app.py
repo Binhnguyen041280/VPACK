@@ -72,8 +72,24 @@ from modules.sources.sync_endpoints import sync_bp
 # 🆕 NEW: Import pydrive downloader for auto-start
 from modules.sources.pydrive_downloader import pydrive_downloader
 
+# 🆕 NEW: Import ZaloPay payment modules
+from modules.payments.zalopay_handler import zalopay_bp
+from modules.webhooks.zalopay_webhook import webhook_bp
+from modules.licensing.license_models import init_license_db
+from flask import Blueprint
+
+# Create license management blueprint
+license_bp = Blueprint('license', __name__)
+
 # Khởi tạo Flask app và DB path từ config
 app, DB_PATH, logger = init_app_and_config()
+
+# Initialize license database
+try:
+    init_license_db()
+    logger.info("License database initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize license database: {str(e)}")
 from flask_session import Session
 
 # 🔧 FIXED: OAuth-Compatible Session Configuration
@@ -169,6 +185,21 @@ except ImportError as e:
     logger.warning(f"⚠️ Sync endpoints not available: {e}")
     pass
 
+# 🆕 NEW: Register ZaloPay payment blueprints
+try:
+    app.register_blueprint(zalopay_bp, url_prefix='/api/payment')
+    logger.info("✅ ZaloPay payment endpoints registered: /api/payment/*")
+except Exception as e:
+    logger.error(f"❌ Failed to register ZaloPay payment endpoints: {e}")
+
+try:
+    app.register_blueprint(webhook_bp, url_prefix='/webhook')
+    logger.info("✅ ZaloPay webhook endpoints registered: /webhook/*")
+except Exception as e:
+    logger.error(f"❌ Failed to register ZaloPay webhook endpoints: {e}")
+
+# 🔧 NOTE: License blueprint registration moved to end of file after route definitions
+
 # Hàm ghi last_stop_time khi ứng dụng dừng
 def exit_handler():
     try:
@@ -242,12 +273,53 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
+# 🆕 NEW: Health check endpoint
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    from flask import jsonify
+    return jsonify({
+        'status': 'healthy',
+        'service': 'V_track Backend',
+        'timestamp': datetime.now().isoformat(),
+        'modules': {
+            'sync': 'enabled',
+            'cloud': 'enabled', 
+            'payment': 'enabled',
+            'licensing': 'enabled'
+        }
+    }), 200
+
+# 🆕 NEW: Root endpoint
+@app.route('/', methods=['GET'])
+def root():
+    """Root endpoint information"""
+    from flask import jsonify
+    return jsonify({
+        'service': 'V_track Backend API',
+        'version': '1.0.0',
+        'features': [
+            'Cloud Storage Sync',
+            'NVR Camera Integration', 
+            'ZaloPay Payment Processing',
+            'Automated License Management'
+        ],
+        'endpoints': {
+            'sync': '/api/sync',
+            'cloud': '/api/cloud',
+            'payment': '/api/payment',
+            'webhook': '/webhook',
+            'license': '/api/license',
+            'health': '/health'
+        }
+    }), 200
+
 # 🔧 Debug: List all registered endpoints on startup
 def log_registered_routes():
     """Log all registered Flask routes for debugging"""
     logger.info("📋 Registered Flask Routes:")
     for rule in app.url_map.iter_rules():
-        methods = ', '.join(rule.methods - {'HEAD', 'OPTIONS'})
+        methods = ', '.join((rule.methods or set()) - {'HEAD', 'OPTIONS'})
         logger.info(f"   {methods:15} {rule.rule}")
 
 # 🆕 NEW: Auto-start function for cloud sync (Flask 2.2+ compatible)
@@ -272,6 +344,234 @@ def initialize_auto_sync():
     threading.Thread(target=startup_sync, daemon=True).start()
     logger.info("🔄 Auto-sync initialization thread started")
 
+# 🆕 NEW: License Management Endpoints
+@license_bp.route('/validate', methods=['POST'])
+def validate_license():
+    """Validate license key"""
+    from flask import request, jsonify
+    try:
+        from modules.payments.license_generator import LicenseGenerator
+        from modules.licensing.license_models import License
+        
+        data = request.get_json()
+        license_key = data.get('license_key')
+        machine_fingerprint = data.get('machine_fingerprint')
+        
+        if not license_key:
+            return jsonify({
+                'success': False,
+                'error': 'License key required'
+            }), 400
+        
+        # Initialize license generator
+        license_generator = LicenseGenerator()
+        
+        # Validate license signature
+        license_data = license_generator.verify_license(license_key)
+        
+        if not license_data:
+            return jsonify({
+                'valid': False,
+                'error': 'Invalid license signature'
+            }), 400
+        
+        # Validate against database
+        db_validation = License.validate(license_key, machine_fingerprint)
+        
+        return jsonify({
+            'valid': db_validation['valid'],
+            'license_data': license_data,
+            'database_status': db_validation
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"License validation error: {str(e)}")
+        return jsonify({
+            'valid': False,
+            'error': f'Validation error: {str(e)}'
+        }), 500
+
+@license_bp.route('/activate', methods=['POST'])
+def activate_license():
+    """Activate license on machine"""
+    from flask import request, jsonify
+    try:
+        from modules.payments.license_generator import LicenseGenerator
+        from modules.licensing.license_models import License
+        
+        data = request.get_json()
+        license_key = data.get('license_key')
+        machine_fingerprint = data.get('machine_fingerprint')
+        device_info = data.get('device_info', {})
+        
+        if not license_key:
+            return jsonify({
+                'success': False,
+                'error': 'License key required'
+            }), 400
+        
+        # Generate machine fingerprint if not provided
+        if not machine_fingerprint:
+            license_generator = LicenseGenerator()
+            machine_fingerprint = license_generator.generate_machine_fingerprint()
+        
+        # Activate license
+        result = License.activate(license_key, machine_fingerprint, device_info)
+        
+        if result['success']:
+            return jsonify({
+                'success': True,
+                'status': result['status'],
+                'machine_fingerprint': machine_fingerprint
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': result['error']
+            }), 400
+            
+    except Exception as e:
+        logger.error(f"License activation error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Activation error: {str(e)}'
+        }), 500
+
+@license_bp.route('/info/<license_key>', methods=['GET'])
+def get_license_info(license_key):
+    """Get license information"""
+    from flask import jsonify
+    try:
+        from modules.licensing.license_models import License
+        
+        license_data = License.get_by_key(license_key)
+        
+        if not license_data:
+            return jsonify({
+                'success': False,
+                'error': 'License not found'
+            }), 404
+        
+        # Remove sensitive data
+        safe_data = {
+            'product_type': license_data['product_type'],
+            'features': license_data['features'],
+            'status': license_data['status'],
+            'created_at': license_data['created_at'],
+            'expires_at': license_data['expires_at'],
+            'activation_count': license_data['activation_count'],
+            'max_activations': license_data['max_activations']
+        }
+        
+        return jsonify({
+            'success': True,
+            'license_info': safe_data
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"License info error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Info error: {str(e)}'
+        }), 500
+
+@license_bp.route('/stats', methods=['GET'])
+def get_license_stats():
+    """Get licensing statistics"""
+    from flask import jsonify
+    try:
+        from modules.licensing.license_models import get_license_stats
+        
+        stats = get_license_stats()
+        
+        if stats:
+            return jsonify({
+                'success': True,
+                'stats': stats
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to get stats'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"License stats error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Stats error: {str(e)}'
+        }), 500
+
+@license_bp.route('/test-email', methods=['POST'])
+def test_email_delivery():
+    """Test email delivery system"""
+    from flask import request, jsonify
+    try:
+        from modules.payments.email_sender import EmailSender
+        
+        data = request.get_json()
+        test_email = data.get('email')
+        
+        if not test_email:
+            return jsonify({
+                'success': False,
+                'error': 'Email address required'
+            }), 400
+        
+        # Send test email
+        email_sender = EmailSender()
+        result = email_sender.send_test_email(test_email)
+        
+        return jsonify(result), 200 if result['success'] else 500
+        
+    except Exception as e:
+        logger.error(f"Test email error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Test email error: {str(e)}'
+        }), 500
+
+@license_bp.route('/config', methods=['GET'])
+def get_license_config():
+    """Get license system configuration"""
+    from flask import jsonify
+    try:
+        from modules.payments.email_sender import EmailSender
+        
+        email_sender = EmailSender()
+        email_config = email_sender.get_email_config_status()
+        
+        # ZaloPay config (without sensitive data)
+        zalopay_config = {
+            'app_id': os.getenv('ZALOPAY_APP_ID', 'Not set'),
+            'environment': os.getenv('ZALOPAY_ENVIRONMENT', 'Not set'),
+            'endpoint_configured': bool(os.getenv('ZALOPAY_ENDPOINT')),
+            'keys_configured': bool(os.getenv('ZALOPAY_KEY1') and os.getenv('ZALOPAY_KEY2'))
+        }
+        
+        return jsonify({
+            'success': True,
+            'config': {
+                'email': email_config,
+                'zalopay': zalopay_config,
+                'license_system': 'operational'
+            }
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Config error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Config error: {str(e)}'
+        }), 500
+
+# 🔧 FIXED: Register license blueprint AFTER route definitions
+try:
+    app.register_blueprint(license_bp, url_prefix='/api/license')
+    logger.info("✅ License management endpoints registered: /api/license/*")
+except Exception as e:
+    logger.error(f"❌ Failed to register license endpoints: {e}")
+
 # Khởi chạy ứng dụng
 if __name__ == "__main__":
     port = 8080
@@ -283,6 +583,22 @@ if __name__ == "__main__":
     
     logger.info(f"Starting VTrack application on port {port}")
     logger.info(f"🔑 OAuth session security: ✅ Enabled")
+    
+    print("🚀 V_track Backend Starting...")
+    print(f"📡 Server: http://0.0.0.0:{port}")
+    print("🔧 Modules:")
+    print("   ✅ Cloud Storage Sync")
+    print("   ✅ NVR Camera Integration") 
+    print("   ✅ ZaloPay Payment Processing")
+    print("   ✅ Automated License Management")
+    print("   ✅ Email Delivery System")
+    print("\n🔗 API Endpoints:")
+    print(f"   📊 Health Check: http://0.0.0.0:{port}/health")
+    print(f"   💳 Payments: http://0.0.0.0:{port}/api/payment")
+    print(f"   🔔 Webhooks: http://0.0.0.0:{port}/webhook")
+    print(f"   🔑 Licenses: http://0.0.0.0:{port}/api/license")
+    print(f"   ☁️  Cloud Sync: http://0.0.0.0:{port}/api/cloud")
+    print(f"   📹 NVR Sources: http://0.0.0.0:{port}/api/sync")
     
     # 🔧 Debug: Log registered routes
     log_registered_routes()

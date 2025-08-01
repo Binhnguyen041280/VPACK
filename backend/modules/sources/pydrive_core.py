@@ -143,19 +143,24 @@ class PyDriveCore:
             return None
     
     def _create_pydrive_client(self, oauth2client_creds) -> Optional[Any]:
-        """Create PyDrive client from credentials"""
+        """Create PyDrive client from credentials with timeout configuration"""
         try:
             from pydrive2.auth import GoogleAuth
             from pydrive2.drive import GoogleDrive
             
             gauth = GoogleAuth()
             gauth.credentials = oauth2client_creds
+            
+            # ✅ FIX: Configure timeout - 3 minutes (industry standard)
+            # Set http_timeout for network resilience - prevents 5-minute infrastructure timeout
+            gauth.http_timeout = 180  # 3 minutes
+            
             drive = GoogleDrive(gauth)
             
             # Test connection
             about = drive.GetAbout()
             user_email = about.get('user', {}).get('emailAddress', 'Unknown')
-            logger.info(f"✅ PyDrive2 connection successful: {user_email}")
+            logger.info(f"✅ PyDrive2 connection successful with 3-minute timeout: {user_email}")
             
             return drive
             
@@ -239,7 +244,16 @@ class PyDriveCore:
     
     def sync_folder(self, drive, folder_info: Dict, base_path: str, source_id: int) -> Dict:
         """Sync a single folder - simple version"""
-        folder_id = folder_info.get('id') if isinstance(folder_info, dict) else folder_info
+        # Enhanced type validation for folder_id
+        if isinstance(folder_info, dict):
+            folder_id = folder_info.get('id')
+        else:
+            folder_id = folder_info
+        
+        # Validate folder_id is valid string
+        if not folder_id or not isinstance(folder_id, str):
+            return {'success': False, 'message': f'Invalid folder_id: {folder_id}'}
+        
         folder_name = folder_info.get('name', f'folder_{folder_id}') if isinstance(folder_info, dict) else f'folder_{folder_id}'
         
         logger.info(f"🔄 SYNC [{source_id}] Starting folder: {folder_name}")

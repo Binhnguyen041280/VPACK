@@ -6,8 +6,10 @@ No over-engineering, no complex notifications
 """
 
 import os
+import sys
 import json
 import logging
+import socket
 import threading
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
@@ -16,9 +18,8 @@ from typing import Dict, List, Optional, Any
 from .pydrive_core import PyDriveCore
 from .pydrive_error_manager import PyDriveErrorManager
 
-# Existing VTrack infrastructure
+# Existing VTrack infrastructure  
 from modules.db_utils import get_db_connection
-from database import get_sync_status, initialize_sync_status
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,60 @@ class PyDriveDownloader:
         
         logger.info("🚀 PyDriveDownloader initialized - Simple & Reliable")
     
+    # ==================== DATABASE HELPER FUNCTIONS ====================
+    
+    def get_sync_status(self, source_id: int):
+        """Get sync status for a source - local implementation"""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT * FROM sync_status WHERE source_id = ?
+            """, (source_id,))
+            
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result:
+                columns = [description[0] for description in cursor.description]
+                return dict(zip(columns, result))
+            return None
+        except Exception as e:
+            logger.error(f"Error getting sync status: {e}")
+            return None
+    
+    def initialize_sync_status(self, source_id: int, sync_enabled: bool = True, interval_minutes: int = 10):
+        """Initialize sync status for a new source - local implementation"""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            now = datetime.now()
+            next_sync = now + timedelta(minutes=interval_minutes)
+            
+            cursor.execute("""
+                INSERT OR REPLACE INTO sync_status (
+                    source_id, sync_enabled, last_sync_timestamp, next_sync_timestamp,
+                    sync_interval_minutes, last_sync_status, last_sync_message
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                source_id, 
+                1 if sync_enabled else 0,
+                now.isoformat(),
+                next_sync.isoformat(),
+                interval_minutes,
+                'initialized',
+                'Auto-sync initialized'
+            ))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.error(f"Error initializing sync status: {e}")
+            return False
+    
     # ==================== CORE API (Simplified) ====================
     
     def start_auto_sync(self, source_id: int) -> bool:
@@ -56,8 +111,8 @@ class PyDriveDownloader:
                 return False
             
             # Initialize if needed
-            if not get_sync_status(source_id):
-                initialize_sync_status(source_id, sync_enabled=True, interval_minutes=DEFAULT_SYNC_INTERVAL_MINUTES)
+            if not self.get_sync_status(source_id):
+                self.initialize_sync_status(source_id, sync_enabled=True, interval_minutes=DEFAULT_SYNC_INTERVAL_MINUTES)
             
             # Create lock and schedule
             self.sync_locks[source_id] = threading.Lock()
@@ -94,7 +149,7 @@ class PyDriveDownloader:
     def get_simple_status(self, source_id: int) -> Dict:
         """Get user-friendly status - 3 states only"""
         try:
-            status = get_sync_status(source_id)
+            status = self.get_sync_status(source_id)
             if not status:
                 return {'status': 'not_configured', 'message': 'Chưa cấu hình'}
             
@@ -128,7 +183,7 @@ class PyDriveDownloader:
     # ==================== SYNC OPERATIONS (Simplified) ====================
     
     def _perform_sync(self, source_id: int) -> Dict:
-        """Simplified sync with basic error handling"""
+        """Enhanced với timeout detection"""
         # Get lock
         if source_id not in self.sync_locks:
             self.sync_locks[source_id] = threading.Lock()
@@ -139,38 +194,43 @@ class PyDriveDownloader:
         try:
             logger.info(f"🔄 Starting sync for source {source_id}")
             
-            # Use core with simple error wrapper
-            def sync_operation():
-                return self.core.sync_source(source_id)
+            # ✅ SIMPLE: Basic network check
+            try:
+                socket.gethostbyname('google.com')
+            except Exception:
+                return {
+                    'success': False, 
+                    'message': 'No network connectivity',
+                    'retry_suggested': True
+                }
             
-            # Simple retry logic (no complex error management)
-            max_attempts = 2
-            for attempt in range(max_attempts):
-                try:
-                    result = sync_operation()
-                    
-                    if result['success']:
-                        # Success - reset error count
-                        self._update_success_status(source_id, result)
-                        return result
-                    else:
-                        if attempt < max_attempts - 1:
-                            logger.warning(f"⚠️ Sync attempt {attempt + 1} failed, retrying...")
-                            continue
-                        else:
-                            # Final failure
-                            self._update_error_status(source_id, result.get('message', 'Sync failed'))
-                            return result
-                            
-                except Exception as e:
-                    if attempt < max_attempts - 1:
-                        logger.warning(f"⚠️ Sync error attempt {attempt + 1}: {e}")
-                        continue
-                    else:
-                        # Final error
-                        self._update_error_status(source_id, str(e))
-                        return {'success': False, 'message': str(e)}
+            # Perform actual sync
+            result = self.core.sync_source(source_id)
             
+            if result.get('success'):
+                self._update_simple_status(source_id, 'active', 'Đang hoạt động bình thường')
+            else:
+                # ✅ SIMPLE: Check if timeout error
+                error_msg = result.get('message', '').lower()
+                if any(keyword in error_msg for keyword in ['timeout', 'connection', 'network']):
+                    self._update_simple_status(source_id, 'retrying', 'Đang thử lại do lỗi tạm thời')
+                else:
+                    self._update_simple_status(source_id, 'error', f'Lỗi: {result.get("message")}')
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Sync failed for source {source_id}: {e}")
+            
+            # ✅ SIMPLE: Classify error type
+            error_str = str(e).lower()
+            if any(keyword in error_str for keyword in ['timeout', 'connection', 'network']):
+                self._update_simple_status(source_id, 'retrying', 'Đang thử lại do mất kết nối')
+                return {'success': False, 'message': 'Network timeout', 'retry_suggested': True}
+            else:
+                self._update_simple_status(source_id, 'error', f'Lỗi hệ thống: {str(e)}')
+                return {'success': False, 'message': str(e)}
+        
         finally:
             self.sync_locks[source_id].release()
     
@@ -258,7 +318,7 @@ class PyDriveDownloader:
     def _schedule_next_sync(self, source_id: int):
         """Schedule next sync with simple backoff"""
         try:
-            status = get_sync_status(source_id)
+            status = self.get_sync_status(source_id)
             if not status or not status.get('sync_enabled', True):
                 return
             
@@ -297,8 +357,9 @@ class PyDriveDownloader:
             logger.error(f"❌ Error scheduling sync: {e}")
     
     def _timer_callback(self, source_id: int):
-        """Simple timer callback - always schedules next sync"""
+        """Enhanced timer callback - never dies"""
         try:
+            # Update heartbeat
             logger.debug(f"⏰ Timer callback for source {source_id}")
             
             # Perform sync
@@ -307,27 +368,36 @@ class PyDriveDownloader:
             if sync_result.get('success'):
                 logger.info(f"✅ Timer sync completed for source {source_id}")
             else:
-                logger.warning(f"⚠️ Timer sync failed for source {source_id}: {sync_result.get('message')}")
-            
+                logger.warning(f"⚠️ Timer sync failed: {sync_result.get('message')}")
+                
         except Exception as e:
             logger.error(f"❌ Timer callback error: {e}")
         
         finally:
-            # ALWAYS schedule next sync (never let timer die)
+            # ✅ CRITICAL: ALWAYS reschedule - never let timer die
             try:
-                current_status = get_sync_status(source_id)
-                if current_status and current_status.get('sync_enabled', True):
-                    self._schedule_next_sync(source_id)
+                status = self.get_sync_status(source_id)
+                if status and status.get('sync_enabled', True):
+                    # Normal rescheduling
+                    interval = 2  # minutes
+                    timer = threading.Timer(interval * 60, self._timer_callback, args=(source_id,))
+                    timer.daemon = True
+                    self.sync_timers[source_id] = timer
+                    timer.start()
+                    logger.debug(f"⏰ Next sync scheduled for source {source_id} in {interval} minutes")
                 else:
-                    # Remove from timers if disabled
+                    # Remove if disabled
                     self.sync_timers.pop(source_id, None)
+                    
             except Exception as schedule_error:
-                logger.error(f"❌ Error scheduling next sync: {schedule_error}")
-                # Emergency fallback: restart in 30 minutes
-                timer = threading.Timer(30 * 60, self._timer_callback, args=(source_id,))
-                timer.daemon = True
-                self.sync_timers[source_id] = timer
-                timer.start()
+                logger.error(f"❌ CRITICAL: Failed to reschedule timer: {schedule_error}")
+                
+                # ✅ EMERGENCY FALLBACK: Force reschedule
+                emergency_timer = threading.Timer(5 * 60, self._timer_callback, args=(source_id,))
+                emergency_timer.daemon = True
+                self.sync_timers[source_id] = emergency_timer
+                emergency_timer.start()
+                logger.warning(f"🚨 Emergency timer scheduled for source {source_id}")
     
     # ==================== BULK OPERATIONS (Essential only) ====================
     

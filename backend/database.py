@@ -540,7 +540,7 @@ def update_database():
 # 🔒 SECURITY: Session Management Methods
 def create_session(session_token: str, user_email: str, provider: str, 
                   encrypted_credentials: str, expires_at: datetime, 
-                  user_agent: str = None, ip_address: str = None) -> bool:
+                  user_agent: str = "", ip_address: str = "") -> bool:
     """Create new user session"""
     try:
         conn = get_db_connection()
@@ -551,7 +551,7 @@ def create_session(session_token: str, user_email: str, provider: str,
              expires_at, user_agent, ip_address)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (session_token, user_email, provider, encrypted_credentials, 
-              expires_at, user_agent, ip_address))
+              expires_at, user_agent or "", ip_address or ""))
         conn.commit()
         conn.close()
         logger.info(f"Session created for {user_email}")
@@ -663,10 +663,10 @@ def get_user_sessions(user_email: str) -> List[Dict]:
         return []
 
 # 🔒 SECURITY: Authentication Audit Methods
-def log_auth_event(event_type: str, success: bool, user_email: str = None, 
-                  session_token: str = None, provider: str = None, 
-                  ip_address: str = None, user_agent: str = None, 
-                  error_message: str = None, metadata: Dict = None) -> bool:
+def log_auth_event(event_type: str, success: bool, user_email: str = "", 
+                  session_token: str = "", provider: str = "", 
+                  ip_address: str = "", user_agent: str = "", 
+                  error_message: str = "", metadata: Optional[Dict] = None) -> bool:
     """Log authentication event"""
     try:
         conn = get_db_connection()
@@ -676,9 +676,17 @@ def log_auth_event(event_type: str, success: bool, user_email: str = None,
             (session_token, user_email, event_type, provider, success, 
              ip_address, user_agent, error_message, metadata)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (session_token, user_email, event_type, provider, success,
-              ip_address, user_agent, error_message, 
-              json.dumps(metadata) if metadata else None))
+        ''', (
+            session_token or "",          # Convert None to empty string
+            user_email or "",            # Convert None to empty string
+            event_type, 
+            provider or "",              # Convert None to empty string
+            success,
+            ip_address or "",            # Convert None to empty string
+            user_agent or "",            # Convert None to empty string
+            error_message or "",         # Convert None to empty string
+            json.dumps(metadata or {})   # Convert None to empty dict then JSON
+        ))
         conn.commit()
         conn.close()
         return True
@@ -686,7 +694,7 @@ def log_auth_event(event_type: str, success: bool, user_email: str = None,
         logger.error(f"Failed to log auth event: {e}")
         return False
 
-def get_auth_audit(user_email: str = None, limit: int = 100) -> List[Dict]:
+def get_auth_audit(user_email: str = "", limit: int = 100) -> List[Dict]:
     """Get authentication audit trail"""
     try:
         conn = get_db_connection()
@@ -890,16 +898,19 @@ def get_camera_download_stats(source_id: int):
 
 # Helper functions for lazy folder tree
 
-def create_source_with_folder_info(source_data, selected_folders=None):
+def create_source_with_folder_info(source_data: Optional[Dict] = None, selected_folders: Optional[List[Dict]] = None):
     """Create video source with lazy folder tree information"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Prepare source data
-        source_type = source_data.get('source_type')
-        name = source_data.get('name')
-        path = source_data.get('path')
+        # Ensure source_data is not None
+        source_data = source_data or {}
+        
+        # Prepare source data with safe defaults
+        source_type = source_data.get('source_type', 'local')
+        name = source_data.get('name', 'Unnamed Source')
+        path = source_data.get('path', '')
         config = json.dumps(source_data.get('config', {}))
         
         # For cloud sources with lazy folder selection
@@ -912,10 +923,10 @@ def create_source_with_folder_info(source_data, selected_folders=None):
             
             # Use depth from first selected folder (they should all be depth 4)
             folder_depth = selected_folders[0].get('depth', 4) if selected_folders else 4
-            parent_folder_id = selected_folders[0].get('parent_id') if selected_folders else None
+            parent_folder_id = selected_folders[0].get('parent_id', '') if selected_folders else ''
         else:
             folder_depth = 0
-            parent_folder_id = None
+            parent_folder_id = ''
         
         # Insert source
         cursor.execute("""
@@ -973,7 +984,7 @@ def get_sources_with_folder_info():
         print(f"❌ Error getting sources with folder info: {e}")
         return []
 
-def update_source_folder_depth(source_id, folder_depth, parent_folder_id=None):
+def update_source_folder_depth(source_id, folder_depth, parent_folder_id: str = ""):
     """Update folder depth for existing source"""
     try:
         conn = get_db_connection()
@@ -983,7 +994,7 @@ def update_source_folder_depth(source_id, folder_depth, parent_folder_id=None):
             UPDATE video_sources 
             SET folder_depth = ?, parent_folder_id = ?
             WHERE id = ?
-        """, (folder_depth, parent_folder_id, source_id))
+        """, (folder_depth, parent_folder_id or '', source_id))
         
         conn.commit()
         conn.close()
