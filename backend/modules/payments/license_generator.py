@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.fernet import Fernet
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -69,13 +69,23 @@ class LicenseGenerator:
         """Generate new RSA key pair"""
         try:
             # Generate private key
-            self.private_key = rsa.generate_private_key(
+            private_key = rsa.generate_private_key(
                 public_exponent=65537,
                 key_size=2048,
             )
             
+            # Type check and assignment
+            if not isinstance(private_key, rsa.RSAPrivateKey):
+                raise ValueError("Generated key is not RSA private key")
+            
+            self.private_key = private_key
+            
             # Get public key
-            self.public_key = self.private_key.public_key()
+            public_key = private_key.public_key()
+            if not isinstance(public_key, rsa.RSAPublicKey):
+                raise ValueError("Generated public key is not RSA public key")
+                
+            self.public_key = public_key
             
             # Save private key
             private_pem = self.private_key.private_bytes(
@@ -109,14 +119,26 @@ class LicenseGenerator:
         try:
             # Load private key
             with open(private_path, 'rb') as f:
-                self.private_key = serialization.load_pem_private_key(
+                loaded_private_key = serialization.load_pem_private_key(
                     f.read(),
                     password=None,
                 )
             
+            # Type check and cast
+            if not isinstance(loaded_private_key, rsa.RSAPrivateKey):
+                raise ValueError("Loaded private key is not RSA private key")
+            
+            self.private_key = cast(rsa.RSAPrivateKey, loaded_private_key)
+            
             # Load public key
             with open(public_path, 'rb') as f:
-                self.public_key = serialization.load_pem_public_key(f.read())
+                loaded_public_key = serialization.load_pem_public_key(f.read())
+            
+            # Type check and cast
+            if not isinstance(loaded_public_key, rsa.RSAPublicKey):
+                raise ValueError("Loaded public key is not RSA public key")
+                
+            self.public_key = cast(rsa.RSAPublicKey, loaded_public_key)
                 
         except Exception as e:
             logger.error(f"RSA key loading error: {str(e)}")
