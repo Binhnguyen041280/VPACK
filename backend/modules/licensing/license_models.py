@@ -1,150 +1,79 @@
 # backend/modules/licensing/license_models.py
+"""
+V_Track License Management Models - No Duplicate Tables
+Only handles database operations, tables already created in database.py
+"""
 
 import sqlite3
 import json
 import logging
 from datetime import datetime, timedelta
-from modules.db_utils import get_db_connection
+from typing import Optional, Dict, Any, List
+
+# Import database utilities
+try:
+    from modules.db_utils import get_db_connection
+except ImportError:
+    from backend.modules.db_utils import get_db_connection
 
 logger = logging.getLogger(__name__)
 
 def init_license_db():
     """
-    Initialize license management tables trong existing database
-    Extends current V_track database với licensing functionality
+    Check if license tables exist (they should be created by database.py)
+    This function only verifies, does NOT create tables
     """
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
-            # 1. Payment Transactions Table
+            # Check if licenses table exists
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS payment_transactions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    app_trans_id TEXT UNIQUE NOT NULL,
-                    zalopay_trans_id TEXT,
-                    customer_email TEXT NOT NULL,
-                    amount INTEGER NOT NULL,
-                    status TEXT DEFAULT 'pending',
-                    payment_data TEXT,  -- JSON metadata
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    completed_at TIMESTAMP
-                )
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='licenses'
             """)
             
-            # 2. Licenses Table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS licenses (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    license_key TEXT UNIQUE NOT NULL,
-                    customer_email TEXT NOT NULL,
-                    payment_transaction_id INTEGER,
-                    product_type TEXT DEFAULT 'desktop',
-                    features TEXT,  -- JSON array của features
-                    status TEXT DEFAULT 'generated',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    expires_at TIMESTAMP,
-                    activated_at TIMESTAMP,
-                    machine_fingerprint TEXT,
-                    activation_count INTEGER DEFAULT 0,
-                    max_activations INTEGER DEFAULT 1,
-                    FOREIGN KEY (payment_transaction_id) REFERENCES payment_transactions(id)
-                )
-            """)
-            
-            # 3. License Activations Table (tracking multiple activations)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS license_activations (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    license_id INTEGER NOT NULL,
-                    machine_fingerprint TEXT NOT NULL,
-                    activation_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_heartbeat TIMESTAMP,
-                    status TEXT DEFAULT 'active',
-                    device_info TEXT,  -- JSON với device details
-                    FOREIGN KEY (license_id) REFERENCES licenses(id),
-                    UNIQUE(license_id, machine_fingerprint)
-                )
-            """)
-            
-            # 4. Email Log Table (tracking email delivery)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS email_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    license_id INTEGER,
-                    recipient_email TEXT NOT NULL,
-                    email_type TEXT DEFAULT 'license_delivery',
-                    subject TEXT,
-                    status TEXT DEFAULT 'pending',
-                    sent_at TIMESTAMP,
-                    error_message TEXT,
-                    FOREIGN KEY (license_id) REFERENCES licenses(id)
-                )
-            """)
-            
-            # 5. License Usage Stats (optional analytics)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS license_usage_stats (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    license_id INTEGER NOT NULL,
-                    date DATE NOT NULL,
-                    usage_hours REAL DEFAULT 0,
-                    feature_usage TEXT,  -- JSON tracking feature usage
-                    performance_metrics TEXT,  -- JSON với performance data
-                    FOREIGN KEY (license_id) REFERENCES licenses(id),
-                    UNIQUE(license_id, date)
-                )
-            """)
-            
-            # Create indexes for performance
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_email ON payment_transactions(customer_email)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_status ON payment_transactions(status)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_license_email ON licenses(customer_email)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_license_status ON licenses(status)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_activation_license ON license_activations(license_id)")
-            
-            conn.commit()
-            logger.info("License database tables initialized successfully")
-            
-            # Verify tables created
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%license%' OR name LIKE '%payment%'")
-            tables = cursor.fetchall()
-            logger.info(f"Created license tables: {[table[0] for table in tables]}")
-            
+            if cursor.fetchone():
+                logger.info("✅ License tables verified - already exist")
+                return True
+            else:
+                logger.warning("⚠️ License tables not found! Run database.py first")
+                return False
+                
     except Exception as e:
-        logger.error(f"Failed to initialize license database: {str(e)}")
-        raise
+        logger.error(f"❌ Failed to verify license database: {str(e)}")
+        return False
 
 class PaymentTransaction:
     """Model for payment transactions"""
     
     @staticmethod
-    def create(app_trans_id, customer_email, amount, payment_data=None):
+    def create(app_trans_id: str, customer_email: str, amount: int, payment_data: Optional[Dict] = None) -> Optional[int]:
         """Create new payment transaction"""
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
+                payment_data_json = json.dumps(payment_data) if payment_data else None
+                
                 cursor.execute("""
                     INSERT INTO payment_transactions 
                     (app_trans_id, customer_email, amount, status, payment_data)
                     VALUES (?, ?, ?, 'pending', ?)
-                """, (
-                    app_trans_id,
-                    customer_email,
-                    amount,
-                    json.dumps(payment_data) if payment_data else None
-                ))
+                """, (app_trans_id, customer_email, amount, payment_data_json))
                 
+                transaction_id = cursor.lastrowid
                 conn.commit()
-                return cursor.lastrowid
+                
+                logger.info(f"✅ Payment transaction created: ID {transaction_id}")
+                return transaction_id
                 
         except Exception as e:
-            logger.error(f"Failed to create payment transaction: {str(e)}")
+            logger.error(f"❌ Failed to create payment transaction: {str(e)}")
             return None
     
     @staticmethod
-    def get_by_app_trans_id(app_trans_id):
+    def get_by_app_trans_id(app_trans_id: str) -> Optional[Dict[str, Any]]:
         """Get payment transaction by app_trans_id"""
         try:
             with get_db_connection() as conn:
@@ -156,91 +85,142 @@ class PaymentTransaction:
                 """, (app_trans_id,))
                 
                 row = cursor.fetchone()
-                if row:
-                    return {
-                        'id': row[0],
-                        'app_trans_id': row[1],
-                        'zalopay_trans_id': row[2],
-                        'customer_email': row[3],
-                        'amount': row[4],
-                        'status': row[5],
-                        'payment_data': json.loads(row[6]) if row[6] else {},
-                        'created_at': row[7],
-                        'completed_at': row[8]
-                    }
-                return None
+                if not row:
+                    return None
+                
+                # Get column names
+                cursor.execute("PRAGMA table_info(payment_transactions)")
+                columns = [col[1] for col in cursor.fetchall()]
+                
+                # Convert to dict
+                transaction = dict(zip(columns, row))
+                
+                # Parse JSON fields
+                if transaction.get('payment_data'):
+                    try:
+                        transaction['payment_data'] = json.loads(transaction['payment_data'])
+                    except (json.JSONDecodeError, TypeError):
+                        transaction['payment_data'] = {}
+                
+                return transaction
                 
         except Exception as e:
-            logger.error(f"Failed to get payment transaction: {str(e)}")
+            logger.error(f"❌ Failed to get payment transaction: {str(e)}")
             return None
     
     @staticmethod
-    def update_status(app_trans_id, status, zalopay_trans_id=None):
+    def update_status(app_trans_id: str, status: str, zalopay_trans_id: Optional[str] = None) -> bool:
         """Update payment transaction status"""
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                update_fields = ["status = ?", "completed_at = ?"]
-                update_values = [status, datetime.now() if status == 'completed' else None]
+                update_fields = ["status = ?"]
+                params = [status]
                 
                 if zalopay_trans_id:
                     update_fields.append("zalopay_trans_id = ?")
-                    update_values.append(zalopay_trans_id)
+                    params.append(zalopay_trans_id)
                 
-                update_values.append(app_trans_id)
+                if status == 'completed':
+                    update_fields.append("completed_at = ?")
+                    params.append(datetime.now().isoformat())
+                
+                params.append(app_trans_id)
                 
                 cursor.execute(f"""
                     UPDATE payment_transactions 
                     SET {', '.join(update_fields)}
                     WHERE app_trans_id = ?
-                """, update_values)
+                """, params)
                 
                 conn.commit()
-                return cursor.rowcount > 0
+                success = cursor.rowcount > 0
+                
+                if success:
+                    logger.info(f"✅ Payment transaction status updated: {app_trans_id} -> {status}")
+                else:
+                    logger.warning(f"⚠️ Payment transaction not found: {app_trans_id}")
+                
+                return success
                 
         except Exception as e:
-            logger.error(f"Failed to update payment status: {str(e)}")
+            logger.error(f"❌ Failed to update payment transaction: {str(e)}")
             return False
 
 class License:
-    """Model for license management"""
+    """
+    Model for license management - MAIN LICENSE CLASS
+    Works with tables created by database.py
+    """
     
     @staticmethod
-    def create(license_key, customer_email, payment_transaction_id, product_type='desktop', features=None, expires_days=365):
-        """Create new license"""
+    def create(license_key: str, customer_email: str, payment_transaction_id: Optional[int] = None,
+               product_type: str = 'desktop', features: Optional[List[str]] = None, 
+               expires_days: int = 365) -> Optional[int]:
+        """
+        Create new license record in database - FIXED VERSION
+        
+        Args:
+            license_key: Generated license key
+            customer_email: Customer email address
+            payment_transaction_id: Associated payment transaction ID
+            product_type: Type of product license
+            features: List of enabled features
+            expires_days: Number of days until expiration
+            
+        Returns:
+            int: License ID if created successfully, None otherwise
+        """
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
-                expires_at = datetime.now() + timedelta(days=expires_days)
-                features_json = json.dumps(features) if features else json.dumps(['full_access'])
+                # Calculate expiration date
+                expires_at = (datetime.now() + timedelta(days=expires_days)).isoformat()
                 
+                # Prepare features JSON
+                features_json = json.dumps(features or ['full_access'])
+                
+                # FIXED SQL - Correct column mapping with database.py schema
                 cursor.execute("""
-                    INSERT INTO licenses 
-                    (license_key, customer_email, payment_transaction_id, product_type, features, expires_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (
-                    license_key,
-                    customer_email,
-                    payment_transaction_id,
-                    product_type,
-                    features_json,
-                    expires_at
-                ))
+                INSERT INTO licenses 
+                (license_key, customer_email, payment_transaction_id, 
+                product_type, features, status, expires_at, activated_at, license_type)
+                VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)
+            """, (license_key, customer_email, payment_transaction_id, 
+                product_type, features_json, expires_at, datetime.now().isoformat(), product_type))
                 
-                conn.commit()
                 license_id = cursor.lastrowid
-                logger.info(f"Created license {license_id} for {customer_email}")
+                conn.commit()
+                
+                logger.info(f"✅ License created: ID {license_id} for {customer_email}")
+                logger.debug(f"📋 License key: {license_key[:12]}...")
+                
                 return license_id
                 
+        except sqlite3.IntegrityError as e:
+            if "UNIQUE constraint failed" in str(e):
+                logger.warning(f"⚠️ License key already exists: {license_key[:12]}...")
+                return None
+            else:
+                logger.error(f"❌ Database integrity error: {str(e)}")
+                return None
         except Exception as e:
-            logger.error(f"Failed to create license: {str(e)}")
+            logger.error(f"❌ Failed to create license: {str(e)}")
             return None
     
     @staticmethod
-    def get_by_key(license_key):
-        """Get license by license key"""
+    def get_by_key(license_key: str) -> Optional[Dict[str, Any]]:
+        """
+        Get license by license key
+        
+        Args:
+            license_key: License key to search for
+            
+        Returns:
+            dict: License data if found, None otherwise
+        """
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
@@ -251,31 +231,37 @@ class License:
                 """, (license_key,))
                 
                 row = cursor.fetchone()
-                if row:
-                    return {
-                        'id': row[0],
-                        'license_key': row[1],
-                        'customer_email': row[2],
-                        'payment_transaction_id': row[3],
-                        'product_type': row[4],
-                        'features': json.loads(row[5]) if row[5] else [],
-                        'status': row[6],
-                        'created_at': row[7],
-                        'expires_at': row[8],
-                        'activated_at': row[9],
-                        'machine_fingerprint': row[10],
-                        'activation_count': row[11],
-                        'max_activations': row[12]
-                    }
-                return None
+                if not row:
+                    logger.debug(f"🔍 License not found: {license_key[:12]}...")
+                    return None
+                
+                # Get column names
+                cursor.execute("PRAGMA table_info(licenses)")
+                columns = [col[1] for col in cursor.fetchall()]
+                
+                # Convert to dict
+                license_data = dict(zip(columns, row))
+                
+                # Parse JSON fields
+                if license_data.get('features'):
+                    try:
+                        license_data['features'] = json.loads(license_data['features'])
+                    except (json.JSONDecodeError, TypeError):
+                        license_data['features'] = ['full_access']
+                
+                # Add package_name field for payment_routes compatibility
+                license_data['package_name'] = license_data.get('product_type', 'desktop')
+                
+                logger.debug(f"✅ License found: {license_key[:12]}... for {license_data.get('customer_email')}")
+                return license_data
                 
         except Exception as e:
-            logger.error(f"Failed to get license: {str(e)}")
+            logger.error(f"❌ Failed to get license by key: {str(e)}")
             return None
     
     @staticmethod
-    def get_by_email(customer_email):
-        """Get all licenses for customer email"""
+    def get_by_email(customer_email: str) -> List[Dict[str, Any]]:
+        """Get all licenses for a customer email"""
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
@@ -287,261 +273,185 @@ class License:
                 """, (customer_email,))
                 
                 rows = cursor.fetchall()
+                if not rows:
+                    return []
+                
+                # Get column names
+                cursor.execute("PRAGMA table_info(licenses)")
+                columns = [col[1] for col in cursor.fetchall()]
+                
+                # Convert to list of dicts
                 licenses = []
-                
                 for row in rows:
-                    licenses.append({
-                        'id': row[0],
-                        'license_key': row[1],
-                        'customer_email': row[2],
-                        'payment_transaction_id': row[3],
-                        'product_type': row[4],
-                        'features': json.loads(row[5]) if row[5] else [],
-                        'status': row[6],
-                        'created_at': row[7],
-                        'expires_at': row[8],
-                        'activated_at': row[9],
-                        'machine_fingerprint': row[10],
-                        'activation_count': row[11],
-                        'max_activations': row[12]
-                    })
+                    license_data = dict(zip(columns, row))
+                    
+                    # Parse JSON fields
+                    if license_data.get('features'):
+                        try:
+                            license_data['features'] = json.loads(license_data['features'])
+                        except (json.JSONDecodeError, TypeError):
+                            license_data['features'] = ['full_access']
+                    
+                    # Add package_name field for compatibility
+                    license_data['package_name'] = license_data.get('product_type', 'desktop')
+                    
+                    licenses.append(license_data)
                 
+                logger.info(f"📋 Found {len(licenses)} licenses for {customer_email}")
                 return licenses
                 
         except Exception as e:
-            logger.error(f"Failed to get licenses for email: {str(e)}")
+            logger.error(f"❌ Failed to get licenses by email: {str(e)}")
             return []
     
     @staticmethod
-    def activate(license_key, machine_fingerprint, device_info=None):
-        """Activate license on specific machine"""
-        try:
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                
-                # Get license info
-                license_data = License.get_by_key(license_key)
-                if not license_data:
-                    return {'success': False, 'error': 'License not found'}
-                
-                # Check if license is already activated on this machine
-                cursor.execute("""
-                    SELECT * FROM license_activations 
-                    WHERE license_id = ? AND machine_fingerprint = ?
-                """, (license_data['id'], machine_fingerprint))
-                
-                existing_activation = cursor.fetchone()
-                
-                if existing_activation:
-                    # Update heartbeat
-                    cursor.execute("""
-                        UPDATE license_activations 
-                        SET last_heartbeat = ?, status = 'active'
-                        WHERE license_id = ? AND machine_fingerprint = ?
-                    """, (datetime.now(), license_data['id'], machine_fingerprint))
-                    
-                    conn.commit()
-                    return {'success': True, 'status': 'already_activated'}
-                
-                # Check activation limits
-                if license_data['activation_count'] >= license_data['max_activations']:
-                    return {'success': False, 'error': 'Maximum activations reached'}
-                
-                # Check expiration
-                if license_data['expires_at']:
-                    expires_at = datetime.fromisoformat(license_data['expires_at'])
-                    if datetime.now() > expires_at:
-                        return {'success': False, 'error': 'License expired'}
-                
-                # Create new activation
-                cursor.execute("""
-                    INSERT INTO license_activations 
-                    (license_id, machine_fingerprint, device_info, last_heartbeat)
-                    VALUES (?, ?, ?, ?)
-                """, (
-                    license_data['id'],
-                    machine_fingerprint,
-                    json.dumps(device_info) if device_info else None,
-                    datetime.now()
-                ))
-                
-                # Update license activation count and status
-                cursor.execute("""
-                    UPDATE licenses 
-                    SET activation_count = activation_count + 1,
-                        activated_at = COALESCE(activated_at, ?),
-                        status = 'active'
-                    WHERE id = ?
-                """, (datetime.now(), license_data['id']))
-                
-                conn.commit()
-                logger.info(f"License {license_key} activated on machine {machine_fingerprint[:8]}...")
-                return {'success': True, 'status': 'activated'}
-                
-        except Exception as e:
-            logger.error(f"Failed to activate license: {str(e)}")
-            return {'success': False, 'error': f'Activation error: {str(e)}'}
-    
-    @staticmethod
-    def validate(license_key, machine_fingerprint=None):
-        """Validate license status"""
-        try:
-            license_data = License.get_by_key(license_key)
-            if not license_data:
-                return {'valid': False, 'error': 'License not found'}
-            
-            # Check expiration
-            if license_data['expires_at']:
-                expires_at = datetime.fromisoformat(license_data['expires_at'])
-                if datetime.now() > expires_at:
-                    return {'valid': False, 'error': 'License expired'}
-            
-            # Check status
-            if license_data['status'] not in ['active', 'generated']:
-                return {'valid': False, 'error': f'License status: {license_data["status"]}'}
-            
-            # If machine fingerprint provided, check activation
-            if machine_fingerprint:
-                with get_db_connection() as conn:
-                    cursor = conn.cursor()
-                    
-                    cursor.execute("""
-                        SELECT status FROM license_activations 
-                        WHERE license_id = ? AND machine_fingerprint = ?
-                    """, (license_data['id'], machine_fingerprint))
-                    
-                    activation = cursor.fetchone()
-                    if not activation:
-                        return {'valid': False, 'error': 'License not activated on this machine'}
-                    
-                    if activation[0] != 'active':
-                        return {'valid': False, 'error': f'Activation status: {activation[0]}'}
-            
-            return {
-                'valid': True,
-                'license_data': license_data
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to validate license: {str(e)}")
-            return {'valid': False, 'error': f'Validation error: {str(e)}'}
-
-class EmailLog:
-    """Model for email delivery tracking"""
-    
-    @staticmethod
-    def create(license_id, recipient_email, email_type, subject):
-        """Create email log entry"""
+    def get_active_license() -> Optional[Dict[str, Any]]:
+        """
+        Get current active license (singular) - FOR payment_routes.py
+        
+        Returns:
+            dict: Active license data if found, None otherwise
+        """
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
                 cursor.execute("""
-                    INSERT INTO email_logs 
-                    (license_id, recipient_email, email_type, subject)
-                    VALUES (?, ?, ?, ?)
-                """, (license_id, recipient_email, email_type, subject))
+                    SELECT * FROM licenses 
+                    WHERE status = 'active' 
+                    AND (expires_at IS NULL OR expires_at > ?)
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """, (datetime.now().isoformat(),))
                 
-                conn.commit()
-                return cursor.lastrowid
+                row = cursor.fetchone()
+                if not row:
+                    logger.debug("🔍 No active license found")
+                    return None
+                
+                # Get column names
+                cursor.execute("PRAGMA table_info(licenses)")
+                columns = [col[1] for col in cursor.fetchall()]
+                
+                # Convert to dict
+                license_data = dict(zip(columns, row))
+                
+                # Parse JSON fields
+                if license_data.get('features'):
+                    try:
+                        license_data['features'] = json.loads(license_data['features'])
+                    except (json.JSONDecodeError, TypeError):
+                        license_data['features'] = ['full_access']
+                
+                # Add package_name field for payment_routes compatibility
+                license_data['package_name'] = license_data.get('product_type', 'desktop')
+                
+                logger.debug(f"✅ Active license found for {license_data.get('customer_email')}")
+                return license_data
                 
         except Exception as e:
-            logger.error(f"Failed to create email log: {str(e)}")
+            logger.error(f"❌ Failed to get active license: {str(e)}")
             return None
     
     @staticmethod
-    def update_status(log_id, status, error_message=None):
-        """Update email delivery status"""
+    def update_status(license_key: str, status: str) -> bool:
+        """Update license status"""
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
                 cursor.execute("""
-                    UPDATE email_logs 
-                    SET status = ?, sent_at = ?, error_message = ?
-                    WHERE id = ?
-                """, (
-                    status,
-                    datetime.now() if status == 'sent' else None,
-                    error_message,
-                    log_id
-                ))
+                    UPDATE licenses 
+                    SET status = ?
+                    WHERE license_key = ?
+                """, (status, license_key))
                 
                 conn.commit()
-                return cursor.rowcount > 0
+                success = cursor.rowcount > 0
+                
+                if success:
+                    logger.info(f"✅ License status updated: {license_key[:12]}... -> {status}")
+                else:
+                    logger.warning(f"⚠️ License not found for update: {license_key[:12]}...")
+                
+                return success
                 
         except Exception as e:
-            logger.error(f"Failed to update email log: {str(e)}")
+            logger.error(f"❌ Failed to update license status: {str(e)}")
+            return False
+    
+    @staticmethod
+    def delete(license_key: str) -> bool:
+        """Delete license record"""
+        try:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                    DELETE FROM licenses WHERE license_key = ?
+                """, (license_key,))
+                
+                conn.commit()
+                success = cursor.rowcount > 0
+                
+                if success:
+                    logger.info(f"✅ License deleted: {license_key[:12]}...")
+                else:
+                    logger.warning(f"⚠️ License not found for deletion: {license_key[:12]}...")
+                
+                return success
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to delete license: {str(e)}")
             return False
 
 # Utility functions
-def get_license_stats():
-    """Get licensing statistics"""
+def get_license_statistics() -> Dict[str, int]:
+    """Get license usage statistics"""
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
+            
+            stats = {}
             
             # Total licenses
             cursor.execute("SELECT COUNT(*) FROM licenses")
-            total_licenses = cursor.fetchone()[0]
+            stats['total_licenses'] = cursor.fetchone()[0]
             
             # Active licenses
-            cursor.execute("SELECT COUNT(*) FROM licenses WHERE status = 'active'")
-            active_licenses = cursor.fetchone()[0]
-            
-            # Recent payments (last 30 days)
             cursor.execute("""
-                SELECT COUNT(*) FROM payment_transactions 
-                WHERE created_at > datetime('now', '-30 days') AND status = 'completed'
-            """)
-            recent_payments = cursor.fetchone()[0]
+                SELECT COUNT(*) FROM licenses 
+                WHERE status = 'active' 
+                AND (expires_at IS NULL OR expires_at > ?)
+            """, (datetime.now().isoformat(),))
+            stats['active_licenses'] = cursor.fetchone()[0]
             
-            # Revenue (last 30 days)
+            # Expired licenses
             cursor.execute("""
-                SELECT COALESCE(SUM(amount), 0) FROM payment_transactions 
-                WHERE created_at > datetime('now', '-30 days') AND status = 'completed'
-            """)
-            recent_revenue = cursor.fetchone()[0]
+                SELECT COUNT(*) FROM licenses 
+                WHERE expires_at IS NOT NULL AND expires_at <= ?
+            """, (datetime.now().isoformat(),))
+            stats['expired_licenses'] = cursor.fetchone()[0]
             
-            return {
-                'total_licenses': total_licenses,
-                'active_licenses': active_licenses,
-                'recent_payments': recent_payments,
-                'recent_revenue': recent_revenue
-            }
+            return stats
             
     except Exception as e:
-        logger.error(f"Failed to get license stats: {str(e)}")
-        return None
+        logger.error(f"❌ Failed to get license statistics: {str(e)}")
+        return {}
 
-def cleanup_expired_licenses():
-    """Cleanup expired and old data"""
+# Convenience functions for payment_routes.py compatibility
+def get_active_license():
+    """Get active license - convenience function"""
+    return License.get_active_license()
+
+def create_license(license_key: str, customer_email: str, **kwargs):
+    """Create license - convenience function"""
+    return License.create(license_key, customer_email, **kwargs)
+
+# Verify database on import (does NOT create tables)
+if __name__ != "__main__":
     try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Deactivate expired licenses
-            cursor.execute("""
-                UPDATE licenses 
-                SET status = 'expired' 
-                WHERE expires_at < datetime('now') AND status != 'expired'
-            """)
-            
-            expired_count = cursor.rowcount
-            
-            # Cleanup old payment transactions (older than 1 year)
-            cursor.execute("""
-                DELETE FROM payment_transactions 
-                WHERE created_at < datetime('now', '-1 year') AND status = 'pending'
-            """)
-            
-            cleaned_payments = cursor.rowcount
-            
-            conn.commit()
-            logger.info(f"License cleanup: {expired_count} expired, {cleaned_payments} old payments removed")
-            
-            return {'expired_licenses': expired_count, 'cleaned_payments': cleaned_payments}
-            
+        init_license_db()  # Only verifies tables exist
     except Exception as e:
-        logger.error(f"License cleanup failed: {str(e)}")
-        return None
+        logger.warning(f"⚠️ License database verification failed: {str(e)}")
+        logger.info("💡 Make sure to run 'python database.py' first to create tables")

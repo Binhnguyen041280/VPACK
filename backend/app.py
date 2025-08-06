@@ -1,47 +1,8 @@
 import os
 import sys
+from flask import Flask, render_template, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
-import os
-load_dotenv()
-
-# ==================== TẮT TẤT CẢ LOGS TRƯỚC KHI IMPORT ====================
-# TensorFlow logs
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-os.environ['TF_LOGGING'] = 'ERROR'
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-
-# Google/Abseil logs (MediaPipe)
-os.environ['GLOG_minloglevel'] = '3'
-os.environ['GLOG_logtostderr'] = '0'
-os.environ['GLOG_stderrthreshold'] = '3'
-os.environ['GLOG_v'] = '0'
-
-# MediaPipe logs
-os.environ['MEDIAPIPE_DISABLE_GPU'] = '1'
-os.environ['MEDIAPIPE_LOG_LEVEL'] = '3'
-
-# OpenCV logs
-os.environ['OPENCV_LOG_LEVEL'] = 'ERROR'
-
-# Tắt C++ warnings
-os.environ['PYTHONWARNINGS'] = 'ignore'
-
-# Redirect stderr để tắt hoàn toàn C++ logs
-import warnings
-warnings.filterwarnings('ignore')
-
-# Tắt absl logging
-try:
-    import absl.logging
-    absl.logging.set_verbosity(absl.logging.ERROR)
-    absl.logging.set_stderrthreshold(absl.logging.ERROR)
-except ImportError:
-    pass
-
-# ==================== IMPORT MODULES ====================
-from modules.config.logging_config import setup_logging, get_logger
-from datetime import datetime
 import logging
 import signal
 import threading
@@ -50,112 +11,123 @@ import atexit
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
-# Thiết lập logging từ logging_config
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-setup_logging(BASE_DIR, app_name="app", log_level=logging.DEBUG)
-logger = logging.getLogger("app")
+# Load environment variables
+load_dotenv()
 
-# Import các modules khác
+# ==================== DISABLE VERBOSE LOGGING ====================
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['GLOG_minloglevel'] = '3'
+os.environ['MEDIAPIPE_DISABLE_GPU'] = '1'
+os.environ['PYTHONWARNINGS'] = 'ignore'
+
+import warnings
+warnings.filterwarnings('ignore')
+
+# ==================== IMPORT CORE MODULES ====================
+from modules.config.logging_config import setup_logging, get_logger
 from modules.config.config import config_bp, init_app_and_config
-from modules.scheduler.program import program_bp
+from modules.scheduler.program import program_bp, scheduler
 from modules.query.query import query_bp
 from blueprints.cutter_bp import cutter_bp
 from blueprints.hand_detection_bp import hand_detection_bp
 from blueprints.qr_detection_bp import qr_detection_bp
 from blueprints.roi_bp import roi_bp
-from modules.scheduler.program import scheduler  # Import BatchScheduler
-
-# 🆕 NEW: Import cloud endpoints blueprint
 from modules.sources.cloud_endpoints import cloud_bp
-# 🆕 NEW: Import sync endpoints blueprint
 from modules.sources.sync_endpoints import sync_bp
-# 🆕 NEW: Import pydrive downloader for auto-start
 from modules.sources.pydrive_downloader import pydrive_downloader
 
-# 🆕 NEW: Import ZaloPay payment modules
-from modules.payments.zalopay_handler import zalopay_bp
-from modules.webhooks.zalopay_webhook import webhook_bp
-from modules.licensing.license_models import init_license_db
-from flask import Blueprint
+# Setup logging
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+setup_logging(BASE_DIR, app_name="app", log_level=logging.INFO)
+logger = logging.getLogger("app")
 
-# Create license management blueprint
-license_bp = Blueprint('license', __name__)
+# ==================== CLOUD FUNCTIONS INTEGRATION ====================
+# Set Cloud Function URLs
+os.environ.setdefault('CLOUD_PAYMENT_URL', 'https://asia-southeast1-v-track-payments.cloudfunctions.net/create-payment')
+os.environ.setdefault('CLOUD_WEBHOOK_URL', 'https://asia-southeast1-v-track-payments.cloudfunctions.net/webhook-handler')
+os.environ.setdefault('CLOUD_LICENSE_URL', 'https://asia-southeast1-v-track-payments.cloudfunctions.net/license-service')
 
-# Khởi tạo Flask app và DB path từ config
+# Import payment integration
+PAYMENT_INTEGRATION_AVAILABLE = False
+try:
+    from modules.payments.cloud_function_client import get_cloud_client
+    from modules.payments.payment_routes import payment_bp
+    PAYMENT_INTEGRATION_AVAILABLE = True
+    logger.info("✅ Cloud payment integration loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Payment integration not available: {e}")
+except Exception as e:
+    logger.error(f"❌ Payment integration error: {e}")
+
+# ==================== FLASK APP INITIALIZATION ====================
 app, DB_PATH, logger = init_app_and_config()
 
-# Initialize license database
-try:
-    init_license_db()
-    logger.info("License database initialized successfully")
-except Exception as e:
-    logger.error(f"Failed to initialize license database: {str(e)}")
-from flask_session import Session
+# ==================== WEBAPP TEMPLATE CONFIGURATION ====================
+# Configure Flask template and static paths for webapp structure
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+webapp_templates = os.path.join(BASE_DIR, 'webapp', 'templates')
+webapp_static = os.path.join(BASE_DIR, 'webapp', 'static')
 
-# 🔧 FIXED: OAuth-Compatible Session Configuration
+# Update Flask app configuration
+app.template_folder = webapp_templates
+app.static_folder = webapp_static
+
+# Create directories if they don't exist
+os.makedirs(webapp_templates, exist_ok=True)
+os.makedirs(webapp_static, exist_ok=True)
+os.makedirs(os.path.join(webapp_static, 'js'), exist_ok=True)
+os.makedirs(os.path.join(webapp_static, 'css'), exist_ok=True)
+
+# Log configuration
+logger.info(f"📁 Template folder configured: {webapp_templates}")
+logger.info(f"📁 Static folder configured: {webapp_static}")
+
+# Verify paths and warn if empty
+if not os.path.exists(webapp_templates) or not os.listdir(webapp_templates):
+    logger.warning(f"⚠️ Template folder empty: {webapp_templates}")
+    logger.warning("💡 Run: cp -r templates/* webapp/templates/ to copy templates")
+
+if not os.path.exists(webapp_static) or not any(os.listdir(os.path.join(webapp_static, subdir)) for subdir in ['js', 'css'] if os.path.exists(os.path.join(webapp_static, subdir))):
+    logger.warning(f"⚠️ Static folder empty: {webapp_static}")
+    logger.warning("💡 Run: cp -r static/* webapp/static/ to copy static files")
+
+from flask_session import Session
 import secrets
+
+# Configure session for OAuth compatibility
 app.config.update(
-    # OAuth Session Fix - CRITICAL for Google OAuth
     SECRET_KEY=os.environ.get('SECRET_KEY', secrets.token_urlsafe(32)),
     SESSION_COOKIE_NAME='vtrack_session',
     SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SECURE=False,  # Set to True in production with HTTPS
-    SESSION_COOKIE_SAMESITE='Lax',  # CRITICAL for OAuth redirects
-    PERMANENT_SESSION_LIFETIME=timedelta(hours=24),  # Longer for OAuth
-    
-    # Session storage
+    SESSION_COOKIE_SECURE=False,
+    SESSION_COOKIE_SAMESITE='Lax',
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=24),
     SESSION_TYPE='filesystem',
     SESSION_FILE_DIR=os.path.join(BASE_DIR, 'flask_session'),
-    
-    # OAuth specific
-    OAUTH_INSECURE_TRANSPORT=True,  # Only for development
+    OAUTH_INSECURE_TRANSPORT=True,
 )
 
-# Initialize session
 Session(app)
 
-# ✅ SINGLE CORS Configuration - No duplicates
-CORS(app, 
-     resources={
-         r"/*": {
-             "origins": [
-                 "http://localhost:3000", 
-                 "http://127.0.0.1:3000"
-             ],
-             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-             "allow_headers": [
-                 "Content-Type", 
-                 "Authorization",
-                 "X-Requested-With",
-                 "Accept",
-                 "Origin",
-                 "Cache-Control",      # ✅ INCLUDE: Cache-Control header
-                 "Pragma",             # ✅ INCLUDE: For cache control
-                 "Expires"             # ✅ INCLUDE: For cache control
-             ],
-             "supports_credentials": True,
-             "expose_headers": [
-                 "Content-Type", 
-                 "Authorization",
-                 "Cache-Control",      # ✅ EXPOSE: Cache-Control header
-                 "Pragma",
-                 "Expires"
-             ]
-         }
-     })
+# Configure CORS
+CORS(app, resources={
+    r"/*": {
+        "origins": ["http://localhost:3000", "http://127.0.0.1:3000"],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+        "supports_credentials": True,
+    }
+})
 
-# ❌ REMOVED: @app.after_request to avoid duplicate headers
-
-# 🔧 CRITICAL: Make sessions permanent for OAuth
 @app.before_request
 def make_session_permanent():
     from flask import session
     session.permanent = True
 
-logger.info("🔑 OAuth-compatible session configuration applied")
-logger.info("✅ Single CORS configuration with Cache-Control support applied")
+logger.info("🔑 Session configuration applied")
 
-# Đăng ký các Blueprint
+# ==================== REGISTER BLUEPRINTS ====================
+# Core modules
 app.register_blueprint(program_bp)
 app.register_blueprint(config_bp, url_prefix='/api/config')
 app.register_blueprint(query_bp)
@@ -164,44 +136,213 @@ app.register_blueprint(hand_detection_bp)
 app.register_blueprint(qr_detection_bp)
 app.register_blueprint(roi_bp)
 
-# 🆕 NEW: Register cloud endpoints blueprint with error handling
+# Cloud and sync modules
 try:
     app.register_blueprint(cloud_bp, name='cloud_endpoints')
-    logger.info("✅ Cloud endpoints registered: /api/cloud/*")
+    logger.info("✅ Cloud endpoints registered")
 except ValueError as e:
     logger.warning(f"⚠️ Cloud blueprint already registered: {e}")
-    # If already registered, skip (could be from config.py)
-    pass
 
-# 🆕 NEW: Register sync endpoints blueprint with error handling
 try:
     app.register_blueprint(sync_bp, url_prefix='/api/sync')
-    logger.info("✅ Sync endpoints registered: /api/sync/*")
-except ValueError as e:
-    logger.warning(f"⚠️ Sync blueprint already registered: {e}")
-    # If already registered, skip
-    pass
-except ImportError as e:
-    logger.warning(f"⚠️ Sync endpoints not available: {e}")
-    pass
+    logger.info("✅ Sync endpoints registered")
+except (ValueError, ImportError) as e:
+    logger.warning(f"⚠️ Sync endpoints issue: {e}")
 
-# 🆕 NEW: Register ZaloPay payment blueprints
-try:
-    app.register_blueprint(zalopay_bp, url_prefix='/api/payment')
-    logger.info("✅ ZaloPay payment endpoints registered: /api/payment/*")
-except Exception as e:
-    logger.error(f"❌ Failed to register ZaloPay payment endpoints: {e}")
+# Payment integration
+if PAYMENT_INTEGRATION_AVAILABLE:
+    try:
+        cloud_client = get_cloud_client()
+        app.register_blueprint(payment_bp)
+        logger.info("✅ Payment blueprint registered")
+        
+        # Test connectivity
+        connection_test = cloud_client.test_connection()
+        if connection_test.get('success'):
+            logger.info(f"✅ Cloud connectivity verified ({connection_test.get('response_time_ms', 0)}ms)")
+        else:
+            logger.warning(f"⚠️ Cloud connectivity issues: {connection_test.get('error')}")
+    except Exception as e:
+        logger.error(f"❌ Payment integration failed: {e}")
+        PAYMENT_INTEGRATION_AVAILABLE = False
 
-try:
-    app.register_blueprint(webhook_bp, url_prefix='/webhook')
-    logger.info("✅ ZaloPay webhook endpoints registered: /webhook/*")
-except Exception as e:
-    logger.error(f"❌ Failed to register ZaloPay webhook endpoints: {e}")
+# ==================== MAIN ROUTES ====================
+@app.route('/')
+def index():
+    """Main dashboard page"""
+    return render_template('index.html')
 
-# 🔧 NOTE: License blueprint registration moved to end of file after route definitions
+@app.route('/payment')
+def payment_page():
+    """Payment and license management page"""
+    if not PAYMENT_INTEGRATION_AVAILABLE:
+        return render_template('payment_unavailable.html'), 503
+    return render_template('payment.html')
 
-# Hàm ghi last_stop_time khi ứng dụng dừng
+@app.route('/settings')
+def settings_page():
+    """Settings page"""
+    return render_template('settings.html')
+
+@app.route('/analytics')
+def analytics_page():
+    """Analytics dashboard page"""
+    return render_template('analytics.html')
+
+# ==================== API ENDPOINTS ====================
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    try:
+        health_data = {
+            'status': 'healthy',
+            'service': 'V_Track Desktop Backend',
+            'version': '2.1.0',
+            'timestamp': datetime.now().isoformat(),
+            'modules': {
+                'computer_vision': 'enabled',
+                'nvr_processing': 'enabled',
+                'cloud_sync': 'enabled',
+                'payment_system': 'enabled' if PAYMENT_INTEGRATION_AVAILABLE else 'disabled',
+                'license_management': 'enabled' if PAYMENT_INTEGRATION_AVAILABLE else 'disabled'
+            }
+        }
+        
+        # Check cloud functions if available
+        if PAYMENT_INTEGRATION_AVAILABLE:
+            try:
+                cloud_client = get_cloud_client()
+                cloud_health = cloud_client.health_check()
+                health_data['cloud_functions'] = {
+                    'configured': True,
+                    'healthy': cloud_health.get('overall_status') == 'healthy',
+                    'services_status': cloud_health.get('services_healthy', '0/0')
+                }
+                if cloud_health.get('overall_status') != 'healthy':
+                    health_data['status'] = 'degraded'
+            except Exception as e:
+                health_data['cloud_functions'] = {
+                    'configured': True,
+                    'healthy': False,
+                    'error': str(e)
+                }
+                health_data['status'] = 'degraded'
+        else:
+            health_data['cloud_functions'] = {
+                'configured': False,
+                'healthy': False,
+                'note': 'Payment integration not available'
+            }
+        
+        status_code = 200 if health_data['status'] == 'healthy' else 503
+        return jsonify(health_data), status_code
+        
+    except Exception as e:
+        logger.error(f"Health check error: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'service': 'V_Track Desktop Backend',
+            'version': '2.1.0',
+            'timestamp': datetime.now().isoformat(),
+            'error': str(e)
+        }), 500
+
+@app.route('/api/system-info', methods=['GET'])
+def system_info():
+    """System information API"""
+    return jsonify({
+        'service': 'V_Track Desktop Backend',
+        'version': '2.1.0',
+        'status': 'running',
+        'features': [
+            'Computer Vision Processing',
+            'NVR Camera Integration',
+            'Cloud Storage Sync',
+            'Payment Processing' if PAYMENT_INTEGRATION_AVAILABLE else 'Payment Processing (Disabled)',
+            'License Management' if PAYMENT_INTEGRATION_AVAILABLE else 'License Management (Disabled)'
+        ],
+        'endpoints': {
+            'health': '/health',
+            'payment': '/payment' if PAYMENT_INTEGRATION_AVAILABLE else None,
+            'settings': '/settings',
+            'analytics': '/analytics'
+        }
+    })
+
+if PAYMENT_INTEGRATION_AVAILABLE:
+    @app.route('/api/test-cloud', methods=['GET'])
+    def test_cloud_integration():
+        """Test cloud function integration"""
+        try:
+            cloud_client = get_cloud_client()
+            
+            # Run basic tests
+            tests = {}
+            
+            # Connectivity test
+            try:
+                connection_test = cloud_client.test_connection()
+                tests['connectivity'] = {
+                    'status': 'pass' if connection_test.get('success') else 'fail',
+                    'response_time_ms': connection_test.get('response_time_ms'),
+                    'details': connection_test
+                }
+            except Exception as e:
+                tests['connectivity'] = {'status': 'fail', 'error': str(e)}
+            
+            # Health check test
+            try:
+                health_check = cloud_client.health_check()
+                tests['health_check'] = {
+                    'status': 'pass' if health_check.get('success') else 'fail',
+                    'services_healthy': health_check.get('services_healthy', '0/0'),
+                    'details': health_check
+                }
+            except Exception as e:
+                tests['health_check'] = {'status': 'fail', 'error': str(e)}
+            
+            # Package loading test
+            try:
+                packages = cloud_client.get_packages()
+                tests['packages'] = {
+                    'status': 'pass' if packages.get('success') else 'fail',
+                    'package_count': len(packages.get('packages', {})),
+                    'details': packages
+                }
+            except Exception as e:
+                tests['packages'] = {'status': 'fail', 'error': str(e)}
+            
+            all_passed = all(test.get('status') == 'pass' for test in tests.values())
+            
+            return jsonify({
+                'desktop_app': {'status': 'running', 'version': '2.1.0'},
+                'cloud_functions': {
+                    'configured': True,
+                    'endpoints': {
+                        'payment': os.environ.get('CLOUD_PAYMENT_URL'),
+                        'webhook': os.environ.get('CLOUD_WEBHOOK_URL'),
+                        'license': os.environ.get('CLOUD_LICENSE_URL')
+                    }
+                },
+                'tests': tests,
+                'overall_status': 'pass' if all_passed else 'fail',
+                'integration': 'success' if all_passed else 'partial',
+                'timestamp': datetime.now().isoformat()
+            }), 200 if all_passed else 500
+            
+        except Exception as e:
+            return jsonify({
+                'desktop_app': {'status': 'running', 'version': '2.1.0'},
+                'cloud_functions': {'configured': True, 'error': str(e)},
+                'tests': {'initialization': {'status': 'fail', 'error': str(e)}},
+                'overall_status': 'fail',
+                'integration': 'failed',
+                'timestamp': datetime.now().isoformat()
+            }), 500
+
+# ==================== APPLICATION LIFECYCLE ====================
 def exit_handler():
+    """Graceful shutdown handler"""
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -216,11 +357,10 @@ def exit_handler():
     except Exception as e:
         logger.error(f"Error saving last_stop_time: {e}")
 
-# Đăng ký exit_handler
 atexit.register(exit_handler)
 
 def is_port_in_use(port):
-    """Kiểm tra xem cổng có đang được sử dụng hay không."""
+    """Check if port is in use"""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             s.bind(("localhost", port))
@@ -228,17 +368,15 @@ def is_port_in_use(port):
         except OSError:
             return True
 
-# Global flag để tránh multiple shutdown
 _shutdown_in_progress = False
 
 def signal_handler(sig, frame):
-    """Xử lý tín hiệu dừng ứng dụng một cách graceful"""
+    """Handle shutdown signals"""
     global _shutdown_in_progress
     
-    # Tránh multiple shutdown
     if _shutdown_in_progress:
         print("\nForced shutdown...")
-        os._exit(1)  # Force exit nếu đã shutdown rồi
+        os._exit(1)
     
     _shutdown_in_progress = True
     print("\nShutting down gracefully... (Press Ctrl+C again to force)")
@@ -246,364 +384,102 @@ def signal_handler(sig, frame):
     try:
         logger.info("Received shutdown signal, stopping application...")
         
-        # Dừng scheduler
         if 'scheduler' in globals():
             scheduler.stop()
             logger.info("Scheduler stopped")
         
-        # Đợi các thread kết thúc với timeout ngắn hơn
+        # Wait for threads to finish
         main_thread = threading.current_thread()
         for t in threading.enumerate():
             if t != main_thread and t.is_alive():
                 try:
-                    t.join(timeout=2)  # Giảm timeout xuống 2 giây
-                    if t.is_alive():
-                        logger.warning(f"Thread {t.name} did not stop gracefully")
+                    t.join(timeout=2)
                 except:
-                    pass  # Ignore errors during shutdown
+                    pass
         
         logger.info("Application shutdown complete")
         
     except Exception as e:
         logger.error(f"Error during shutdown: {e}")
     finally:
-        os._exit(0)  # Force exit
+        os._exit(0)
 
-# Đăng ký signal handler
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
-# 🆕 NEW: Health check endpoint
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Health check endpoint"""
-    from flask import jsonify
-    return jsonify({
-        'status': 'healthy',
-        'service': 'V_track Backend',
-        'timestamp': datetime.now().isoformat(),
-        'modules': {
-            'sync': 'enabled',
-            'cloud': 'enabled', 
-            'payment': 'enabled',
-            'licensing': 'enabled'
-        }
-    }), 200
-
-# 🆕 NEW: Root endpoint
-@app.route('/', methods=['GET'])
-def root():
-    """Root endpoint information"""
-    from flask import jsonify
-    return jsonify({
-        'service': 'V_track Backend API',
-        'version': '1.0.0',
-        'features': [
-            'Cloud Storage Sync',
-            'NVR Camera Integration', 
-            'ZaloPay Payment Processing',
-            'Automated License Management'
-        ],
-        'endpoints': {
-            'sync': '/api/sync',
-            'cloud': '/api/cloud',
-            'payment': '/api/payment',
-            'webhook': '/webhook',
-            'license': '/api/license',
-            'health': '/health'
-        }
-    }), 200
-
-# 🔧 Debug: List all registered endpoints on startup
-def log_registered_routes():
-    """Log all registered Flask routes for debugging"""
-    logger.info("📋 Registered Flask Routes:")
-    for rule in app.url_map.iter_rules():
-        methods = ', '.join((rule.methods or set()) - {'HEAD', 'OPTIONS'})
-        logger.info(f"   {methods:15} {rule.rule}")
-
-# 🆕 NEW: Auto-start function for cloud sync (Flask 2.2+ compatible)
 def initialize_auto_sync():
-    """Auto-start sync for all enabled cloud sources on backend startup"""
+    """Initialize auto-sync for cloud sources"""
     def startup_sync():
         try:
-            # Wait for database operations to complete
             import time
             time.sleep(2)
-            logger.info("🚀 Starting auto-sync for all enabled cloud sources...")
+            logger.info("🚀 Starting auto-sync for enabled cloud sources...")
             result = pydrive_downloader.auto_start_all_enabled_sources()
             if result.get('success'):
-                logger.info(f"✅ Auto-sync initialization completed: {result.get('started_count', 0)} sources started")
+                logger.info(f"✅ Auto-sync completed: {result.get('started_count', 0)} sources started")
             else:
-                logger.error(f"❌ Auto-sync initialization failed: {result.get('error', 'Unknown error')}")
+                logger.error(f"❌ Auto-sync failed: {result.get('error', 'Unknown error')}")
         except Exception as e:
             logger.error(f"❌ Auto-sync startup failed: {e}")
     
-    # Run in background thread to not block app startup
-    import threading
     threading.Thread(target=startup_sync, daemon=True).start()
-    logger.info("🔄 Auto-sync initialization thread started")
+    logger.info("🔄 Auto-sync initialization started")
 
-# 🆕 NEW: License Management Endpoints
-@license_bp.route('/validate', methods=['POST'])
-def validate_license():
-    """Validate license key"""
-    from flask import request, jsonify
-    try:
-        from modules.payments.license_generator import LicenseGenerator
-        from modules.licensing.license_models import License
-        
-        data = request.get_json()
-        license_key = data.get('license_key')
-        machine_fingerprint = data.get('machine_fingerprint')
-        
-        if not license_key:
-            return jsonify({
-                'success': False,
-                'error': 'License key required'
-            }), 400
-        
-        # Initialize license generator
-        license_generator = LicenseGenerator()
-        
-        # Validate license signature
-        license_data = license_generator.verify_license(license_key)
-        
-        if not license_data:
-            return jsonify({
-                'valid': False,
-                'error': 'Invalid license signature'
-            }), 400
-        
-        # Validate against database
-        db_validation = License.validate(license_key, machine_fingerprint)
-        
-        return jsonify({
-            'valid': db_validation['valid'],
-            'license_data': license_data,
-            'database_status': db_validation
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"License validation error: {str(e)}")
-        return jsonify({
-            'valid': False,
-            'error': f'Validation error: {str(e)}'
-        }), 500
-
-@license_bp.route('/activate', methods=['POST'])
-def activate_license():
-    """Activate license on machine"""
-    from flask import request, jsonify
-    try:
-        from modules.payments.license_generator import LicenseGenerator
-        from modules.licensing.license_models import License
-        
-        data = request.get_json()
-        license_key = data.get('license_key')
-        machine_fingerprint = data.get('machine_fingerprint')
-        device_info = data.get('device_info', {})
-        
-        if not license_key:
-            return jsonify({
-                'success': False,
-                'error': 'License key required'
-            }), 400
-        
-        # Generate machine fingerprint if not provided
-        if not machine_fingerprint:
-            license_generator = LicenseGenerator()
-            machine_fingerprint = license_generator.generate_machine_fingerprint()
-        
-        # Activate license
-        result = License.activate(license_key, machine_fingerprint, device_info)
-        
-        if result['success']:
-            return jsonify({
-                'success': True,
-                'status': result['status'],
-                'machine_fingerprint': machine_fingerprint
-            }), 200
-        else:
-            return jsonify({
-                'success': False,
-                'error': result['error']
-            }), 400
-            
-    except Exception as e:
-        logger.error(f"License activation error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': f'Activation error: {str(e)}'
-        }), 500
-
-@license_bp.route('/info/<license_key>', methods=['GET'])
-def get_license_info(license_key):
-    """Get license information"""
-    from flask import jsonify
-    try:
-        from modules.licensing.license_models import License
-        
-        license_data = License.get_by_key(license_key)
-        
-        if not license_data:
-            return jsonify({
-                'success': False,
-                'error': 'License not found'
-            }), 404
-        
-        # Remove sensitive data
-        safe_data = {
-            'product_type': license_data['product_type'],
-            'features': license_data['features'],
-            'status': license_data['status'],
-            'created_at': license_data['created_at'],
-            'expires_at': license_data['expires_at'],
-            'activation_count': license_data['activation_count'],
-            'max_activations': license_data['max_activations']
-        }
-        
-        return jsonify({
-            'success': True,
-            'license_info': safe_data
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"License info error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': f'Info error: {str(e)}'
-        }), 500
-
-@license_bp.route('/stats', methods=['GET'])
-def get_license_stats():
-    """Get licensing statistics"""
-    from flask import jsonify
-    try:
-        from modules.licensing.license_models import get_license_stats
-        
-        stats = get_license_stats()
-        
-        if stats:
-            return jsonify({
-                'success': True,
-                'stats': stats
-            }), 200
-        else:
-            return jsonify({
-                'success': False,
-                'error': 'Failed to get stats'
-            }), 500
-            
-    except Exception as e:
-        logger.error(f"License stats error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': f'Stats error: {str(e)}'
-        }), 500
-
-@license_bp.route('/test-email', methods=['POST'])
-def test_email_delivery():
-    """Test email delivery system"""
-    from flask import request, jsonify
-    try:
-        from modules.payments.email_sender import EmailSender
-        
-        data = request.get_json()
-        test_email = data.get('email')
-        
-        if not test_email:
-            return jsonify({
-                'success': False,
-                'error': 'Email address required'
-            }), 400
-        
-        # Send test email
-        email_sender = EmailSender()
-        result = email_sender.send_test_email(test_email)
-        
-        return jsonify(result), 200 if result['success'] else 500
-        
-    except Exception as e:
-        logger.error(f"Test email error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': f'Test email error: {str(e)}'
-        }), 500
-
-@license_bp.route('/config', methods=['GET'])
-def get_license_config():
-    """Get license system configuration"""
-    from flask import jsonify
-    try:
-        from modules.payments.email_sender import EmailSender
-        
-        email_sender = EmailSender()
-        email_config = email_sender.get_email_config_status()
-        
-        # ZaloPay config (without sensitive data)
-        zalopay_config = {
-            'app_id': os.getenv('ZALOPAY_APP_ID', 'Not set'),
-            'environment': os.getenv('ZALOPAY_ENVIRONMENT', 'Not set'),
-            'endpoint_configured': bool(os.getenv('ZALOPAY_ENDPOINT')),
-            'keys_configured': bool(os.getenv('ZALOPAY_KEY1') and os.getenv('ZALOPAY_KEY2'))
-        }
-        
-        return jsonify({
-            'success': True,
-            'config': {
-                'email': email_config,
-                'zalopay': zalopay_config,
-                'license_system': 'operational'
-            }
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"Config error: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': f'Config error: {str(e)}'
-        }), 500
-
-# 🔧 FIXED: Register license blueprint AFTER route definitions
-try:
-    app.register_blueprint(license_bp, url_prefix='/api/license')
-    logger.info("✅ License management endpoints registered: /api/license/*")
-except Exception as e:
-    logger.error(f"❌ Failed to register license endpoints: {e}")
-
-# Khởi chạy ứng dụng
+# ==================== APPLICATION STARTUP ====================
 if __name__ == "__main__":
     port = 8080
     
-    # Kiểm tra port trước khi khởi chạy
+    # Check port availability
     if is_port_in_use(port):
         logger.error(f"Port {port} is already in use!")
         sys.exit(1)
     
-    logger.info(f"Starting VTrack application on port {port}")
-    logger.info(f"🔑 OAuth session security: ✅ Enabled")
+    logger.info(f"Starting V_Track Desktop Application on port {port}")
     
-    print("🚀 V_track Backend Starting...")
+    # Display startup information
+    print("🚀 V_Track Desktop App Starting...")
     print(f"📡 Server: http://0.0.0.0:{port}")
-    print("🔧 Modules:")
+    print("🔧 Core Features:")
+    print("   ✅ Computer Vision Processing")
+    print("   ✅ NVR Camera Integration")
     print("   ✅ Cloud Storage Sync")
-    print("   ✅ NVR Camera Integration") 
-    print("   ✅ ZaloPay Payment Processing")
-    print("   ✅ Automated License Management")
-    print("   ✅ Email Delivery System")
-    print("\n🔗 API Endpoints:")
-    print(f"   📊 Health Check: http://0.0.0.0:{port}/health")
-    print(f"   💳 Payments: http://0.0.0.0:{port}/api/payment")
-    print(f"   🔔 Webhooks: http://0.0.0.0:{port}/webhook")
-    print(f"   🔑 Licenses: http://0.0.0.0:{port}/api/license")
-    print(f"   ☁️  Cloud Sync: http://0.0.0.0:{port}/api/cloud")
-    print(f"   📹 NVR Sources: http://0.0.0.0:{port}/api/sync")
     
-    # 🔧 Debug: Log registered routes
-    log_registered_routes()
+    if PAYMENT_INTEGRATION_AVAILABLE:
+        try:
+            cloud_client = get_cloud_client()
+            connection_test = cloud_client.test_connection()
+            
+            if connection_test.get('success'):
+                print("   ✅ Cloud Payment Processing")
+                print("   ✅ License Management System")
+                print(f"\n💳 Payment System:")
+                print(f"   📱 Payment UI: http://0.0.0.0:{port}/payment")
+                print(f"   🧪 Cloud Test: http://0.0.0.0:{port}/api/test-cloud")
+                print(f"   ⚡ Response Time: {connection_test.get('response_time_ms', 0)}ms")
+            else:
+                print("   ⚠️  Cloud Payment Processing (Connection Issues)")
+                print("   ⚠️  License Management (Degraded)")
+        except Exception as e:
+            print("   ❌ Cloud Payment Processing (Error)")
+            print("   ❌ License Management (Failed)")
+            logger.error(f"Cloud integration error: {e}")
+    else:
+        print("   ❌ Payment Processing (Not Available)")
+        print("   ❌ License Management (Not Available)")
     
-    # ✅ NEW: Manual auto-sync initialization (Flask 2.2+ compatible)
+    print(f"\n📍 Main Pages:")
+    print(f"   🏠 Dashboard: http://0.0.0.0:{port}/")
+    print(f"   💳 Payment: http://0.0.0.0:{port}/payment")
+    print(f"   ⚙️  Settings: http://0.0.0.0:{port}/settings")
+    print(f"   📊 Analytics: http://0.0.0.0:{port}/analytics")
+    print(f"   🏥 Health: http://0.0.0.0:{port}/health")
+    
+    # Display webapp configuration
+    print(f"\n📁 Webapp Configuration:")
+    print(f"   📂 Templates: {webapp_templates}")
+    print(f"   📂 Static: {webapp_static}")
+    
+    # Initialize auto-sync
     initialize_auto_sync()
     
     try:

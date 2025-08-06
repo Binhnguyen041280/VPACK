@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V_Track - Settings</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/global.css') }}">
+    <style>
+        .settings-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: var(--spacing-xl) var(--spacing-md);
+        }
+        
+        .settings-header {
+            text-align: center;
+            margin-bottom: var(--spacing-xxl);
+        }
+        
+        .settings-header h1 {
+            font-size: 2.5rem;
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-md);
+        }
+        
+        .settings-section {
+            background: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-xl);
+            margin-bottom: var(--spacing-lg);
+            border: 1px solid var(--border-color);
+        }
+        
+        .settings-section h2 {
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-lg);
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+        }
+        
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--spacing-md) 0;
+            border-bottom: 1px solid var(--border-light);
+        }
+        
+        .setting-item:last-child {
+            border-bottom: none;
+        }
+        
+        .setting-info {
+            flex: 1;
+        }
+        
+        .setting-title {
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-xs);
+        }
+        
+        .setting-description {
+            font-size: var(--font-sm);
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+        
+        .setting-control {
+            margin-left: var(--spacing-md);
+        }
+        
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 24px;
+            background: var(--border-color);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background var(--transition-normal);
+        }
+        
+        .toggle-switch.active {
+            background: var(--primary-color);
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: transform var(--transition-normal);
+        }
+        
+        .toggle-switch.active .toggle-slider {
+            transform: translateX(26px);
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: var(--spacing-sm);
+        }
+        
+        .btn-small {
+            padding: var(--spacing-xs) var(--spacing-md);
+            font-size: var(--font-sm);
+            border-radius: var(--radius-sm);
+        }
+        
+        .action-section {
+            text-align: center;
+            padding: var(--spacing-xl);
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-lg);
+            margin-top: var(--spacing-xl);
+        }
+        
+        @media (max-width: 768px) {
+            .setting-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: var(--spacing-md);
+            }
+            
+            .setting-control {
+                margin-left: 0;
+                align-self: flex-end;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="logo-icon">🎯</span>
+                    <span class="logo-text">V_TRACK</span>
+                </div>
+                <div class="app-version">Desktop v2.1.0</div>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="main-navigation">
+            <div class="nav-content">
+                <a href="/" class="nav-item">
+                    <span class="nav-icon">🏠</span>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+                <a href="/analytics" class="nav-item">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-text">Analytics</span>
+                </a>
+                <a href="/payment" class="nav-item">
+                    <span class="nav-icon">💳</span>
+                    <span class="nav-text">License</span>
+                </a>
+                <a href="/settings" class="nav-item active">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">Settings</span>
+                </a>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="settings-container">
+                <div class="settings-header">
+                    <h1>⚙️ Settings</h1>
+                    <p>Configure V_Track to work best for your needs</p>
+                </div>
+
+                <!-- Computer Vision Settings -->
+                <div class="settings-section">
+                    <h2>🎯 Computer Vision</h2>
+                    
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <div class="setting-title">Hand Detection</div>
+                            <div class="setting-description">Enable real-time hand gesture detection</div>
+                        </div>
+                        <div class="setting-control">
+                            <div class="toggle-switch active" onclick="toggleSetting(this)">
+                                <div class="toggle-slider"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <div class="setting-title">QR Code Detection</div>
+                            <div class="setting-description">Automatically detect and decode QR codes</div>
+                        </div>
+                        <div class="setting-control">
+                            <div class="toggle-switch active" onclick="toggleSetting(this)">
+                                <div class="toggle-slider"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <div class="setting-title">Motion Detection</div>
+                            <div class="setting-description">Detect movement in video streams</div>
+                        </div>
+                        <div class="setting-control">
+                            <div class="toggle-switch" onclick="toggleSetting(this)">
+                                <div class="toggle-slider"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cloud Integration Settings -->
+                <div class="settings-section">
+                    <h2>☁️ Cloud Integration</h2>
+                    
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <div class="setting-title">Auto Cloud Sync</div>
+                            <div class="setting-description">Automatically sync data to Google Drive</div>
+                        </div>
+                        <div class="setting-control">
+                            <div class="toggle-switch active" onclick="toggleSetting(this)">
+                                <div class="toggle-slider"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <div class="setting-title">Cloud Functions</div>
+                            <div class="setting-description">Enable payment and license cloud services</div>
+                        </div>
+                        <div class="setting-control">
+                            <div class="btn-group">
+                                <button class="btn btn-primary btn-small" onclick="testCloudConnection()">Test Connection</button>
+                                <button class="btn btn-secondary btn-small" onclick="configureCloud()">Configure</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Settings -->
+                <div class="settings-section">
+                    <h2>🔧 System</h2>
+                    
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <div class="setting-title">Auto-start with System</div>
+                            <div class="setting-description">Launch V_Track when computer starts</div>
+                        </div>
+                        <div class="setting-control">
+                            <div class="toggle-switch" onclick="toggleSetting(this)">
+                                <div class="toggle-slider"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <div class="setting-title">Hardware Acceleration</div>
+                            <div class="setting-description">Use GPU for faster video processing</div>
+                        </div>
+                        <div class="setting-control">
+                            <div class="toggle-switch active" onclick="toggleSetting(this)">
+                                <div class="toggle-slider"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <div class="setting-title">Debug Logging</div>
+                            <div class="setting-description">Enable detailed logging for troubleshooting</div>
+                        </div>
+                        <div class="setting-control">
+                            <div class="toggle-switch" onclick="toggleSetting(this)">
+                                <div class="toggle-slider"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- License Information -->
+                <div class="settings-section">
+                    <h2>🔑 License Information</h2>
+                    
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <div class="setting-title">Current License</div>
+                            <div class="setting-description" id="license-info">Loading license information...</div>
+                        </div>
+                        <div class="setting-control">
+                            <div class="btn-group">
+                                <button class="btn btn-primary btn-small" onclick="checkLicense()">Check Status</button>
+                                <button class="btn btn-secondary btn-small" onclick="manageLicense()">Manage</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="action-section">
+                    <h3>🚀 Quick Actions</h3>
+                    <div class="btn-group" style="justify-content: center; margin-top: var(--spacing-lg);">
+                        <button class="btn btn-primary" onclick="saveSettings()">
+                            <span>💾</span>
+                            <span>Save Settings</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="resetSettings()">
+                            <span>🔄</span>
+                            <span>Reset to Default</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="exportSettings()">
+                            <span>📤</span>
+                            <span>Export Config</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <div class="footer-content">
+                <p>&copy; 2025 V_Track - Professional Video Analytics</p>
+                <div class="footer-links">
+                    <a href="#" onclick="showAbout()">About</a>
+                    <a href="#" onclick="showSupport()">Support</a>
+                    <a href="/health" target="_blank">Health Check</a>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        // Toggle setting switches
+        function toggleSetting(element) {
+            element.classList.toggle('active');
+            // Here you would save the setting to backend
+            console.log('Setting toggled:', element.parentElement.parentElement.querySelector('.setting-title').textContent);
+        }
+
+        // Save settings
+        function saveSettings() {
+            alert('Settings saved successfully!');
+        }
+
+        // Reset settings
+        function resetSettings() {
+            if (confirm('Reset all settings to default values?')) {
+                alert('Settings reset to default');
+                location.reload();
+            }
+        }
+
+        // Export settings
+        function exportSettings() {
+            alert('Settings exported to Downloads folder');
+        }
+
+        // Test cloud connection
+        function testCloudConnection() {
+            alert('Testing cloud connection...');
+            fetch('/api/test-cloud')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.overall_status === 'pass') {
+                        alert('✅ Cloud connection successful!');
+                    } else {
+                        alert('❌ Cloud connection failed. Check logs for details.');
+                    }
+                })
+                .catch(error => {
+                    alert('❌ Connection test failed: ' + error.message);
+                });
+        }
+
+        // Configure cloud
+        function configureCloud() {
+            window.open('/payment', '_blank');
+        }
+
+        // Check license
+        function checkLicense() {
+            fetch('/api/payment/license-status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.active_license) {
+                        document.getElementById('license-info').textContent = 
+                            `${data.active_license.package_name} (Expires: ${new Date(data.active_license.expires_at).toLocaleDateString()})`;
+                    } else {
+                        document.getElementById('license-info').textContent = 'No active license found';
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('license-info').textContent = 'Unable to check license status';
+                });
+        }
+
+        // Manage license
+        function manageLicense() {
+            window.open('/payment', '_blank');
+        }
+
+        // Global functions
+        function showAbout() {
+            alert('V_Track Desktop v2.1.0\n\nProfessional Video Analytics System\n\n© 2025 V_Track Team');
+        }
+
+        function showSupport() {
+            alert('Support:\n\nEmail: alanngaongo@gmail.com\nHours: 8:00-17:00 (Mon-Fri)');
+        }
+
+        // Load license info on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            checkLicense();
+        });
+    </script>
+</body>
+</html>

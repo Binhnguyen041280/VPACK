@@ -159,6 +159,140 @@ def update_database():
             )
         """)
 
+        # 🔒 SECURITY: Indexes for session management
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_token ON user_sessions(session_token)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_email ON user_sessions(user_email)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_expires ON user_sessions(expires_at)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_audit_email ON auth_audit(user_email)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_audit_created ON auth_audit(created_at)')
+
+        # ==================== LICENSE MANAGEMENT TABLES ====================
+        # 🔑 LICENSE: Payment Transactions Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS payment_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_trans_id TEXT UNIQUE NOT NULL,
+                zalopay_trans_id TEXT,
+                customer_email TEXT NOT NULL,
+                amount INTEGER NOT NULL,
+                status TEXT DEFAULT 'pending',
+                payment_data TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP
+            )
+        """)
+
+        # 🔑 LICENSE: Main Licenses Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS licenses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                license_key TEXT NOT NULL UNIQUE,
+                customer_email TEXT NOT NULL,
+                payment_transaction_id INTEGER,
+                product_type TEXT NOT NULL DEFAULT 'desktop',
+                features TEXT NOT NULL DEFAULT '["full_access"]',
+                status TEXT NOT NULL DEFAULT 'active',
+                activated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                machine_fingerprint TEXT,
+                activation_count INTEGER DEFAULT 0,
+                max_activations INTEGER DEFAULT 1,
+                FOREIGN KEY (payment_transaction_id) REFERENCES payment_transactions(id)
+            )
+        """)
+        # FIX: Handle license_type NOT NULL constraint
+        try:
+            # Add updated_at column if missing
+            cursor.execute("ALTER TABLE licenses ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            print("✅ Added updated_at column to licenses")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        # Fix license_type NULL values
+        try:
+            cursor.execute("UPDATE licenses SET license_type = 'desktop' WHERE license_type IS NULL OR license_type = ''")
+            print("✅ Fixed NULL license_type values")
+        except Exception as e:
+            print(f"⚠️ License_type update issue: {e}")
+
+        # Alternative: Drop NOT NULL constraint by recreating table
+        try:
+            cursor.execute("PRAGMA foreign_keys=off")
+            cursor.execute("""
+                CREATE TABLE licenses_new AS SELECT 
+                id, license_key, customer_email, payment_transaction_id,
+                product_type, features, status, activated_at, expires_at, 
+                created_at, machine_fingerprint, activation_count, max_activations,
+                COALESCE(license_type, 'desktop') as license_type
+                FROM licenses
+            """)
+            cursor.execute("DROP TABLE licenses")
+            cursor.execute("ALTER TABLE licenses_new RENAME TO licenses")
+            cursor.execute("PRAGMA foreign_keys=on")
+            print("✅ Recreated licenses table without NOT NULL constraint")
+        except Exception as e:
+            print(f"⚠️ Table recreation failed: {e}")
+
+        # 🔑 LICENSE: License Activations Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS license_activations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                license_id INTEGER NOT NULL,
+                machine_fingerprint TEXT NOT NULL,
+                activation_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_heartbeat TIMESTAMP,
+                status TEXT DEFAULT 'active',
+                device_info TEXT,
+                FOREIGN KEY (license_id) REFERENCES licenses(id),
+                UNIQUE(license_id, machine_fingerprint)
+            )
+        """)
+
+        # 🔑 LICENSE: Email Logs Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS email_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                license_id INTEGER,
+                recipient_email TEXT NOT NULL,
+                email_type TEXT DEFAULT 'license_delivery',
+                subject TEXT,
+                status TEXT DEFAULT 'pending',
+                sent_at TIMESTAMP,
+                error_message TEXT,
+                FOREIGN KEY (license_id) REFERENCES licenses(id)
+            )
+        """)
+
+        # 🔑 LICENSE: Indexes for performance
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_email ON payment_transactions(customer_email)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_status ON payment_transactions(status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_app_trans ON payment_transactions(app_trans_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_licenses_key ON licenses(license_key)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_licenses_email ON licenses(customer_email)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_licenses_status ON licenses(status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_licenses_expires ON licenses(expires_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_licenses_created ON licenses(created_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_activations_license ON license_activations(license_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_activations_machine ON license_activations(machine_fingerprint)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_logs_license ON email_logs(license_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_logs_status ON email_logs(status)")
+
+        # 🔑 LICENSE: Triggers for updating timestamps
+        cursor.execute("""
+            CREATE TRIGGER IF NOT EXISTS update_licenses_timestamp
+            AFTER UPDATE ON licenses
+            FOR EACH ROW
+            BEGIN
+                UPDATE licenses SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+            END
+        """)
+
+        print("✅ Created license management tables successfully")
+        print("✅ Payment transactions, licenses, activations, and email logs tables created")
+        print("✅ Created indexes and triggers for license system")
+
         # Create sync_status table for auto-sync management (Cloud sources)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS sync_status (
@@ -233,13 +367,6 @@ def update_database():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_downloaded_files_processed ON downloaded_files(is_processed)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_last_downloaded_source_camera ON last_downloaded_file(source_id, camera_name)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_last_downloaded_timestamp ON last_downloaded_file(last_file_timestamp)")
-        
-        # 🔒 SECURITY: Indexes for session management
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_token ON user_sessions(session_token)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_email ON user_sessions(user_email)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_expires ON user_sessions(expires_at)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_audit_email ON auth_audit(user_email)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_audit_created ON auth_audit(created_at)')
    
         # Tạo bảng frame_settings
         cursor.execute("""
@@ -531,6 +658,7 @@ def update_database():
         print("✅ Created indexes for lazy folder tree performance")
         print("✅ Added helper functions for folder depth management")
         print("🔒 Added user_sessions and auth_audit tables for security")
+        print("🔑 Added complete license management system with all required tables")
         print("✅ Updated source_type constraint to support local and cloud only")
         
     except Exception as e:

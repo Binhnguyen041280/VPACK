@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V_Track - Payment Service Unavailable</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/global.css') }}">
+    <style>
+        .error-container {
+            max-width: 600px;
+            margin: 60px auto;
+            text-align: center;
+            padding: 40px;
+            background: var(--bg-secondary);
+            border-radius: 15px;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-medium);
+        }
+        
+        .error-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            opacity: 0.8;
+        }
+        
+        .error-title {
+            font-size: 2rem;
+            color: var(--text-primary);
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        
+        .error-message {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        
+        .error-details {
+            background: var(--bg-tertiary);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 25px 0;
+            text-align: left;
+        }
+        
+        .error-details h4 {
+            color: var(--text-primary);
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+        
+        .error-details ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .error-details li {
+            padding: 8px 0;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .error-details li:before {
+            content: '•';
+            color: var(--primary-color);
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 30px;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+        }
+        
+        .btn-secondary {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            border: 2px solid var(--border-color);
+        }
+        
+        .btn-secondary:hover {
+            border-color: var(--primary-color);
+            background: var(--primary-light);
+        }
+        
+        .support-info {
+            background: var(--info-light);
+            border: 1px solid var(--info-color);
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 30px;
+        }
+        
+        .support-info h4 {
+            color: var(--info-dark);
+            margin-bottom: 10px;
+        }
+        
+        .support-info p {
+            color: var(--text-secondary);
+            margin: 5px 0;
+            font-size: 0.95rem;
+        }
+        
+        @media (max-width: 768px) {
+            .error-container {
+                margin: 20px;
+                padding: 30px 20px;
+            }
+            
+            .error-title {
+                font-size: 1.5rem;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .btn {
+                width: 100%;
+                max-width: 250px;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="logo-icon">🎯</span>
+                    <span class="logo-text">V_TRACK</span>
+                </div>
+                <div class="app-version">Desktop v2.1.0</div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="error-container">
+                <div class="error-icon">⚠️</div>
+                
+                <h1 class="error-title">Payment Service Unavailable</h1>
+                
+                <p class="error-message">
+                    Tính năng thanh toán và quản lý license hiện tại không khả dụng. 
+                    Hệ thống cloud functions chưa được cấu hình hoặc gặp sự cố kết nối.
+                </p>
+                
+                <div class="error-details">
+                    <h4>🔍 Nguyên nhân có thể:</h4>
+                    <ul>
+                        <li>Cloud Functions chưa được deploy</li>
+                        <li>Cấu hình environment variables thiếu</li>
+                        <li>Sự cố kết nối mạng</li>
+                        <li>Payment modules chưa được cài đặt</li>
+                        <li>Lỗi khởi tạo payment client</li>
+                    </ul>
+                </div>
+                
+                <div class="action-buttons">
+                    <a href="/health" class="btn btn-primary">
+                        <span>🏥</span>
+                        <span>Kiểm tra hệ thống</span>
+                    </a>
+                    
+                    <a href="/" class="btn btn-secondary">
+                        <span>🏠</span>
+                        <span>Về trang chính</span>
+                    </a>
+                    
+                    <button onclick="location.reload()" class="btn btn-secondary">
+                        <span>🔄</span>
+                        <span>Thử lại</span>
+                    </button>
+                </div>
+                
+                <div class="support-info">
+                    <h4>🛠️ Hỗ trợ kỹ thuật</h4>
+                    <p><strong>Email:</strong> alanngaongo@gmail.com</p>
+                    <p><strong>Thời gian:</strong> 8:00-17:00 (Thứ 2 - Thứ 6)</p>
+                    <p><strong>Mô tả sự cố:</strong> Payment service không khả dụng</p>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <div class="footer-content">
+                <p>&copy; 2025 V_Track - Professional Video Analytics</p>
+                <div class="footer-links">
+                    <a href="#" onclick="showSystemInfo()">System Info</a>
+                    <a href="#" onclick="showLogs()">Logs</a>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        // Show system information
+        function showSystemInfo() {
+            fetch('/api/system-info')
+                .then(response => response.json())
+                .then(data => {
+                    alert(`V_Track System Info:\n\nService: ${data.service}\nVersion: ${data.version}\nStatus: ${data.status}\n\nFeatures:\n${data.features.map(f => `• ${f}`).join('\n')}`);
+                })
+                .catch(error => {
+                    alert('Could not load system information');
+                });
+        }
+        
+        // Show basic logs info
+        function showLogs() {
+            alert('Log files location:\n\n• Application logs: logs/vtrack.log\n• Error logs: logs/errors.log\n\nCheck console for real-time logs.');
+        }
+        
+        // Auto-refresh every 30 seconds to check if payment service comes back
+        let refreshCount = 0;
+        const maxRefreshes = 10; // Stop after 5 minutes
+        
+        function checkPaymentService() {
+            if (refreshCount >= maxRefreshes) {
+                console.log('Stopped auto-checking payment service');
+                return;
+            }
+            
+            fetch('/health')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.modules && data.modules.payment_system === 'enabled') {
+                        console.log('Payment service is now available, reloading...');
+                        location.href = '/payment';
+                    }
+                })
+                .catch(error => {
+                    console.log('Still checking payment service...');
+                })
+                .finally(() => {
+                    refreshCount++;
+                    if (refreshCount < maxRefreshes) {
+                        setTimeout(checkPaymentService, 30000); // Check every 30 seconds
+                    }
+                });
+        }
+        
+        // Start checking after 30 seconds
+        setTimeout(checkPaymentService, 30000);
+        
+        console.log('Payment service unavailable. Auto-checking every 30 seconds...');
+    </script>
+</body>
+</html>
