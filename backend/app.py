@@ -9,6 +9,7 @@ import threading
 import socket
 import atexit
 import sqlite3
+import queue
 from datetime import datetime, timedelta, timezone
 
 # Load environment variables
@@ -36,6 +37,17 @@ from modules.sources.cloud_endpoints import cloud_bp
 from modules.sources.sync_endpoints import sync_bp
 from modules.sources.pydrive_downloader import pydrive_downloader
 
+# ==================== IMPORT LICENSE MODULES ====================
+try:
+    from modules.license.license_checker import LicenseChecker
+    LICENSE_SYSTEM_AVAILABLE = True
+    logger_temp = logging.getLogger("app")
+    logger_temp.info("✅ License system loaded")
+except ImportError as e:
+    LICENSE_SYSTEM_AVAILABLE = False
+    logger_temp = logging.getLogger("app")
+    logger_temp.warning(f"⚠️ License system not available: {e}")
+
 # Setup logging
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 setup_logging(BASE_DIR, app_name="app", log_level=logging.INFO)
@@ -61,6 +73,97 @@ except Exception as e:
 
 # ==================== FLASK APP INITIALIZATION ====================
 app, DB_PATH, logger = init_app_and_config()
+
+# ==================== LICENSE BACKGROUND THREAD ====================
+class LicenseThread(threading.Thread):
+    def __init__(self):
+        super().__init__(daemon=True, name="LicenseChecker")
+        self.result_queue = queue.Queue()
+        self._stop_event = threading.Event()
+        
+    def run(self):
+        """License check in background thread"""
+        try:
+            logger.info("🔑 Starting background license check...")
+            license_checker = LicenseChecker()
+            result = license_checker.startup_license_check()
+            
+            # Handle different license states WITHOUT UI BLOCKING
+            if result['action'] == 'show_license_input':
+                self.result_queue.put({
+                    'status': 'requires_license',
+                    'message': 'License key required - visit /payment to activate'
+                })
+                logger.warning("License key required")
+                
+            elif result['action'] == 'show_expiry_warning':
+                days_remaining = result.get('days_remaining', 0)
+                self.result_queue.put({
+                    'status': 'expiring',
+                    'message': f'License expires in {days_remaining} days'
+                })
+                logger.warning(f"License expires in {days_remaining} days")
+                
+            elif result['action'] == 'show_error':
+                self.result_queue.put({
+                    'status': 'error',
+                    'message': f"License error: {result['message']}"
+                })
+                logger.error(f"License error: {result['message']}")
+                
+            elif result['action'] == 'continue':
+                self.result_queue.put({
+                    'status': 'valid',
+                    'message': 'License valid'
+                })
+                logger.info("License check passed")
+            
+            else:
+                self.result_queue.put({
+                    'status': 'unknown',
+                    'message': f"Unknown license action: {result['action']}"
+                })
+                
+        except Exception as e:
+            logger.error(f"License check failed: {e}")
+            self.result_queue.put({
+                'status': 'error',
+                'message': f'License check error: {str(e)}'
+            })
+    
+    def stop(self):
+        self._stop_event.set()
+    
+    def get_result(self, timeout=0.1):
+        """Get license result if available"""
+        try:
+            return self.result_queue.get_nowait()
+        except queue.Empty:
+            return None
+
+# Global license thread
+license_thread = None
+license_status = {'initialized': False, 'status': 'checking', 'message': 'License check in progress...'}
+
+def initialize_license_system():
+    """Non-blocking license initialization"""
+    global license_thread, license_status
+    
+    if not LICENSE_SYSTEM_AVAILABLE:
+        logger.warning("License system not available - skipping")
+        license_status.update({
+            'initialized': True, 
+            'status': 'disabled', 
+            'message': 'License system disabled'
+        })
+        return True
+    
+    # Start license check in background
+    license_thread = LicenseThread()
+    license_thread.start()
+    
+    logger.info("🔑 License check started in background")
+    return True
 
 # ==================== WEBAPP TEMPLATE CONFIGURATION ====================
 # Configure Flask template and static paths for webapp structure
@@ -269,6 +372,23 @@ def system_info():
         }
     })
 
+@app.route('/api/license-status', methods=['GET'])
+def get_license_status():
+    """Get current license status"""
+    global license_thread, license_status
+    
+    # Check for license result if thread is running
+    if license_thread and license_thread.is_alive():
+        result = license_thread.get_result()
+        if result:
+            license_status.update({
+                'initialized': True,
+                'status': result['status'],
+                'message': result['message']
+            })
+    
+    return jsonify(license_status)
+
 if PAYMENT_INTEGRATION_AVAILABLE:
     @app.route('/api/test-cloud', methods=['GET'])
     def test_cloud_integration():
@@ -344,7 +464,7 @@ if PAYMENT_INTEGRATION_AVAILABLE:
 def exit_handler():
     """Graceful shutdown handler"""
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=5)
         cursor = conn.cursor()
         last_stop_time = datetime.now(tz=timezone(timedelta(hours=7))).strftime('%Y-%m-%d %H:%M:%S')
         cursor.execute("""
@@ -371,8 +491,8 @@ def is_port_in_use(port):
 _shutdown_in_progress = False
 
 def signal_handler(sig, frame):
-    """Handle shutdown signals"""
-    global _shutdown_in_progress
+    """Handle shutdown signals - with license thread cleanup"""
+    global _shutdown_in_progress, license_thread
     
     if _shutdown_in_progress:
         print("\nForced shutdown...")
@@ -384,9 +504,24 @@ def signal_handler(sig, frame):
     try:
         logger.info("Received shutdown signal, stopping application...")
         
-        if 'scheduler' in globals():
-            scheduler.stop()
-            logger.info("Scheduler stopped")
+        # Stop license thread if running
+        if license_thread and license_thread.is_alive():
+            print("🔑 Stopping license thread...")
+            license_thread.stop()
+            license_thread.join(timeout=2)
+            if license_thread.is_alive():
+                logger.warning("License thread did not stop gracefully")
+        
+        # Stop scheduler
+        if 'scheduler' in globals() and scheduler is not None:
+            try:
+                if hasattr(scheduler, 'stop'):
+                    scheduler.stop()
+                    logger.info("Scheduler stopped")
+                else:
+                    logger.warning("Scheduler stop method not found")
+            except Exception as e:
+                logger.warning(f"Scheduler stop error: {e}")
         
         # Wait for threads to finish
         main_thread = threading.current_thread()
@@ -436,6 +571,11 @@ if __name__ == "__main__":
     
     logger.info(f"Starting V_Track Desktop Application on port {port}")
     
+    # Initialize license system (non-blocking)
+    license_ok = initialize_license_system()
+    if not license_ok:
+        logger.error("License initialization failed - continuing anyway")
+    
     # Display startup information
     print("🚀 V_Track Desktop App Starting...")
     print(f"📡 Server: http://0.0.0.0:{port}")
@@ -473,11 +613,14 @@ if __name__ == "__main__":
     print(f"   ⚙️  Settings: http://0.0.0.0:{port}/settings")
     print(f"   📊 Analytics: http://0.0.0.0:{port}/analytics")
     print(f"   🏥 Health: http://0.0.0.0:{port}/health")
+    print(f"   🔑 License Status: http://0.0.0.0:{port}/api/license-status")
     
     # Display webapp configuration
     print(f"\n📁 Webapp Configuration:")
     print(f"   📂 Templates: {webapp_templates}")
     print(f"   📂 Static: {webapp_static}")
+    
+    print(f"\n⚡ Shutdown: Ctrl+C (immediate response)")
     
     # Initialize auto-sync
     initialize_auto_sync()
@@ -492,7 +635,10 @@ if __name__ == "__main__":
         )
     except KeyboardInterrupt:
         logger.info("Application interrupted by user")
+        print("\n🛑 Keyboard interrupt received")
     except Exception as e:
         logger.error(f"Application error: {e}")
+        print(f"❌ Application error: {e}")
     finally:
+        print("🔚 Application terminated")
         logger.info("Application terminated")

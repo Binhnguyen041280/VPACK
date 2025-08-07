@@ -186,10 +186,10 @@ class License:
                 cursor.execute("""
                 INSERT INTO licenses 
                 (license_key, customer_email, payment_transaction_id, 
-                product_type, features, status, expires_at, activated_at, license_type)
-                VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)
-            """, (license_key, customer_email, payment_transaction_id, 
-                product_type, features_json, expires_at, datetime.now().isoformat(), product_type))
+                license_type, features, status, expires_at, activated_at)
+                VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+                """, (license_key, customer_email, payment_transaction_id, 
+                    product_type, features_json, expires_at, datetime.now().isoformat()))
                 
                 license_id = cursor.lastrowid
                 conn.commit()
