@@ -1,7 +1,8 @@
 # backend/modules/licensing/license_models.py
 """
-V_Track License Management Models - No Duplicate Tables
+V_Track License Management Models - Simplified Version
 Only handles database operations, tables already created in database.py
+SIMPLIFIED: Only uses product_type column (no backward compatibility needed)
 """
 
 import sqlite3
@@ -152,6 +153,7 @@ class License:
     """
     Model for license management - MAIN LICENSE CLASS
     Works with tables created by database.py
+    SIMPLIFIED: Only uses product_type column
     """
     
     @staticmethod
@@ -159,13 +161,13 @@ class License:
                product_type: str = 'desktop', features: Optional[List[str]] = None, 
                expires_days: int = 365) -> Optional[int]:
         """
-        Create new license record in database - FIXED VERSION
+        Create new license record in database
         
         Args:
             license_key: Generated license key
             customer_email: Customer email address
             payment_transaction_id: Associated payment transaction ID
-            product_type: Type of product license
+            product_type: Type of product license (desktop, premium, etc.)
             features: List of enabled features
             expires_days: Number of days until expiration
             
@@ -182,11 +184,11 @@ class License:
                 # Prepare features JSON
                 features_json = json.dumps(features or ['full_access'])
                 
-                # FIXED SQL - Correct column mapping with database.py schema
+                # ✅ CLEAN SQL - Uses product_type column only
                 cursor.execute("""
                 INSERT INTO licenses 
                 (license_key, customer_email, payment_transaction_id, 
-                license_type, features, status, expires_at, activated_at)
+                product_type, features, status, expires_at, activated_at)
                 VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
                 """, (license_key, customer_email, payment_transaction_id, 
                     product_type, features_json, expires_at, datetime.now().isoformat()))
@@ -195,6 +197,7 @@ class License:
                 conn.commit()
                 
                 logger.info(f"✅ License created: ID {license_id} for {customer_email}")
+                logger.debug(f"📋 Product type: {product_type}")
                 logger.debug(f"📋 License key: {license_key[:12]}...")
                 
                 return license_id
@@ -249,9 +252,6 @@ class License:
                     except (json.JSONDecodeError, TypeError):
                         license_data['features'] = ['full_access']
                 
-                # Add package_name field for payment_routes compatibility
-                license_data['package_name'] = license_data.get('product_type', 'desktop')
-                
                 logger.debug(f"✅ License found: {license_key[:12]}... for {license_data.get('customer_email')}")
                 return license_data
                 
@@ -292,9 +292,6 @@ class License:
                         except (json.JSONDecodeError, TypeError):
                             license_data['features'] = ['full_access']
                     
-                    # Add package_name field for compatibility
-                    license_data['package_name'] = license_data.get('product_type', 'desktop')
-                    
                     licenses.append(license_data)
                 
                 logger.info(f"📋 Found {len(licenses)} licenses for {customer_email}")
@@ -307,7 +304,7 @@ class License:
     @staticmethod
     def get_active_license() -> Optional[Dict[str, Any]]:
         """
-        Get current active license (singular) - FOR payment_routes.py
+        Get current active license (singular)
         
         Returns:
             dict: Active license data if found, None otherwise
@@ -342,9 +339,6 @@ class License:
                         license_data['features'] = json.loads(license_data['features'])
                     except (json.JSONDecodeError, TypeError):
                         license_data['features'] = ['full_access']
-                
-                # Add package_name field for payment_routes compatibility
-                license_data['package_name'] = license_data.get('product_type', 'desktop')
                 
                 logger.debug(f"✅ Active license found for {license_data.get('customer_email')}")
                 return license_data

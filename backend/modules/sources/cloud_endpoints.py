@@ -279,6 +279,22 @@ def cloud_authenticate():
             'message': f'Cloud authentication failed: {str(e)}'
         }), 500
 
+def user_exists_in_db(email):
+    """Check if user exists in user_profiles table"""
+    try:
+        from modules.db_utils import get_db_connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT COUNT(*) FROM user_profiles WHERE gmail_address = ?", (email,))
+        count = cursor.fetchone()[0]
+        conn.close()
+        
+        return count > 0
+    except Exception as e:
+        logger.error(f"Error checking user existence: {e}")
+        return False
+
 @cloud_bp.route('/oauth/callback', methods=['GET', 'OPTIONS'])
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def cloud_oauth_callback():
@@ -400,8 +416,76 @@ def cloud_oauth_callback():
         
         logger.info(f"✅ OAuth completed successfully for: {user_info['email']}")
         
-        # Return success page with postMessage
-        return _create_success_page_with_postmessage(session_result)
+        # ==================== REGISTRATION FLOW LOGIC ====================
+        # Check if this is a registration flow
+        is_registration = False
+
+        # Method 1: Check session storage
+        if session.get('registration_mode') == 'true':
+            is_registration = True
+            logger.info(f"🎯 Registration mode detected from session for: {user_info['email']}")
+
+        # Method 2: Check if user is new (doesn't exist in user_profiles)
+        elif not user_exists_in_db(user_info['email']):
+            is_registration = True
+            logger.info(f"🆕 New user detected, treating as registration: {user_info['email']}")
+
+        if is_registration:
+            logger.info(f"🎉 Processing registration flow for: {user_info['email']}")
+            
+            # Create user profile using existing account module
+            try:
+                from modules.account.account import create_user_profile
+                
+                user_profile_data = {
+                    'email': user_info['email'],
+                    'name': user_info.get('name', 'Unknown User'),
+                    'picture': user_info.get('photo_url')
+                }
+                
+                create_success = create_user_profile(user_profile_data)
+                
+                if create_success:
+                    logger.info(f"✅ User profile created successfully for: {user_info['email']}")
+                else:
+                    logger.warning(f"⚠️ User profile creation failed for: {user_info['email']}")
+                    
+            except Exception as profile_error:
+                logger.error(f"❌ User profile creation error: {profile_error}")
+            
+            # Clear registration mode from session
+            session.pop('registration_mode', None)
+            
+            # Create redirect page instead of popup for registration
+            return f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Registration Successful</title>
+                <meta charset="utf-8">
+                <meta http-equiv="refresh" content="3;url=/payment?registered=true&email={user_info['email']}">
+            </head>
+            <body style="font-family: system-ui; text-align: center; padding: 50px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <div style="background: white; color: #333; padding: 40px; border-radius: 15px; display: inline-block;">
+                    <h1 style="color: #28a745;">🎉 Registration Successful!</h1>
+                    <p><strong>Welcome:</strong> {user_info['name']}</p>
+                    <p><strong>Email:</strong> {user_info['email']}</p>
+                    <p>Redirecting to license selection...</p>
+                    <div style="margin: 20px 0;">
+                        <div style="display: inline-block; animation: spin 1s linear infinite;">⏳</div>
+                    </div>
+                </div>
+                <style>
+                    @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
+                </style>
+            </body>
+            </html>
+            """
+
+        else:
+            # Normal OAuth flow - continue with existing logic
+            logger.info(f"🔄 Normal OAuth flow for existing user: {user_info['email']}")
+            return _create_success_page_with_postmessage(session_result)
         
     except Exception as e:
         logger.error(f"❌ OAuth callback error: {e}")
@@ -1080,6 +1164,28 @@ def load_encrypted_credentials_for_user(user_email):
     except Exception as e:
         logger.error(f"❌ Error loading encrypted credentials: {e}")
         return None
+
+@cloud_bp.route('/set-registration-mode', methods=['POST'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
+def set_registration_mode():
+    """Set registration mode flag in session"""
+    try:
+        session['registration_mode'] = 'true'
+        session.permanent = True
+        
+        logger.info("🎯 Registration mode set in session")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Registration mode activated'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"❌ Error setting registration mode: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Failed to set registration mode: {str(e)}'
+        }), 500
 
 def get_credentials_from_session():
     """Get credentials using session token (for API endpoints)"""

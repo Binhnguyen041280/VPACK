@@ -1,6 +1,6 @@
 import os
 import sys
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, redirect
 from flask_cors import CORS
 from dotenv import load_dotenv
 import logging
@@ -47,6 +47,15 @@ except ImportError as e:
     LICENSE_SYSTEM_AVAILABLE = False
     logger_temp = logging.getLogger("app")
     logger_temp.warning(f"⚠️ License system not available: {e}")
+
+# ==================== IMPORT ACCOUNT MODULE ====================
+try:
+    from modules.account.account import check_user_status
+    ACCOUNT_SYSTEM_AVAILABLE = True
+    logger_temp.info("✅ Account system loaded")
+except ImportError as e:
+    ACCOUNT_SYSTEM_AVAILABLE = False
+    logger_temp.warning(f"⚠️ Account system not available: {e}")
 
 # Setup logging
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -272,8 +281,19 @@ if PAYMENT_INTEGRATION_AVAILABLE:
 # ==================== MAIN ROUTES ====================
 @app.route('/')
 def index():
-    """Main dashboard page"""
+    """Main route with first-run detection"""
+    if ACCOUNT_SYSTEM_AVAILABLE:
+        user_status = check_user_status()
+        if not user_status['has_user']:
+            return redirect('/register')
+        elif not user_status['has_license']:
+            return redirect('/payment')
     return render_template('index.html')
+
+@app.route('/register')
+def register_page():
+    """Registration page for first-time users"""
+    return render_template('register.html')
 
 @app.route('/payment')
 def payment_page():
