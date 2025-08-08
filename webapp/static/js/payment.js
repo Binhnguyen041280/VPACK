@@ -1,6 +1,7 @@
 /**
  * V_Track Desktop Payment System
- * Version: 2.1.0 - Complete Fix - No Loop
+ * Version: 2.2.0 - Fixed Browser Notifications
+ * NO MORE "localhost:3000 cho biết" popups
  */
 
 class VTrackPaymentSystem {
@@ -9,6 +10,7 @@ class VTrackPaymentSystem {
         this.packages = {};
         this.isProcessing = false;
         this.isLoadingPackages = false;
+        this.paymentWindow = null; // Track payment window
         
         // DOM elements
         this.packagesContainer = document.getElementById('packages-container');
@@ -83,12 +85,62 @@ class VTrackPaymentSystem {
             });
         }
         
+        // FIXED: Listen for payment completion messages
+        window.addEventListener('message', (event) => {
+            this.handlePaymentMessage(event);
+        });
+        
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 this.hideLoadingOverlay();
             }
         });
+    }
+    
+    /**
+     * FIXED: Handle payment completion messages (NO NOTIFICATIONS)
+     */
+    handlePaymentMessage(event) {
+        // Only accept messages from payment redirect
+        if (event.origin !== 'http://localhost:8080') {
+            return;
+        }
+        
+        if (event.data.type === 'payment_flow_completed') {
+            console.log('✅ Payment flow completed via postMessage');
+            
+            // Handle payment completion silently
+            this.handlePaymentCompleted();
+            
+            // Close payment window if it exists
+            if (this.paymentWindow && !this.paymentWindow.closed) {
+                try {
+                    this.paymentWindow.close();
+                } catch (e) {
+                    // Silent fail
+                }
+            }
+        }
+    }
+    
+    /**
+     * FIXED: Handle payment completion WITHOUT browser notifications
+     */
+    handlePaymentCompleted() {
+        // Show custom message in UI instead of browser notification
+        this.showMessage(
+            '✅ Cửa sổ thanh toán đã đóng. Nếu bạn đã thanh toán thành công, vui lòng kiểm tra email để nhận license key.',
+            'success'
+        );
+        
+        // Reset payment form
+        this.updatePaymentButton('💳 Thanh toán với PayOS', false);
+        this.isProcessing = false;
+        this.updateFormValidation();
+        
+        // Clear any loading states
+        this.hideLoadingOverlay();
     }
     
     /**
@@ -283,7 +335,7 @@ class VTrackPaymentSystem {
     }
     
     /**
-     * Process payment
+     * FIXED: Process payment without browser notifications
      */
     async processPayment() {
         if (!this.updateFormValidation()) {
@@ -316,11 +368,8 @@ class VTrackPaymentSystem {
             if (response && response.success && response.payment_url) {
                 this.showMessage('✅ Đơn thanh toán đã được tạo thành công!', 'success');
                 
-                // Open payment URL
-                setTimeout(() => {
-                    this.openPaymentUrl(response.payment_url);
-                    this.showMessage('💡 Cửa sổ thanh toán đã mở. Hoàn tất thanh toán để nhận license key qua email.', 'info');
-                }, 1500);
+                // FIXED: Open payment URL without delay to avoid notifications
+                this.openPaymentUrl(response.payment_url);
                 
                 console.log('✅ Payment created:', response.order_code);
             } else {
@@ -338,24 +387,99 @@ class VTrackPaymentSystem {
     }
     
     /**
-     * Open payment URL in default browser
+     * FIXED: Open payment URL without browser notifications
      */
     openPaymentUrl(url) {
         try {
-            // Try to open in new window/tab
-            const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
+            // FIXED: Detect mobile devices for better UX
+            if (this.isMobileDevice()) {
+                // On mobile: direct redirect for better experience
+                window.location.href = url;
+                return;
+            }
             
-            if (!newWindow) {
-                // Fallback: show URL for manual opening
+            // FIXED: Desktop - use popup with proper handling
+            this.paymentWindow = window.open(
+                url, 
+                'payos_payment',
+                'width=600,height=700,scrollbars=yes,resizable=yes,popup=yes'
+            );
+            
+            if (!this.paymentWindow) {
+                // FIXED: Show custom message instead of browser notification
                 this.showMessage(
-                    `💡 Vui lòng mở link thanh toán: <a href="${url}" target="_blank" style="color: var(--primary-color); text-decoration: underline;">${url}</a>`,
+                    `<div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 10px 0;">
+                        <p><strong>🔗 Thanh toán PayOS</strong></p>
+                        <p>Vui lòng <a href="${url}" target="_blank" style="color: #1976d2; text-decoration: underline;">click vào đây</a> để mở trang thanh toán</p>
+                        <small>Có thể bạn cần cho phép popup cho trang web này</small>
+                    </div>`, 
                     'info'
                 );
+                return;
             }
+            
+            // FIXED: Monitor popup without notifications
+            this.monitorPaymentPopup();
+            
         } catch (error) {
             console.error('❌ Failed to open payment URL:', error);
-            this.showMessage(`💡 Link thanh toán: ${url}`, 'info');
+            this.showMessage(
+                `🔗 Link thanh toán: <a href="${url}" target="_blank" style="color: var(--primary-color); text-decoration: underline;">Mở trang thanh toán</a>`, 
+                'info'
+            );
         }
+    }
+    
+    /**
+     * FIXED: Monitor payment popup without browser notifications
+     */
+    monitorPaymentPopup() {
+        let checkCompleted = false;
+        
+        // Check popup status silently
+        const checkPopupStatus = () => {
+            try {
+                if (this.paymentWindow && this.paymentWindow.closed && !checkCompleted) {
+                    checkCompleted = true;
+                    this.handlePaymentCompleted();
+                    return;
+                }
+            } catch (e) {
+                // Ignore COOP errors silently
+            }
+            
+            if (!checkCompleted) {
+                setTimeout(checkPopupStatus, 2000);
+            }
+        };
+        
+        // Start checking after 3 seconds
+        setTimeout(checkPopupStatus, 3000);
+        
+        // Timeout after 10 minutes
+        setTimeout(() => {
+            if (!checkCompleted) {
+                checkCompleted = true;
+                this.handlePaymentTimeout();
+            }
+        }, 600000);
+    }
+    
+    /**
+     * Handle payment timeout
+     */
+    handlePaymentTimeout() {
+        this.showMessage(
+            '⏰ Hết thời gian chờ thanh toán. Nếu bạn đã thanh toán, vui lòng kiểm tra email để nhận license key.',
+            'info'
+        );
+    }
+    
+    /**
+     * Detect mobile device
+     */
+    isMobileDevice() {
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     }
     
     /**
@@ -490,18 +614,49 @@ class VTrackPaymentSystem {
             isLoadingPackages: this.isLoadingPackages,
             emailValue: this.emailInput?.value || '',
             emailValid: this.emailInput?.value ? this.isValidEmail(this.emailInput.value.trim()) : false,
-            formValid: this.updateFormValidation()
+            formValid: this.updateFormValidation(),
+            paymentWindowOpen: this.paymentWindow && !this.paymentWindow.closed
         };
     }
 }
 
-// Global functions for HTML onclick handlers
+// Global functions for HTML onclick handlers (NO ALERTS)
 window.showSupport = function() {
-    alert('Hỗ trợ kỹ thuật:\n\nEmail: alanngaongo@gmail.com\nHotline: 1900-xxxx\n\nGiờ làm việc: 8:00-17:00 (T2-T6)');
+    // FIXED: Use custom modal instead of alert
+    const supportInfo = document.createElement('div');
+    supportInfo.innerHTML = `
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center;">
+            <div style="background: white; padding: 30px; border-radius: 15px; max-width: 400px; text-align: center;">
+                <h3>🛠️ Hỗ trợ kỹ thuật</h3>
+                <p><strong>Email:</strong> alanngaongo@gmail.com</p>
+                <p><strong>Hotline:</strong> 1900-xxxx</p>
+                <p><strong>Giờ làm việc:</strong> 8:00-17:00 (T2-T6)</p>
+                <button onclick="this.parentElement.parentElement.remove()" style="background: #007cba; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 15px;">
+                    Đóng
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(supportInfo);
 };
 
 window.showAbout = function() {
-    alert('V_Track Desktop v2.1.0\n\nProfessional Video Analytics System\n\n© 2025 V_Track Team\nAll rights reserved.');
+    // FIXED: Use custom modal instead of alert
+    const aboutInfo = document.createElement('div');
+    aboutInfo.innerHTML = `
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center;">
+            <div style="background: white; padding: 30px; border-radius: 15px; max-width: 400px; text-align: center;">
+                <h3>🎯 V_Track Desktop v2.2.0</h3>
+                <p>Professional Video Analytics System</p>
+                <p>© 2025 V_Track Team</p>
+                <p>All rights reserved.</p>
+                <button onclick="this.parentElement.parentElement.remove()" style="background: #007cba; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 15px;">
+                    Đóng
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(aboutInfo);
 };
 
 // Initialize payment system when DOM is loaded

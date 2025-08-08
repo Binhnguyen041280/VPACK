@@ -88,13 +88,17 @@
                     </div>
                 </section>
 
-                <!-- License Activation -->
-                <section class="activation-section">
+                <!-- License Activation - DISABLED: Use React App instead -->
+                <section class="activation-section" style="display: none;">
                     <div class="activation-container">
-                        <h3>🔑 Activate License</h3>
-                        <p>Đã có license key? Kích hoạt ngay tại đây:</p>
+                        <h3>🔑 License Activation Disabled</h3>
+                        <p class="notice-message">
+                            ⚠️ License activation has been moved to the main React application.<br>
+                            Please use the desktop app to activate your license.
+                        </p>
                         
-                        <form id="activation-form" class="activation-form">
+                        <!-- Hidden form to prevent JS errors -->
+                        <form id="activation-form" class="activation-form" style="display: none;">
                             <div class="form-group">
                                 <label for="license-key">License Key</label>
                                 <input 
@@ -102,7 +106,7 @@
                                     id="license-key" 
                                     name="license_key"
                                     placeholder="Dán license key vào đây" 
-                                    required
+                                    disabled
                                 >
                             </div>
 

@@ -5,7 +5,7 @@ import Account from "./Account";
 import ProgramTab from "./components/program/ProgramTab";
 import useProgramLogic from "./hooks/useProgramLogic";
 
-const Dashboard = ({ setActiveMenu, activeMenu }) => {
+const Dashboard = ({ setActiveMenu, activeMenu, authState, onLogout }) => {
   const {
     runningCard,
     fileList,
@@ -39,7 +39,7 @@ const Dashboard = ({ setActiveMenu, activeMenu }) => {
         ) : activeMenu === "Truy vấn" ? (
           <QueryComponent />
         ) : activeMenu === "Tài khoản" ? (
-          <Account />
+          <Account authState={authState} onLogout={onLogout} />
         ) : (
           <div>
             <h1 className="text-3xl font-bold">Đang phát triển: {activeMenu}</h1>

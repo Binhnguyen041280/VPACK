@@ -217,23 +217,6 @@ def update_database():
         except Exception as e:
             print(f"⚠️ License_type update issue: {e}")
 
-        # Alternative: Drop NOT NULL constraint by recreating table
-        try:
-            cursor.execute("PRAGMA foreign_keys=off")
-            cursor.execute("""
-                CREATE TABLE licenses_new AS SELECT 
-                id, license_key, customer_email, payment_transaction_id,
-                product_type, features, status, activated_at, expires_at, 
-                created_at, machine_fingerprint, activation_count, max_activations,
-                COALESCE(license_type, 'desktop') as license_type
-                FROM licenses
-            """)
-            cursor.execute("DROP TABLE licenses")
-            cursor.execute("ALTER TABLE licenses_new RENAME TO licenses")
-            cursor.execute("PRAGMA foreign_keys=on")
-            print("✅ Recreated licenses table without NOT NULL constraint")
-        except Exception as e:
-            print(f"⚠️ Table recreation failed: {e}")
 
         # 🔑 LICENSE: License Activations Table
         cursor.execute("""
@@ -288,6 +271,21 @@ def update_database():
                 UPDATE licenses SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
             END
         """)
+
+        # Sau phần license tables, thêm user profiles
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                gmail_address TEXT UNIQUE,
+                display_name TEXT,
+                photo_url TEXT,
+                first_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                auto_setup_complete BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        print("✅ Created user_profiles table")
 
         print("✅ Created license management tables successfully")
         print("✅ Payment transactions, licenses, activations, and email logs tables created")

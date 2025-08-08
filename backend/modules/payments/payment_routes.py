@@ -2,6 +2,7 @@
 """
 V_Track Payment Routes - CloudFunction Integration Blueprint
 Handles all payment-related API endpoints
+Updated: 2025-08-05 - Fixed payment redirect URLs for unified handling
 """
 
 from flask import Blueprint, request, jsonify
@@ -14,6 +15,64 @@ def is_obviously_invalid_license(license_key: str) -> bool:
     """Reject obviously invalid license keys"""
     invalid_patterns = ['INVALID-', 'invalid', 'test', 'fake', 'demo']
     return any(license_key.upper().startswith(pattern.upper()) for pattern in invalid_patterns)
+
+def extract_package_from_license_key(license_key: str) -> dict:
+    """
+    Extract package information from license key format: VTRACK-P1M-...
+    Returns package type and duration based on license key pattern
+    """
+    try:
+        # Default values
+        default_package = {
+            'product_type': 'desktop',
+            'expires_days': 365,
+            'package_name': 'Desktop Standard'
+        }
+        
+        if not license_key or '-' not in license_key:
+            return default_package
+        
+        parts = license_key.split('-')
+        if len(parts) < 3:
+            return default_package
+        
+        # Extract package code (e.g., P1M, P1Y, B1M, B1Y)
+        package_code = parts[1] if len(parts) > 1 else ''
+        
+        # Map package codes to actual package info
+        package_mapping = {
+            'P1M': {
+                'product_type': 'personal_1m',
+                'expires_days': 30,
+                'package_name': 'Personal Monthly'
+            },
+            'P1Y': {
+                'product_type': 'personal_1y', 
+                'expires_days': 365,
+                'package_name': 'Personal Annual'
+            },
+            'B1M': {
+                'product_type': 'business_1m',
+                'expires_days': 30,
+                'package_name': 'Business Monthly'
+            },
+            'B1Y': {
+                'product_type': 'business_1y',
+                'expires_days': 365,
+                'package_name': 'Business Annual'
+            }
+        }
+        
+        return package_mapping.get(package_code, default_package)
+        
+    except Exception as e:
+        # Logger might not be available yet, use print as fallback
+        print(f"Error extracting package from license key: {e}")
+        return {
+            'product_type': 'desktop',
+            'expires_days': 365,
+            'package_name': 'Desktop Standard'
+        }
 
 # Import database utilities
 try:
@@ -29,7 +88,7 @@ payment_bp = Blueprint('payment', __name__, url_prefix='/api/payment')
 
 @payment_bp.route('/create', methods=['POST'])
 def create_payment():
-    """Create payment via CloudFunction"""
+    """Create payment via CloudFunction with unified redirect URLs"""
     try:
         data = request.get_json()
         
@@ -42,18 +101,39 @@ def create_payment():
                     'error': f'Missing required field: {field}'
                 }), 400
         
+        # FIXED: Ensure unified redirect URLs are set
+        # This ensures both success and cancel scenarios are handled consistently
+        unified_redirect_url = "http://localhost:8080/payment/redirect"
+        
+        # Enhanced data with unified redirect URLs
+        enhanced_data = data.copy()
+        enhanced_data.update({
+            'return_url': unified_redirect_url,     # Success redirect
+            'cancel_url': unified_redirect_url,     # Cancel redirect  
+            'unified_redirect': True                # Flag for tracking
+        })
+        
+        logger.info(f"🔄 Creating payment with unified redirects: {unified_redirect_url}")
+        logger.debug(f"📤 Enhanced payment data: {enhanced_data}")
+        
         # Create payment using CloudFunction client
         cloud_client = get_cloud_client()
-        result = cloud_client.create_payment(data)
+        result = cloud_client.create_payment(enhanced_data)
         
         if result.get('success'):
+            logger.info(f"✅ Payment created successfully: {result['data'].get('order_code')}")
             return jsonify({
                 'success': True,
                 'payment_url': result['data'].get('payment_url'),
                 'order_code': result['data'].get('order_code'),
-                'amount': result['data'].get('amount')
+                'amount': result['data'].get('amount'),
+                'redirect_urls': {
+                    'success': unified_redirect_url,
+                    'cancel': unified_redirect_url
+                }
             })
         else:
+            logger.error(f"❌ Payment creation failed: {result.get('error')}")
             return jsonify({
                 'success': False,
                 'error': result.get('error', 'Payment creation failed')
@@ -238,14 +318,17 @@ def activate_license():
                 }
             })
         
-        # Create new license record
+        # Extract package info from license key format: VTRACK-P1M-...
+        package_info = extract_package_from_license_key(license_key)
+        
+        # Create new license record with correct package data
         license_id = License.create(
             license_key=license_key,
             customer_email=license_data.get('customer_email', 'unknown@email.com'),
             payment_transaction_id=None,  # No local payment transaction
-            product_type=license_data.get('product_type', 'desktop'),
+            product_type=package_info.get('product_type', license_data.get('product_type', 'desktop')),
             features=license_data.get('features', ['full_access']),
-            expires_days=365  # Default 1 year
+            expires_days=package_info.get('expires_days', 365)
         )
         
         if license_id:

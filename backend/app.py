@@ -312,6 +312,56 @@ def analytics_page():
     """Analytics dashboard page"""
     return render_template('analytics.html')
 
+# ==================== PAYMENT REDIRECT ROUTES ====================
+# FIXED: Unified payment redirect handling for both success and cancel scenarios
+
+@app.route('/payment/redirect')
+def payment_redirect():
+    """Primary auto-close payment popup for both success and cancel"""
+    logger.info("🔄 Payment redirect triggered - auto-closing popup")
+    return """
+    <script>
+        // Try multiple close methods for maximum compatibility
+        try {
+            if (window.opener) {
+                // Popup window - close immediately
+                window.close();
+            } else if (window.parent !== window) {
+                // Iframe - notify parent
+                window.parent.postMessage('payment_completed', '*');
+            } else {
+                // Fallback - redirect to main page
+                window.location.href = '/';
+            }
+        } catch (error) {
+            // Ultimate fallback
+            window.location.href = '/';
+        }
+    </script>
+    """
+
+@app.route('/cancel')
+def payment_cancel():
+    """Fallback route for PayOS cancel redirects (legacy compatibility)"""
+    logger.info("⚠️ Legacy /cancel route accessed - redirecting to unified handler")
+    
+    # OPTION 1: Redirect to unified handler
+    return redirect('/payment/redirect')
+    
+    # OPTION 2: Direct auto-close (uncomment if you prefer direct handling)
+    # return """
+    # <script>
+    #     if (window.opener) {
+    #         window.close();
+    #     } else {
+    #         window.location.href = '/';
+    #     }
+    # </script>
+    # """
+
+# Note: Removed /payment/success route as it's no longer needed
+# PayOS now redirects both success and cancel to /payment/redirect
+
 # ==================== API ENDPOINTS ====================
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -328,6 +378,11 @@ def health_check():
                 'cloud_sync': 'enabled',
                 'payment_system': 'enabled' if PAYMENT_INTEGRATION_AVAILABLE else 'disabled',
                 'license_management': 'enabled' if PAYMENT_INTEGRATION_AVAILABLE else 'disabled'
+            },
+            'payment_routes': {
+                'unified_redirect': '/payment/redirect',
+                'legacy_cancel': '/cancel',
+                'redirect_strategy': 'unified'
             }
         }
         
@@ -389,6 +444,11 @@ def system_info():
             'payment': '/payment' if PAYMENT_INTEGRATION_AVAILABLE else None,
             'settings': '/settings',
             'analytics': '/analytics'
+        },
+        'payment_configuration': {
+            'unified_redirect_url': '/payment/redirect',
+            'legacy_cancel_url': '/cancel',
+            'strategy': 'unified_redirect_with_fallback'
         }
     })
 
@@ -452,6 +512,17 @@ if PAYMENT_INTEGRATION_AVAILABLE:
             except Exception as e:
                 tests['packages'] = {'status': 'fail', 'error': str(e)}
             
+            # Payment redirect configuration test
+            try:
+                system_status = cloud_client.get_system_status()
+                tests['redirect_config'] = {
+                    'status': 'pass' if system_status.get('success') else 'fail',
+                    'unified_redirect_configured': system_status.get('environment', {}).get('unified_redirect_url') is not None,
+                    'details': system_status.get('environment', {})
+                }
+            except Exception as e:
+                tests['redirect_config'] = {'status': 'fail', 'error': str(e)}
+            
             all_passed = all(test.get('status') == 'pass' for test in tests.values())
             
             return jsonify({
@@ -467,6 +538,11 @@ if PAYMENT_INTEGRATION_AVAILABLE:
                 'tests': tests,
                 'overall_status': 'pass' if all_passed else 'fail',
                 'integration': 'success' if all_passed else 'partial',
+                'payment_routes': {
+                    'unified_redirect': '/payment/redirect',
+                    'legacy_fallback': '/cancel',
+                    'strategy': 'unified_with_fallback'
+                },
                 'timestamp': datetime.now().isoformat()
             }), 200 if all_passed else 500
             
@@ -616,6 +692,8 @@ if __name__ == "__main__":
                 print(f"   📱 Payment UI: http://0.0.0.0:{port}/payment")
                 print(f"   🧪 Cloud Test: http://0.0.0.0:{port}/api/test-cloud")
                 print(f"   ⚡ Response Time: {connection_test.get('response_time_ms', 0)}ms")
+                print(f"   🔄 Unified Redirects: /payment/redirect")
+                print(f"   🔙 Legacy Fallback: /cancel")
             else:
                 print("   ⚠️  Cloud Payment Processing (Connection Issues)")
                 print("   ⚠️  License Management (Degraded)")

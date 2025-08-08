@@ -2,7 +2,7 @@
 """
 V_Track CloudFunction Client - Complete Version
 Handles all communication between desktop app and Cloud Functions
-Updated: 2025-08-05 - Added missing methods for app.py compatibility
+Updated: 2025-08-05 - Fixed payment redirect URLs to unify success/cancel handling
 """
 
 import requests
@@ -50,6 +50,9 @@ class VTrackCloudClient:
         self.retry_attempts = int(os.getenv('HTTP_RETRY_ATTEMPTS', '3'))
         self.user_agent = os.getenv('HTTP_USER_AGENT', 'V_Track_Desktop_2.1.0')
         
+        # FIXED: Unified redirect URLs - both success and cancel go to same endpoint
+        self.unified_redirect_url = "http://localhost:8080/payment/redirect"
+        
         # Request headers
         self.default_headers = {
             'Content-Type': 'application/json',
@@ -59,11 +62,12 @@ class VTrackCloudClient:
         
         logger.info("✅ VTrack CloudFunction client initialized successfully")
         logger.info(f"🔗 Payment endpoint: {self.endpoints['create_payment']}")
+        logger.info(f"🔄 Unified redirect URL: {self.unified_redirect_url}")
         logger.info(f"⏱️ Request timeout: {self.timeout}s")
     
     def create_payment(self, payment_data: Dict[str, Any]) -> Dict[str, Any]: # type: ignore
         """
-        Create payment via CloudFunction
+        Create payment via CloudFunction with unified redirect URLs
         
         Args:
             payment_data: {
@@ -88,12 +92,23 @@ class VTrackCloudClient:
                         'error': f'Missing required field: {field}'
                     }
             
+            # FIXED: Force unified redirect URLs regardless of input
+            # This ensures both success and cancel scenarios go to the same endpoint
+            enhanced_payment_data = payment_data.copy()
+            enhanced_payment_data.update({
+                'return_url': self.unified_redirect_url,    # Success redirect
+                'cancel_url': self.unified_redirect_url,    # Cancel redirect
+                'unified_redirect': True                    # Flag for cloud function
+            })
+            
+            logger.info(f"🔄 Using unified redirect URLs: {self.unified_redirect_url}")
+            
             # Make request with retry logic
             for attempt in range(self.retry_attempts):
                 try:
                     response = requests.post(
                         self.endpoints['create_payment'],
-                        json=payment_data,
+                        json=enhanced_payment_data,
                         timeout=self.timeout,
                         headers=self.default_headers
                     )
@@ -502,6 +517,7 @@ class VTrackCloudClient:
             environment = {
                 'urls_configured': all(url for url in self.endpoints.values()),
                 'endpoints': self.endpoints,
+                'unified_redirect_url': self.unified_redirect_url,  # Added for debugging
                 'timeout': self.timeout,
                 'retry_attempts': self.retry_attempts,
                 'user_agent': self.user_agent
