@@ -1,8 +1,8 @@
 # backend/modules/payments/cloud_function_client.py
 """
-V_Track CloudFunction Client - Complete Version
+V_Track CloudFunction Client - Complete Version with Offline Fallback
 Handles all communication between desktop app and Cloud Functions
-Updated: 2025-08-05 - Fixed payment redirect URLs to unify success/cancel handling
+Updated: 2025-08-11 - Enabled offline fallback for production reliability
 """
 
 import requests
@@ -45,10 +45,15 @@ class VTrackCloudClient:
             'webhook_health': f"{self.endpoints['webhook_handler']}?action=health"
         }
         
-        # Request configuration
-        self.timeout = int(os.getenv('HTTP_TIMEOUT', '30'))
-        self.retry_attempts = int(os.getenv('HTTP_RETRY_ATTEMPTS', '3'))
+        # Request configuration - Improved for offline fallback
+        self.timeout = int(os.getenv('HTTP_TIMEOUT', '10'))  # Reduced from 30 to 10
+        self.license_timeout = int(os.getenv('LICENSE_TIMEOUT', '8'))  # Faster timeout for license validation
+        self.retry_attempts = int(os.getenv('HTTP_RETRY_ATTEMPTS', '2'))  # Reduced retries
         self.user_agent = os.getenv('HTTP_USER_AGENT', 'V_Track_Desktop_2.1.0')
+        
+        # Offline fallback configuration
+        self.offline_fallback_enabled = os.getenv('OFFLINE_FALLBACK_ENABLED', 'true').lower() == 'true'
+        self.offline_grace_period_hours = int(os.getenv('OFFLINE_GRACE_PERIOD_HOURS', '72'))
         
         # FIXED: Unified redirect URLs - both success and cancel go to same endpoint
         self.unified_redirect_url = "http://localhost:8080/payment/redirect"
@@ -63,7 +68,8 @@ class VTrackCloudClient:
         logger.info("✅ VTrack CloudFunction client initialized successfully")
         logger.info(f"🔗 Payment endpoint: {self.endpoints['create_payment']}")
         logger.info(f"🔄 Unified redirect URL: {self.unified_redirect_url}")
-        logger.info(f"⏱️ Request timeout: {self.timeout}s")
+        logger.info(f"⏱️ Request timeout: {self.timeout}s (license: {self.license_timeout}s)")
+        logger.info(f"🔄 Offline fallback: {'enabled' if self.offline_fallback_enabled else 'disabled'}")
     
     def create_payment(self, payment_data: Dict[str, Any]) -> Dict[str, Any]: # type: ignore
         """
@@ -162,9 +168,22 @@ class VTrackCloudClient:
             logger.error(error_msg)
             return {'success': False, 'error': error_msg}
     
+    def _check_internet_connectivity(self) -> bool:
+        """Quick internet connectivity check"""
+        try:
+            # Quick ping to a reliable endpoint
+            response = requests.get(
+                "https://www.google.com/generate_204",
+                timeout=3,
+                allow_redirects=False
+            )
+            return response.status_code == 204
+        except:
+            return False
+    
     def validate_license(self, license_key: str) -> Dict[str, Any]:
         """
-        Validate license via CloudFunction
+        Validate license via CloudFunction with offline fallback
         
         Args:
             license_key: License key to validate
@@ -175,82 +194,244 @@ class VTrackCloudClient:
         try:
             logger.info(f"🔍 Validating license: {license_key[:12]}...")
             
-            # Try cloud validation first
-            try:
-                response = requests.get(
-                    self.endpoints['license_service'],
-                    params={'action': 'validate', 'license_key': license_key},
-                    timeout=15,  # Shorter timeout for validation
-                    headers=self.default_headers
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    logger.info(f"✅ License validation completed via cloud")
-                    return {
-                        'success': True,
-                        'valid': result.get('valid', False),
-                        'data': result,
-                        'source': 'cloud'
-                    }
+            # Quick connectivity check
+            has_internet = self._check_internet_connectivity()
+            if not has_internet:
+                logger.warning("⚠️ No internet connectivity detected, using offline validation")
+                if self.offline_fallback_enabled:
+                    offline_result = self._offline_license_validation(license_key)
+                    offline_result['source'] = 'offline'
+                    offline_result['reason'] = 'no_internet'
+                    return offline_result
                 else:
-                    logger.warning(f"⚠️ Cloud validation failed: {response.status_code}")
-                    
-            except Exception as e:
-                logger.warning(f"⚠️ Cloud validation error: {str(e)}")
+                    return {
+                        'success': False,
+                        'valid': False,
+                        'error': 'No internet connection and offline fallback disabled',
+                        'source': 'none'
+                    }
             
-            # DISABLED: Fallback to offline validation for testing
-            # logger.info("🔄 Falling back to offline validation...")
-            # offline_result = self._offline_license_validation(license_key)
-            # offline_result['source'] = 'offline'
-            # return offline_result
-
-            # Return proper failure for invalid keys
-            logger.info("❌ Cloud validation failed, offline fallback disabled")
-            return {
-                'success': True,
-                'valid': False,
-                'error': 'Cloud validation failed and offline fallback disabled',
-                'source': 'none'
-            }
+            # Try cloud validation with improved error handling
+            cloud_errors = []
+            for attempt in range(self.retry_attempts):
+                try:
+                    logger.debug(f"🌐 Cloud validation attempt {attempt + 1}/{self.retry_attempts}")
+                    
+                    response = requests.get(
+                        self.endpoints['license_service'],
+                        params={'action': 'validate', 'license_key': license_key},
+                        timeout=self.license_timeout,
+                        headers=self.default_headers
+                    )
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        logger.info(f"✅ License validation completed via cloud")
+                        return {
+                            'success': True,
+                            'valid': result.get('valid', False),
+                            'data': result,
+                            'source': 'cloud'
+                        }
+                    elif response.status_code == 404:
+                        # License not found - don't retry, this is definitive
+                        logger.info(f"❌ License not found in cloud")
+                        cloud_errors.append(f"License not found (HTTP 404)")
+                        break
+                    elif response.status_code == 400:
+                        # Bad request - don't retry, this is definitive
+                        logger.info(f"❌ Invalid license format")
+                        cloud_errors.append(f"Invalid license format (HTTP 400)")
+                        break
+                    else:
+                        error_msg = f"Cloud validation failed: HTTP {response.status_code}"
+                        cloud_errors.append(error_msg)
+                        logger.warning(f"⚠️ {error_msg}")
+                        
+                        # Don't retry on client errors (4xx)
+                        if 400 <= response.status_code < 500:
+                            break
+                            
+                except requests.exceptions.Timeout:
+                    error_msg = f"Cloud timeout (attempt {attempt + 1})"
+                    cloud_errors.append(error_msg)
+                    logger.warning(f"⚠️ {error_msg}")
+                    
+                except requests.exceptions.ConnectionError as e:
+                    error_msg = f"Connection error (attempt {attempt + 1}): {str(e)[:50]}"
+                    cloud_errors.append(error_msg)
+                    logger.warning(f"⚠️ {error_msg}")
+                    
+                except Exception as e:
+                    error_msg = f"Unexpected error (attempt {attempt + 1}): {str(e)[:50]}"
+                    cloud_errors.append(error_msg)
+                    logger.warning(f"⚠️ {error_msg}")
+                
+                # Short delay between retries
+                if attempt < self.retry_attempts - 1:
+                    import time
+                    time.sleep(1)
+            
+            # All cloud attempts failed - try offline fallback
+            logger.warning(f"⚠️ Cloud validation failed after {self.retry_attempts} attempts")
+            logger.debug(f"📋 Cloud errors: {cloud_errors}")
+            
+            if self.offline_fallback_enabled:
+                logger.info("🔄 Falling back to offline validation...")
+                offline_result = self._offline_license_validation(license_key)
+                offline_result['source'] = 'offline'
+                offline_result['reason'] = 'cloud_unavailable'
+                offline_result['cloud_errors'] = cloud_errors
+                return offline_result
+            else:
+                logger.info("❌ Cloud validation failed, offline fallback disabled")
+                return {
+                    'success': True,
+                    'valid': False,
+                    'error': f'Cloud validation failed: {cloud_errors[-1] if cloud_errors else "Unknown error"}',
+                    'source': 'none',
+                    'cloud_errors': cloud_errors
+                }
                 
         except Exception as e:
             error_msg = f"License validation error: {str(e)}"
             logger.error(error_msg)
+            
+            # Try offline fallback on unexpected errors
+            if self.offline_fallback_enabled:
+                logger.info("🔄 Unexpected error, trying offline validation...")
+                try:
+                    offline_result = self._offline_license_validation(license_key)
+                    offline_result['source'] = 'offline'
+                    offline_result['reason'] = 'exception_fallback'
+                    offline_result['original_error'] = error_msg
+                    return offline_result
+                except Exception as offline_error:
+                    logger.error(f"❌ Offline fallback also failed: {str(offline_error)}")
+            
             return {'success': False, 'valid': False, 'error': error_msg}
     
     def _offline_license_validation(self, license_key: str) -> Dict[str, Any]:
         """
-        Offline license validation fallback
-        Uses local cryptographic verification
+        Enhanced offline license validation fallback
+        Uses local database and basic validation
         """
         try:
-            # Import license generator for offline validation
-            from .license_generator import LicenseGenerator
+            logger.info("🔄 Starting offline license validation...")
             
-            license_gen = LicenseGenerator()
-            license_data = license_gen.verify_license(license_key)
+            # Import database utilities for local validation
+            try:
+                from modules.db_utils import get_db_connection
+            except ImportError:
+                from backend.modules.db_utils import get_db_connection
             
-            if license_data:
-                logger.info("✅ License validated offline")
-                return {
-                    'success': True,
-                    'valid': True,
-                    'data': {
-                        'customer_email': license_data.get('customer_email'),
-                        'product_type': license_data.get('product_type'),
-                        'features': license_data.get('features', []),
-                        'expiry_date': license_data.get('expiry_date'),
-                        'license_id': license_data.get('license_id')
+            # Check local database first
+            try:
+                with get_db_connection() as conn:
+                    cursor = conn.cursor()
+                    
+                    # Look for license in local database
+                    cursor.execute("""
+                        SELECT license_key, customer_email, product_type, features, 
+                               status, expires_at, created_at
+                        FROM licenses 
+                        WHERE license_key = ? AND status = 'active'
+                    """, (license_key,))
+                    
+                    license_row = cursor.fetchone()
+                    
+                    if license_row:
+                        # Parse license data
+                        (key, email, product_type, features_json, status, expires_at, created_at) = license_row
+                        
+                        # Parse features
+                        import json
+                        try:
+                            features = json.loads(features_json) if features_json else ['full_access']
+                        except:
+                            features = ['full_access']
+                        
+                        # Check expiry if exists
+                        is_expired = False
+                        if expires_at:
+                            try:
+                                from datetime import datetime
+                                expiry_date = datetime.fromisoformat(expires_at)
+                                is_expired = datetime.now() > expiry_date
+                            except:
+                                logger.warning("⚠️ Could not parse expiry date, assuming valid")
+                        
+                        if is_expired:
+                            logger.warning(f"❌ License found but expired: {expires_at}")
+                            return {
+                                'success': True,
+                                'valid': False,
+                                'error': f'License expired on {expires_at}',
+                                'data': {
+                                    'customer_email': email,
+                                    'product_type': product_type,
+                                    'expires_at': expires_at,
+                                    'status': 'expired'
+                                }
+                            }
+                        
+                        logger.info(f"✅ License validated offline from database")
+                        return {
+                            'success': True,
+                            'valid': True,
+                            'data': {
+                                'customer_email': email,
+                                'product_type': product_type,
+                                'features': features,
+                                'expires_at': expires_at,
+                                'license_key': license_key,
+                                'status': 'active',
+                                'validation_method': 'database'
+                            }
+                        }
+                    else:
+                        logger.info(f"❌ License not found in local database")
+                        
+            except Exception as db_error:
+                logger.warning(f"⚠️ Database validation failed: {str(db_error)}")
+            
+            # Fallback to cryptographic validation if available
+            try:
+                logger.info("🔄 Trying cryptographic validation...")
+                from .license_generator import LicenseGenerator
+                
+                license_gen = LicenseGenerator()
+                license_data = license_gen.verify_license(license_key)
+                
+                if license_data:
+                    logger.info("✅ License validated offline via cryptography")
+                    return {
+                        'success': True,
+                        'valid': True,
+                        'data': {
+                            'customer_email': license_data.get('customer_email'),
+                            'product_type': license_data.get('product_type'),
+                            'features': license_data.get('features', []),
+                            'expires_at': license_data.get('expiry_date'),
+                            'license_id': license_data.get('license_id'),
+                            'validation_method': 'cryptographic'
+                        }
                     }
-                }
-            else:
-                logger.warning("❌ License validation failed offline")
-                return {
-                    'success': True,
-                    'valid': False,
-                    'error': 'Invalid license or expired'
-                }
+                else:
+                    logger.warning("❌ Cryptographic validation failed")
+                    
+            except ImportError:
+                logger.warning("⚠️ License generator not available for cryptographic validation")
+            except Exception as crypto_error:
+                logger.warning(f"⚠️ Cryptographic validation failed: {str(crypto_error)}")
+            
+            # All offline methods failed
+            logger.warning("❌ All offline validation methods failed")
+            return {
+                'success': True,
+                'valid': False,
+                'error': 'License not found in local database and cryptographic validation failed'
+            }
                 
         except Exception as e:
             logger.error(f"❌ Offline validation error: {str(e)}")
@@ -482,7 +663,11 @@ class VTrackCloudClient:
                 'services_healthy': f"{healthy_count}/{total_count}",
                 'services': health_status,
                 'timestamp': datetime.now().isoformat(),
-                'endpoints': self.endpoints
+                'endpoints': self.endpoints,
+                'offline_fallback': {
+                    'enabled': self.offline_fallback_enabled,
+                    'grace_period_hours': self.offline_grace_period_hours
+                }
             }
             
             if overall_healthy:
@@ -517,10 +702,13 @@ class VTrackCloudClient:
             environment = {
                 'urls_configured': all(url for url in self.endpoints.values()),
                 'endpoints': self.endpoints,
-                'unified_redirect_url': self.unified_redirect_url,  # Added for debugging
+                'unified_redirect_url': self.unified_redirect_url,
                 'timeout': self.timeout,
+                'license_timeout': self.license_timeout,
                 'retry_attempts': self.retry_attempts,
-                'user_agent': self.user_agent
+                'user_agent': self.user_agent,
+                'offline_fallback_enabled': self.offline_fallback_enabled,
+                'offline_grace_period_hours': self.offline_grace_period_hours
             }
             
             return {
@@ -580,6 +768,13 @@ def validate_cloud_integration() -> tuple[bool, list[str]]:
             try:
                 client = get_cloud_client()
                 logger.info("✅ Cloud client initialized successfully")
+                
+                # Test offline fallback availability
+                if client.offline_fallback_enabled:
+                    logger.info("✅ Offline fallback enabled")
+                else:
+                    logger.warning("⚠️ Offline fallback disabled")
+                    
             except Exception as e:
                 issues.append(f"Client initialization failed: {str(e)}")
         

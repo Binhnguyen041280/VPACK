@@ -1,8 +1,8 @@
 # backend/modules/payments/payment_routes.py
 """
-V_Track Payment Routes - CloudFunction Integration Blueprint
+V_Track Payment Routes - CloudFunction Integration Blueprint with Offline Fallback
 Handles all payment-related API endpoints
-Updated: 2025-08-05 - Fixed payment redirect URLs for unified handling
+Updated: 2025-08-11 - Enhanced offline fallback for license validation and activation
 """
 
 from flask import Blueprint, request, jsonify
@@ -196,7 +196,10 @@ def get_packages():
 
 @payment_bp.route('/validate-license', methods=['POST'])
 def validate_license():
-    """Validate license via CloudFunction"""
+    """
+    Validate license via CloudFunction with offline fallback
+    Enhanced with dual validation path and status indicators
+    """
     try:
         data = request.get_json()
         license_key = data.get('license_key')
@@ -207,17 +210,95 @@ def validate_license():
                 'error': 'Missing license_key'
             }), 400
         
-        # Get cloud client and validate license
+        # Pre-validation: Reject obviously invalid keys
+        if is_obviously_invalid_license(license_key):
+            return jsonify({
+                'success': False,
+                'valid': False,
+                'error': 'Invalid license key format',
+                'source': 'local_validation'
+            })
+        
+        logger.info(f"🔍 Validating license with dual path: {license_key[:12]}...")
+        
+        # Get cloud client and validate license (with automatic fallback)
         cloud_client = get_cloud_client()
         result = cloud_client.validate_license(license_key)
         
-        return jsonify(result)
+        # Enhanced response with source indication and warnings
+        validation_source = result.get('source', 'unknown')
+        
+        if result.get('success') and result.get('valid'):
+            response_data = {
+                'success': True,
+                'valid': True,
+                'data': result.get('data', {}),
+                'validation': {
+                    'source': validation_source,
+                    'method': 'cloud' if validation_source == 'cloud' else 'offline',
+                    'timestamp': datetime.now().isoformat()
+                }
+            }
+            
+            # Add warning messages for offline validation
+            if validation_source == 'offline':
+                response_data['warning'] = {
+                    'message': 'License validated offline - some features may be limited',
+                    'reason': result.get('reason', 'cloud_unavailable'),
+                    'recommendation': 'Please check internet connection for full validation'
+                }
+                logger.warning(f"⚠️ Offline validation used for {license_key[:12]}... - {result.get('reason')}")
+            else:
+                logger.info(f"✅ Online validation successful for {license_key[:12]}...")
+            
+            return jsonify(response_data)
+            
+        elif result.get('success') and not result.get('valid'):
+            # Invalid license
+            response_data = {
+                'success': False,
+                'valid': False,
+                'error': result.get('error', 'Invalid or expired license'),
+                'validation': {
+                    'source': validation_source,
+                    'method': 'cloud' if validation_source == 'cloud' else 'offline',
+                    'timestamp': datetime.now().isoformat()
+                }
+            }
+            
+            if validation_source == 'offline':
+                response_data['warning'] = {
+                    'message': 'License validation performed offline',
+                    'recommendation': 'Connect to internet for authoritative validation'
+                }
+            
+            return jsonify(response_data)
+            
+        else:
+            # Validation failed completely
+            logger.error(f"❌ License validation failed completely: {result.get('error')}")
+            return jsonify({
+                'success': False,
+                'valid': False,
+                'error': result.get('error', 'License validation failed'),
+                'validation': {
+                    'source': 'none',
+                    'method': 'failed',
+                    'timestamp': datetime.now().isoformat()
+                }
+            }), 500
         
     except Exception as e:
         logger.error(f"License validation failed: {str(e)}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'valid': False,
+            'error': str(e),
+            'validation': {
+                'source': 'error',
+                'method': 'exception',
+                'timestamp': datetime.now().isoformat()
+            }
         }), 500
 
 @payment_bp.route('/licenses/<customer_email>', methods=['GET'])
@@ -255,7 +336,10 @@ def health_check():
 
 @payment_bp.route('/activate-license', methods=['POST'])
 def activate_license():
-    """Activate license and save to local database"""
+    """
+    Activate license and save to local database with offline fallback
+    Enhanced with database-only activation when cloud is down
+    """
     try:
         data = request.get_json()
         license_key = data.get('license_key')
@@ -265,6 +349,7 @@ def activate_license():
                 'success': False,
                 'error': 'Missing license_key'
             }), 400
+            
         # Pre-validation: Reject obviously invalid keys
         if is_obviously_invalid_license(license_key):
             return jsonify({
@@ -272,23 +357,46 @@ def activate_license():
                 'valid': False,
                 'error': 'Invalid license key format'
             })
-        # Step 1: Validate license via CloudFunction
+            
+        logger.info(f"🔑 Activating license with fallback support: {license_key[:12]}...")
+        
+        # Step 1: Try cloud validation first (with automatic fallback in cloud_client)
         cloud_client = get_cloud_client()
         validation_result = cloud_client.validate_license(license_key)
         
-        # FIXED: Separate validation checks for better error handling
+        validation_source = validation_result.get('source', 'unknown')
+        cloud_unavailable = validation_source in ['offline', 'none']
+        
+        # Enhanced validation checks with fallback handling
         if not validation_result.get('success'):
+            error_msg = validation_result.get('error', 'License validation failed')
+            
+            # If cloud is completely unavailable, try database-only activation
+            if cloud_unavailable:
+                logger.warning(f"⚠️ Cloud unavailable, attempting database-only activation...")
+                return _database_only_activation(license_key, error_msg)
+            
             return jsonify({
                 'success': False,
                 'valid': False,
-                'error': validation_result.get('error', 'License validation failed')
+                'error': error_msg,
+                'activation': {
+                    'source': validation_source,
+                    'method': 'cloud_validation_failed'
+                }
             })
 
         if not validation_result.get('valid'):
+            error_msg = validation_result.get('error', 'Invalid or expired license key')
+            
             return jsonify({
-                'success': False,  
+                'success': False,
                 'valid': False,
-                'error': 'Invalid or expired license key'
+                'error': error_msg,
+                'activation': {
+                    'source': validation_source,
+                    'method': 'license_invalid'
+                }
             })
         
         # Step 2: Save license to local database
@@ -303,75 +411,408 @@ def activate_license():
         # Initialize license database if not exists
         init_license_db()
         
-        # Check if license already activated locally
+        # Check if license already exists locally and reuse instead of creating duplicate
         existing_license = License.get_by_key(license_key)
+        license_id = None
+        license_record = None
+        
         if existing_license and existing_license.get('id'):
-            return jsonify({
-                'success': True,
-                'valid': True,
-                'data': {
-                    'license_key': license_key,
-                    'customer_email': existing_license.get('customer_email', 'unknown'),
-                    'package_name': existing_license.get('product_type', 'desktop'),
-                    'expires_at': existing_license.get('expires_at'),
-                    'status': 'already_activated'
-                }
-            })
-        
-        # Extract package info from license key format: VTRACK-P1M-...
-        package_info = extract_package_from_license_key(license_key)
-        
-        # Create new license record with correct package data
-        license_id = License.create(
-            license_key=license_key,
-            customer_email=license_data.get('customer_email', 'unknown@email.com'),
-            payment_transaction_id=None,  # No local payment transaction
-            product_type=package_info.get('product_type', license_data.get('product_type', 'desktop')),
-            features=license_data.get('features', ['full_access']),
-            expires_days=package_info.get('expires_days', 365)
-        )
-        
-        if license_id:
-            # Get the created license for response
-            created_license = License.get_by_key(license_key)
-            
-            logger.info(f"✅ License {license_key[:12]}... activated locally")
-            
-            features_list = []
-            if created_license and created_license.get('features'):
-                try:
-                    features_list = json.loads(created_license.get('features', '[]'))
-                except (json.JSONDecodeError, TypeError):
-                    features_list = ['full_access']
-            
-            return jsonify({
-                'success': True,
-                'valid': True,
-                'data': {
-                    'license_key': license_key,
-                    'customer_email': created_license.get('customer_email', 'unknown') if created_license else 'unknown',
-                    'package_name': created_license.get('product_type', 'desktop') if created_license else 'desktop',
-                    'expires_at': created_license.get('expires_at') if created_license else None,
-                    'status': 'activated',
-                    'features': features_list
-                }
-            })
+            logger.info(f"📋 Reusing existing license record: {existing_license['id']}")
+            license_id = existing_license['id']
+            license_record = existing_license
         else:
+            # Extract package info from license key format: VTRACK-P1M-...
+            package_info = extract_package_from_license_key(license_key)
+            
+            # Create new license record with correct package data
+            logger.info(f"📝 Creating new license record for key: {license_key[:12]}...")
+            license_id = License.create(
+                license_key=license_key,
+                customer_email=license_data.get('customer_email', 'unknown@email.com'),
+                payment_transaction_id=None,  # No local payment transaction
+                product_type=package_info.get('product_type', license_data.get('product_type', 'desktop')),
+                features=license_data.get('features', ['full_access']),
+                expires_days=package_info.get('expires_days', 365)
+            )
+            
+            if license_id:
+                license_record = License.get_by_key(license_key)
+        
+        if not license_id:
             return jsonify({
                 'success': False,
-                'error': 'Failed to save license to local database'
+                'error': 'Failed to get or create license record'
             }), 500
+        
+        # Check activation records for this license
+        from modules.license.machine_fingerprint import generate_machine_fingerprint
+        current_fingerprint = generate_machine_fingerprint()
+        
+        try:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT machine_fingerprint, activation_time, status 
+                    FROM license_activations 
+                    WHERE license_id = ? AND status = 'active'
+                """, (license_id,))
+                
+                activations = cursor.fetchall()
+                
+                # Check if current machine is already activated
+                for activation in activations:
+                    if activation[0] == current_fingerprint:
+                        logger.info(f"✅ License already activated on this machine")
+                        
+                        # Return existing activation info with source indication
+                        features_list = []
+                        if license_record and license_record.get('features'):
+                            try:
+                                features_list = json.loads(license_record.get('features', '[]'))
+                            except (json.JSONDecodeError, TypeError):
+                                features_list = ['full_access']
+                        
+                        response_data = {
+                            'success': True,
+                            'valid': True,
+                            'data': {
+                                'license_key': license_key,
+                                'customer_email': license_record.get('customer_email', 'unknown') if license_record else 'unknown',
+                                'package_name': license_record.get('product_type', 'desktop') if license_record else 'desktop',
+                                'expires_at': license_record.get('expires_at') if license_record else None,
+                                'status': 'already_activated_this_machine',
+                                'features': features_list,
+                                'machine_fingerprint': current_fingerprint[:16] + "...",
+                                'activated_at': activation[1]
+                            },
+                            'activation': {
+                                'source': validation_source,
+                                'method': 'existing_activation',
+                                'timestamp': datetime.now().isoformat()
+                            }
+                        }
+                        
+                        # Add offline warning if applicable
+                        if cloud_unavailable:
+                            response_data['warning'] = {
+                                'message': 'License activated offline - sync recommended',
+                                'reason': validation_result.get('reason', 'cloud_unavailable'),
+                                'recommendation': 'Connect to internet to sync license status'
+                            }
+                        
+                        return jsonify(response_data)
+                
+                # Check if license is activated on another machine
+                if activations:
+                    logger.warning(f"❌ License already activated on another device")
+                    return jsonify({
+                        'success': False,
+                        'valid': False,
+                        'error': f'License already activated on another device. Activation time: {activations[0][1]}',
+                        'data': {
+                            'license_key': license_key,
+                            'status': 'activated_elsewhere',
+                            'other_device_activated_at': activations[0][1]
+                        },
+                        'activation': {
+                            'source': validation_source,
+                            'method': 'blocked_multi_device'
+                        }
+                    })
+                    
+        except Exception as check_error:
+            logger.error(f"❌ Failed to check activation records: {check_error}")
+            return jsonify({
+                'success': False,
+                'error': f'Database error checking activation: {str(check_error)}'
+            }), 500
+        
+        # CRITICAL: Create activation record - this MUST succeed for security
+        try:
+            activation_time = datetime.now().isoformat()
+            
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT OR REPLACE INTO license_activations 
+                    (license_id, machine_fingerprint, activation_time, status, device_info)
+                    VALUES (?, ?, ?, 'active', ?)
+                """, (
+                    license_id, 
+                    current_fingerprint, 
+                    activation_time,
+                    json.dumps({
+                        "activated_via": "desktop_app", 
+                        "timestamp": activation_time,
+                        "endpoint": "/activate-license",
+                        "validation_source": validation_source
+                    })
+                ))
+                conn.commit()
+                logger.info(f"✅ Activation record created for license {license_id} with fingerprint {current_fingerprint[:16]}...")
+                
+        except Exception as activation_error:
+            logger.error(f"❌ CRITICAL: Failed to create activation record: {activation_error}")
+            return jsonify({
+                'success': False,
+                'error': f'Failed to create activation record: {str(activation_error)}. License not activated for security reasons.'
+            }), 500
+        
+        # SUCCESS: Activation record created successfully
+        logger.info(f"✅ License {license_key[:12]}... activated successfully on this device")
+        
+        # Prepare features list for response
+        features_list = []
+        if license_record and license_record.get('features'):
+            try:
+                features_list = json.loads(license_record.get('features', '[]'))
+            except (json.JSONDecodeError, TypeError):
+                features_list = ['full_access']
+        
+        # Return successful activation response with enhanced metadata
+        response_data = {
+            'success': True,
+            'valid': True,
+            'data': {
+                'license_key': license_key,
+                'customer_email': license_record.get('customer_email', 'unknown') if license_record else 'unknown',
+                'package_name': license_record.get('product_type', 'desktop') if license_record else 'desktop',
+                'expires_at': license_record.get('expires_at') if license_record else None,
+                'status': 'activated',
+                'features': features_list,
+                'machine_fingerprint': current_fingerprint[:16] + "...",
+                'activated_at': activation_time
+            },
+            'activation': {
+                'source': validation_source,
+                'method': 'cloud' if validation_source == 'cloud' else 'offline',
+                'timestamp': activation_time
+            }
+        }
+        
+        # Add appropriate warnings based on validation source
+        if validation_source == 'offline':
+            response_data['warning'] = {
+                'message': 'License activated offline - some features may be limited',
+                'reason': validation_result.get('reason', 'cloud_unavailable'),
+                'recommendation': 'Connect to internet for full license synchronization'
+            }
+        elif validation_source == 'none':
+            response_data['warning'] = {
+                'message': 'License activated in local-only mode',
+                'reason': 'Cloud validation completely unavailable',
+                'recommendation': 'Ensure internet connection for cloud features'
+            }
+        
+        return jsonify(response_data)
             
     except Exception as e:
         logger.error(f"License activation failed: {str(e)}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': str(e),
+            'activation': {
+                'source': 'error',
+                'method': 'exception'
+            }
+        }), 500
+
+def _database_only_activation(license_key: str, original_error: str):
+    """
+    Database-only activation when cloud is completely unavailable
+    This is a fallback method for existing licenses in local database
+    """
+    try:
+        logger.info(f"🔄 Attempting database-only activation for {license_key[:12]}...")
+        
+        # Import license models
+        try:
+            from modules.licensing.license_models import License, init_license_db
+        except ImportError:
+            from backend.modules.licensing.license_models import License, init_license_db
+        
+        # Check if license exists in local database
+        existing_license = License.get_by_key(license_key)
+        
+        if not existing_license:
+            logger.warning(f"❌ License not found in local database: {license_key[:12]}...")
+            return jsonify({
+                'success': False,
+                'valid': False,
+                'error': f'License not found locally and cloud unavailable. Original error: {original_error}',
+                'activation': {
+                    'source': 'database_only',
+                    'method': 'not_found'
+                },
+                'warning': {
+                    'message': 'Cloud validation unavailable - only local database checked',
+                    'recommendation': 'Connect to internet for authoritative license validation'
+                }
+            }), 404
+        
+        # Check if license is expired locally
+        if existing_license.get('expires_at'):
+            try:
+                expiry_date = datetime.fromisoformat(existing_license['expires_at'])
+                if datetime.now() > expiry_date:
+                    logger.warning(f"❌ License expired locally: {existing_license['expires_at']}")
+                    return jsonify({
+                        'success': False,
+                        'valid': False,
+                        'error': f'License expired on {existing_license["expires_at"]}',
+                        'activation': {
+                            'source': 'database_only',
+                            'method': 'expired'
+                        }
+                    }), 400
+            except Exception as date_error:
+                logger.warning(f"⚠️ Could not parse expiry date: {date_error}")
+        
+        # License exists and appears valid - proceed with database-only activation
+        from modules.license.machine_fingerprint import generate_machine_fingerprint
+        current_fingerprint = generate_machine_fingerprint()
+        
+        license_id = existing_license['id']
+        
+        # Check existing activations
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT machine_fingerprint, activation_time, status 
+                FROM license_activations 
+                WHERE license_id = ? AND status = 'active'
+            """, (license_id,))
+            
+            activations = cursor.fetchall()
+            
+            # Check if current machine already activated
+            for activation in activations:
+                if activation[0] == current_fingerprint:
+                    logger.info(f"✅ Database-only: License already activated on this machine")
+                    
+                    features_list = []
+                    if existing_license.get('features'):
+                        try:
+                            features_list = json.loads(existing_license.get('features', '[]'))
+                        except:
+                            features_list = ['full_access']
+                    
+                    response = jsonify({
+                        'success': True,
+                        'valid': True,
+                        'data': {
+                            'license_key': license_key,
+                            'customer_email': existing_license.get('customer_email', 'unknown'),
+                            'package_name': existing_license.get('product_type', 'desktop'),
+                            'expires_at': existing_license.get('expires_at'),
+                            'status': 'already_activated_this_machine',
+                            'features': features_list,
+                            'machine_fingerprint': current_fingerprint[:16] + "...",
+                            'activated_at': activation[1]
+                        },
+                        'activation': {
+                            'source': 'database_only',
+                            'method': 'existing_local_activation',
+                            'timestamp': datetime.now().isoformat()
+                        },
+                        'warning': {
+                            'message': 'License verified from local database only',
+                            'reason': 'cloud_unavailable',
+                            'recommendation': 'Connect to internet to sync with cloud services'
+                        }
+                    })
+                    return response
+            
+            # Check if activated on another machine
+            if activations:
+                logger.warning(f"❌ Database-only: License already activated on another device")
+                return jsonify({
+                    'success': False,
+                    'valid': False,
+                    'error': f'License already activated on another device (local database). Activation time: {activations[0][1]}',
+                    'activation': {
+                        'source': 'database_only',
+                        'method': 'blocked_multi_device'
+                    }
+                }), 400
+        
+        # Create new activation record
+        activation_time = datetime.now().isoformat()
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO license_activations 
+                (license_id, machine_fingerprint, activation_time, status, device_info)
+                VALUES (?, ?, ?, 'active', ?)
+            """, (
+                license_id, 
+                current_fingerprint, 
+                activation_time,
+                json.dumps({
+                    "activated_via": "database_only", 
+                    "timestamp": activation_time,
+                    "endpoint": "/activate-license",
+                    "validation_source": "database_only",
+                    "cloud_error": original_error
+                })
+            ))
+            conn.commit()
+            
+        logger.info(f"✅ Database-only activation successful for {license_key[:12]}...")
+        
+        # Prepare response
+        features_list = []
+        if existing_license.get('features'):
+            try:
+                features_list = json.loads(existing_license.get('features', '[]'))
+            except:
+                features_list = ['full_access']
+        
+        response = jsonify({
+            'success': True,
+            'valid': True,
+            'data': {
+                'license_key': license_key,
+                'customer_email': existing_license.get('customer_email', 'unknown'),
+                'package_name': existing_license.get('product_type', 'desktop'),
+                'expires_at': existing_license.get('expires_at'),
+                'status': 'activated',
+                'features': features_list,
+                'machine_fingerprint': current_fingerprint[:16] + "...",
+                'activated_at': activation_time
+            },
+            'activation': {
+                'source': 'database_only',
+                'method': 'local_activation',
+                'timestamp': activation_time
+            },
+            'warning': {
+                'message': 'License activated from local database only - limited functionality',
+                'reason': 'cloud_completely_unavailable',
+                'recommendation': 'Connect to internet for full cloud synchronization and feature access',
+                'limitations': ['Payment features unavailable', 'License updates may be delayed', 'Cloud sync disabled']
+            }
+        })
+        return response
+        
+    except Exception as e:
+        logger.error(f"❌ Database-only activation failed: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Database-only activation failed: {str(e)}. Original cloud error: {original_error}',
+            'activation': {
+                'source': 'database_only',
+                'method': 'failed'
+            }
         }), 500
 
 @payment_bp.route('/license-status', methods=['GET'])
 def get_license_status():
-    """Get current active license status from local database"""
+    """
+    Get current active license status from local database with validation source info
+    Enhanced with offline indicators
+    """
     try:
         # Import license models
         try:
@@ -409,7 +850,35 @@ def get_license_status():
                     except (json.JSONDecodeError, TypeError):
                         features_list = ['full_access']
                 
-                return jsonify({
+                # FIXED: Actually validate license via cloud instead of just testing connectivity
+                validation_source = 'database'  # Default fallback
+                is_online = False
+                
+                try:
+                    cloud_client = get_cloud_client()
+                    
+                    # Actually validate the license via cloud
+                    license_key = license_data.get('license_key', '')
+                    if license_key:
+                        validation_result = cloud_client.validate_license(license_key)
+                        
+                        if validation_result.get('success') and validation_result.get('source') == 'cloud':
+                            validation_source = 'cloud'
+                            is_online = True
+                            logger.info(f"✅ License validated via cloud: {license_key[:12]}...")
+                        else:
+                            logger.info(f"📋 License validated via database fallback: {license_key[:12]}...")
+                    else:
+                        # No license key to validate, just test connection
+                        connectivity_test = cloud_client.test_connection()
+                        is_online = connectivity_test.get('success', False)
+                        
+                except Exception as e:
+                    logger.warning(f"⚠️ Cloud validation failed, using database: {str(e)}")
+                    validation_source = 'database'
+                    is_online = False
+                
+                response_data = {
                     'success': True,
                     'license': {
                         'license_key': license_data.get('license_key', ''),
@@ -419,18 +888,42 @@ def get_license_status():
                         'status': license_data.get('status', 'active'),
                         'features': features_list,
                         'activated_at': license_data.get('activated_at')
+                    },
+                    'system_status': {
+                        'online': is_online,
+                        'source': validation_source,  # FIXED: Use actual validation source
+                        'timestamp': datetime.now().isoformat()
                     }
-                })
+                }
+                
+                # Add offline warning if not connected
+                if not is_online:
+                    response_data['warning'] = {
+                        'message': 'Operating in offline mode - some features may be limited',
+                        'recommendation': 'Connect to internet for full functionality'
+                    }
+                
+                return jsonify(response_data)
             else:
                 return jsonify({
                     'success': True,
                     'license': None,
-                    'message': 'No active license found'
+                    'message': 'No active license found',
+                    'system_status': {
+                        'online': False,
+                        'source': 'database',
+                        'timestamp': datetime.now().isoformat()
+                    }
                 })
                 
     except Exception as e:
         logger.error(f"License status check failed: {str(e)}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': str(e),
+            'system_status': {
+                'online': False,
+                'source': 'error',
+                'timestamp': datetime.now().isoformat()
+            }
         }), 500

@@ -52,6 +52,7 @@ const Account = ({ authState, onLogout }) => {
         
         if (result.success && result.license) {
           console.log('Full license data from backend:', result.license);
+          console.log('System status from backend:', result.system_status);
           
           // Map product_type to display name
           const packageDisplayNames = {
@@ -67,12 +68,18 @@ const Account = ({ authState, onLogout }) => {
                              result.license.product_type || 
                              'Desktop';
           
+          // FIXED: Proper validation_source mapping based on system_status.source
+          const validationSource = result.system_status?.source === 'cloud' ? 'cloud' : 'offline';
+          const isOnline = result.system_status?.online || false;
+          
           setLicenseStatus({
             valid: true,
             package_type: displayName,
             expires_at: result.license.expires_at,
             license_key: result.license.license_key,
-            activated_at: result.license.activated_at || result.license.created_at
+            activated_at: result.license.activated_at || result.license.created_at,
+            validation_source: validationSource,  // FIXED: Use source field, not online field
+            is_online: isOnline
           });
         } else {
           setLicenseStatus({ valid: false });
@@ -239,10 +246,26 @@ const Account = ({ authState, onLogout }) => {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-gray-400">Trạng thái:</span>
-                  <span className="text-green-400 flex items-center">
-                    <span className="w-2 h-2 bg-green-400 rounded-full mr-2"></span>
-                    Đã kích hoạt
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-green-400 flex items-center">
+                      <span className="w-2 h-2 bg-green-400 rounded-full mr-2"></span>
+                      Đã kích hoạt
+                    </span>
+                    {/* FIXED: Proper validation source indicators */}
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      licenseStatus.validation_source === 'cloud' 
+                        ? 'bg-blue-100 text-blue-800' 
+                        : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {licenseStatus.validation_source === 'cloud' ? 'Cloud Verified' : 'Local Verified'}
+                    </span>
+                    {/* FIXED: Show offline warning only when source is not cloud */}
+                    {licenseStatus.validation_source !== 'cloud' && (
+                      <span className="text-yellow-400 text-xs flex items-center">
+                        ⚠️ Offline Mode
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-400">Loại gói:</span>
