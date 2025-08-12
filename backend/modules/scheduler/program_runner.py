@@ -1,55 +1,145 @@
+"""Program Runner Module for V_Track Video Processing System.
+
+This module manages the execution of video processing threads and coordinates
+the video processing pipeline. It handles frame sampling, event detection,
+and the coordination between different processing stages.
+
+Key Components:
+    - Frame Sampler Threads: Process video frames for detection
+    - Event Detector Thread: Analyze frame sampling logs for events
+    - Video Processing Pipeline: IdleMonitor -> FrameSampler -> EventDetector
+    - Thread Coordination: Uses events for synchronization between stages
+
+Thread Architecture:
+    - Multiple frame sampler threads run in parallel (batch processing)
+    - Single event detector thread processes logs sequentially
+    - Threads coordinate through threading.Event objects for workflow control
+    - Video-level locking prevents concurrent processing of same file
+
+Video Processing Workflow:
+    1. IdleMonitor: Detects active periods in video to focus processing
+    2. FrameSampler: Extracts frames and performs hand/QR detection
+    3. EventDetector: Analyzes detection logs to identify significant events
+    4. Database Updates: Track processing status throughout pipeline
+
+Thread Safety:
+    - Uses RWLocks for database access
+    - Video-specific locks prevent concurrent processing of same file
+    - Event coordination ensures proper workflow sequencing
+"""
+
 import threading
 import time
 import os
-import logging
 from datetime import datetime
+from typing import List, Dict, Any, Optional, Tuple
 from modules.db_utils.db_utils import get_db_connection
 from modules.technician.frame_sampler_trigger import FrameSamplerTrigger
 from modules.technician.frame_sampler_no_trigger import FrameSamplerNoTrigger
 from modules.technician.IdleMonitor import IdleMonitor
 from modules.technician.event_detector import process_single_log
 from .db_sync import db_rwlock, frame_sampler_event, event_detector_event, event_detector_done
+from .config.scheduler_config import SchedulerConfig
 import json
-from modules.config.logging_config import  get_logger
-import logging
+from modules.config.logging_config import get_logger
 
-logging.info("Logging initialized for program_runner")
+logger = get_logger(__name__, {"module": "program_runner"})
+logger.info("Program runner logging initialized")
 
-# Biến tạm để lưu trạng thái chạy và số ngày
-running_state = {"current_running": None, "days": None, "custom_path": None, "files": []}
-# Dictionary lưu khóa cho từng nhóm video
-video_locks = {}
+# Global state tracking for program execution status
+# Used for coordinating between different processing modes
+running_state: Dict[str, Any] = {
+    "current_running": None,  # Currently active processing mode
+    "days": None,             # Number of days for first run
+    "custom_path": None,      # Path for custom processing
+    "files": []               # List of files being processed
+}
 
-def start_frame_sampler_thread(batch_size=1):
-    logging.info(f"Starting {batch_size} frame sampler threads")
+# Video-specific locks to prevent concurrent processing of the same file
+# Key: video file path, Value: threading.Lock instance
+video_locks: Dict[str, threading.Lock] = {}
+
+def start_frame_sampler_thread(batch_size: int = 1) -> List[threading.Thread]:
+    """Start multiple frame sampler threads for parallel video processing.
+    
+    Creates and starts a pool of frame sampler threads that will process
+    videos concurrently. Each thread runs the run_frame_sampler function
+    which handles the complete video processing pipeline.
+    
+    Args:
+        batch_size (int): Number of frame sampler threads to create
+        
+    Returns:
+        List[threading.Thread]: List of started thread objects
+        
+    Thread Coordination:
+        All threads wait on frame_sampler_event and process videos from
+        the shared database queue. Video-level locking prevents conflicts.
+    """
+    logger.info(f"Starting {batch_size} frame sampler threads", extra={"thread_id": threading.current_thread().ident})
     threads = []
-    for _ in range(batch_size):
-        frame_sampler_thread = threading.Thread(target=run_frame_sampler)
+    for i in range(batch_size):
+        frame_sampler_thread = threading.Thread(
+            target=run_frame_sampler, 
+            name=f"FrameSampler-{i}"
+        )
         frame_sampler_thread.start()
         threads.append(frame_sampler_thread)
     return threads
 
-def run_frame_sampler():
-    logging.info("Frame sampler thread started")
-    while True:  # Vòng lặp vô hạn để thread luôn chạy
-        frame_sampler_event.wait()  # Chờ thông báo từ event
-        logging.debug("Frame sampler event received")
+def run_frame_sampler() -> None:
+    """Main frame sampler thread function for video processing.
+    
+    This function runs continuously in each frame sampler thread, processing
+    videos from the database queue. It coordinates the complete video processing
+    pipeline including:
+    
+    1. Video Selection: Gets pending videos from database queue
+    2. Idle Monitoring: Analyzes video for active periods
+    3. Frame Sampling: Processes frames for hand/QR detection
+    4. Status Updates: Tracks processing progress in database
+    5. Event Coordination: Signals event detector when ready
+    
+    Video Processing Pipeline:
+        IdleMonitor -> FrameSampler (Trigger/NoTrigger) -> Log Generation
+    
+    Thread Lifecycle:
+        - Waits on frame_sampler_event for work signals
+        - Processes videos until queue is empty
+        - Coordinates with event detector for log processing
+        - Handles timeouts and error conditions
+    
+    Thread Safety:
+        - Uses video-specific locks to prevent concurrent processing
+        - RWLocks for database access
+        - Event coordination for workflow control
+    """
+    logger.info("Frame sampler thread started", extra={"thread_id": threading.current_thread().ident})
+    
+    # Main processing loop - continues until thread termination
+    while True:
+        # Wait for signal that work is available
+        frame_sampler_event.wait()
+        logger.debug("Frame sampler event received")
         try:
-            with db_rwlock.gen_rlock():  # Đồng bộ hóa truy cập database
+            # Get list of pending video files from database queue
+            with db_rwlock.gen_rlock():
                 conn = get_db_connection()
                 cursor = conn.cursor()
                 cursor.execute("SELECT file_path, camera_name FROM file_list WHERE is_processed = 0 ORDER BY priority DESC, created_at ASC")
                 video_files = [(row[0], row[1]) for row in cursor.fetchall()]
                 conn.close()
-                logging.info(f"Found {len(video_files)} unprocessed video files")
+                logger.info(f"Found {len(video_files)} unprocessed video files")
 
+            # If no work available, clear event and wait for new signals
             if not video_files:
-                logging.info("No video files to process, clearing event")
-                frame_sampler_event.clear()  # Xóa event và tiếp tục chờ
+                logger.info("No video files to process, clearing event")
+                frame_sampler_event.clear()
                 continue
 
+            # Process each video file in the queue
             for video_file, camera_name in video_files:
-                # Kiểm tra trạng thái video trước khi xử lý
+                # Check if video is already being processed or completed
                 with db_rwlock.gen_rlock():
                     conn = get_db_connection()
                     cursor = conn.cursor()
@@ -57,102 +147,114 @@ def run_frame_sampler():
                     result = cursor.fetchone()
                     conn.close()
                     if result and (result[0] == "đang frame sampler ..." or result[1] == 1):
-                        logging.info(f"Skipping video {video_file}: already being processed or completed")
+                        logger.info(f"Skipping video {video_file}: already being processed or completed")
                         continue
 
-                # Khóa theo video
+                # Acquire video-specific lock to prevent concurrent processing
                 with db_rwlock.gen_wlock():
                     if video_file not in video_locks:
                         video_locks[video_file] = threading.Lock()
                 video_lock = video_locks[video_file]
+                
+                # Skip if another thread is already processing this video
                 if not video_lock.acquire(blocking=False):
-                    logging.info(f"Skipping video {video_file}: locked by another thread")
+                    logger.info(f"Skipping video {video_file}: locked by another thread")
                     continue
 
                 try:
-                    logging.info(f"Processing video: {video_file}")
-                    # Kiểm tra qr_trigger_area và packing_area từ packing_profiles
+                    logger.info(f"Processing video: {video_file}")
+                    
+                    # STEP 1: Load camera profile configuration for processing parameters
                     with db_rwlock.gen_rlock():
                         conn = get_db_connection()
                         cursor = conn.cursor()
                         search_name = camera_name if camera_name else "CamTest"
                         if not camera_name:
-                            logging.warning(f"No camera_name for {video_file}, falling back to CamTest")
+                            logger.warning(f"No camera_name for {video_file}, falling back to CamTest")
+                        
+                        # Query packing profiles for camera-specific configuration
                         cursor.execute("SELECT id, profile_name, qr_trigger_area, packing_area FROM packing_profiles WHERE profile_name LIKE ?", (f'%{search_name}%',))
                         profiles = cursor.fetchall()
                         conn.close()
                     
-                    # Chọn profile có id lớn nhất
-                    trigger = [0, 0, 0, 0]
-                    packing_area = None
+                    # Select the profile with the highest ID (most recent)
+                    trigger = [0, 0, 0, 0]  # Default trigger area coordinates
+                    packing_area = None      # Default packing area (no restriction)
                     selected_profile = None
+                    
                     if profiles:
-                        selected_profile = max(profiles, key=lambda x: x[0])  # Chọn id lớn nhất
+                        selected_profile = max(profiles, key=lambda x: x[0])  # Select highest ID
                         profile_id, profile_name, qr_trigger_area, packing_area_raw = selected_profile
-                        # Parse qr_trigger_area
+                        # Parse QR trigger area coordinates [x, y, width, height]
                         try:
                             trigger = json.loads(qr_trigger_area) if qr_trigger_area else [0, 0, 0, 0]
                             if not isinstance(trigger, list) or len(trigger) != 4:
-                                logging.error(f"Invalid qr_trigger_area for {profile_name}: {qr_trigger_area}, using default [0, 0, 0, 0]")
+                                logger.error(f"Invalid qr_trigger_area for {profile_name}: {qr_trigger_area}, using default [0, 0, 0, 0]")
                                 trigger = [0, 0, 0, 0]
                         except json.JSONDecodeError as e:
-                            logging.error(f"Failed to parse qr_trigger_area for {profile_name}: {e}, using default [0, 0, 0, 0]")
+                            logger.error(f"Failed to parse qr_trigger_area for {profile_name}: {e}, using default [0, 0, 0, 0]")
                             trigger = [0, 0, 0, 0]
-                        # Parse packing_area
+                        # Parse packing area coordinates for region-of-interest processing
                         try:
                             if packing_area_raw:
                                 parsed = json.loads(packing_area_raw)
                                 if isinstance(parsed, list) and len(parsed) == 4:
-                                    packing_area = tuple(parsed)
+                                    packing_area = tuple(parsed)  # Convert to tuple for consistency
                                 else:
-                                    logging.error(f"Invalid packing_area format for {profile_name}: {packing_area_raw}, using default None")
+                                    logger.error(f"Invalid packing_area format for {profile_name}: {packing_area_raw}, using default None")
                                     packing_area = None
-                            logging.info(f"Selected profile id={profile_id}, profile_name={profile_name}, qr_trigger_area={trigger}, packing_area={packing_area}")
+                            logger.info(f"Selected profile id={profile_id}, profile_name={profile_name}, qr_trigger_area={trigger}, packing_area={packing_area}")
                         except (ValueError, json.JSONDecodeError, KeyError, TypeError) as e:
-                            logging.error(f"Failed to parse packing_area for {profile_name}: {e}, using default None")
+                            logger.error(f"Failed to parse packing_area for {profile_name}: {e}, using default None")
                             packing_area = None
                     else:
-                        logging.warning(f"No profile found for camera {search_name}, using default qr_trigger_area=[0, 0, 0, 0], packing_area=None")
+                        logger.warning(f"No profile found for camera {search_name}, using default qr_trigger_area=[0, 0, 0, 0], packing_area=None")
                     
-                    # Chạy IdleMonitor trước FrameSampler, truyền packing_area
+                    # STEP 2: Run IdleMonitor to detect active periods in the video
+                    # This optimization focuses processing on periods with actual activity
                     idle_monitor = IdleMonitor()
-                    logging.info(f"Running IdleMonitor for {video_file}")
+                    logger.info(f"Running IdleMonitor for {video_file}")
                     idle_monitor.process_video(video_file, camera_name, packing_area)
                     work_block_queue = idle_monitor.get_work_block_queue()
 
-                    # bỏ qua file không có work block
+                    # Skip videos with no active periods to save processing time
                     if work_block_queue.empty():
-                        logging.info(f"No work blocks found for {video_file}, skipping FrameSampler and log file creation")
+                        logger.info(f"No work blocks found for {video_file}, skipping FrameSampler and log file creation")
                         with db_rwlock.gen_wlock():
                             conn = get_db_connection()
                             cursor = conn.cursor()
                             cursor.execute("UPDATE file_list SET status = ?, is_processed = 1 WHERE file_path = ?", ("xong", video_file))
                             conn.commit()
                             conn.close()
-                        continue  # Bỏ qua FrameSampler và chuyển sang video tiếp theo
-                    # Chọn FrameSampler dựa trên trigger
+                        continue  # Skip frame sampling for inactive videos
+                    # STEP 3: Select appropriate FrameSampler based on trigger configuration
                     if trigger != [0, 0, 0, 0]:
+                        # Use trigger-based sampling when QR trigger area is defined
                         frame_sampler = FrameSamplerTrigger()
-                        logging.info(f"Using FrameSamplerTrigger for {video_file}")
+                        logger.info(f"Using FrameSamplerTrigger for {video_file}")
                     else:
+                        # Use continuous sampling when no trigger area is defined
                         frame_sampler = FrameSamplerNoTrigger()
-                        logging.info(f"Using FrameSamplerNoTrigger for {video_file}")
+                        logger.info(f"Using FrameSamplerNoTrigger for {video_file}")
 
-                    with db_rwlock.gen_wlock():  # Khóa khi cập nhật trạng thái
+                    # STEP 4: Update database status to indicate processing has started
+                    with db_rwlock.gen_wlock():
                         conn = get_db_connection()
                         cursor = conn.cursor()
                         cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("đang frame sampler ...", video_file))
                         conn.commit()
                         conn.close()
-                        logging.debug(f"Updated status for {video_file} to 'đang frame sampler ...'")
+                        logger.debug(f"Updated status for {video_file} to 'đang frame sampler ...'")
                     
-                    # Gọi process_video với work block từ queue
+                    # STEP 5: Process video blocks identified by IdleMonitor
                     log_file = None
                     while not work_block_queue.empty():
                         work_block = work_block_queue.get()
                         start_time = work_block['start_time']
                         end_time = work_block['end_time']
-                        logging.info(f"Processing video block: start_time={start_time}, end_time={end_time}")
+                        logger.info(f"Processing video block: start_time={start_time}, end_time={end_time}")
+                        
+                        # Run frame sampling on the active video segment
                         log_file = frame_sampler.process_video(
                             video_file,
                             video_lock=frame_sampler.video_lock,
@@ -163,69 +265,115 @@ def run_frame_sampler():
                             end_time=end_time
                         )
                     
-                    with db_rwlock.gen_wlock():  # Khóa khi cập nhật trạng thái cuối
+                    # STEP 6: Update final processing status and trigger event detection
+                    with db_rwlock.gen_wlock():
                         conn = get_db_connection()
                         cursor = conn.cursor()
                         if log_file:
                             cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("xong", video_file))
-                            event_detector_event.set()  # Kích hoạt Event Detector sau mỗi video
-                            logging.info(f"Video {video_file} processed successfully, log file: {log_file}")
+                            event_detector_event.set()  # Signal event detector that logs are ready
+                            logger.info(f"Video {video_file} processed successfully, log file: {log_file}")
                         else:
                             cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
-                            logging.error(f"Failed to process video {video_file}")
+                            logger.error(f"Failed to process video {video_file}")
                         conn.commit()
                         conn.close()
                     
-                    # Tạm dừng sau khi xử lý xong một video
-                    logging.info(f"Frame Sampler pausing after processing {video_file}, waiting for Event Detector...")
+                    # STEP 7: Wait for event detector to process the generated logs
+                    logger.info(f"Frame Sampler pausing after processing {video_file}, waiting for Event Detector...")
                     while not event_detector_done.is_set():
-                        time.sleep(1)  # Chờ Event Detector hoàn tất
+                        time.sleep(1)  # Wait for event detector to complete log analysis
 
                 finally:
+                    # Clean up video lock and remove from global locks dictionary
                     video_lock.release()
                     with db_rwlock.gen_wlock():
-                        video_locks.pop(video_file, None)  # Xóa khóa sau khi xử lý xong
-                    logging.debug(f"Released lock for {video_file}")
+                        video_locks.pop(video_file, None)
+                    logger.debug(f"Released lock for {video_file}")
 
-            frame_sampler_event.clear()  # Xóa event sau khi xử lý hết file
-            logging.info("All video files processed, clearing frame sampler event")
+            # Clear event after processing all available videos
+            frame_sampler_event.clear()
+            logger.info("All video files processed, clearing frame sampler event")
+            
         except Exception as e:
-            logging.error(f"Error in Frame Sampler thread: {str(e)}")
-            frame_sampler_event.clear()  # Đảm bảo thread "ngủ" lại nếu có lỗi
+            logger.error(f"Error in Frame Sampler thread: {str(e)}")
+            frame_sampler_event.clear()  # Ensure thread goes back to waiting state on error
 
-def start_event_detector_thread():
-    logging.info("Starting event detector thread")
-    event_detector_thread = threading.Thread(target=run_event_detector)
+def start_event_detector_thread() -> threading.Thread:
+    """Start the event detector thread for log analysis.
+    
+    Creates and starts a single event detector thread that processes
+    frame sampling logs to identify significant events and patterns.
+    
+    Returns:
+        threading.Thread: The started event detector thread
+        
+    Thread Coordination:
+        The event detector waits on event_detector_event and processes
+        logs generated by frame sampler threads.
+    """
+    logger.info("Starting event detector thread", extra={"thread_id": threading.current_thread().ident})
+    event_detector_thread = threading.Thread(target=run_event_detector, name="EventDetector")
     event_detector_thread.start()
     return event_detector_thread
 
-def run_event_detector():
-    logging.info("Event detector thread started")
+def run_event_detector() -> None:
+    """Main event detector thread function for log analysis.
+    
+    This function runs continuously to process frame sampling logs and
+    identify significant events. It coordinates with frame sampler threads
+    to ensure proper workflow sequencing.
+    
+    Event Detection Pipeline:
+        1. Wait for signal from frame samplers that logs are ready
+        2. Query database for unprocessed log files
+        3. Process each log file through event detection algorithms
+        4. Signal frame samplers that processing is complete
+    
+    Thread Coordination:
+        - Waits on event_detector_event for work signals
+        - Sets event_detector_done to signal frame samplers
+        - Ensures sequential processing of logs for consistency
+    
+    Thread Safety:
+        Uses RWLocks for database access and event coordination
+        for proper workflow control.
+    """
+    logger.info("Event detector thread started", extra={"thread_id": threading.current_thread().ident})
+    
+    # Main event detection loop - continues until thread termination
     while True:
+        # Wait for signal that logs are ready for processing
         event_detector_event.wait()
-        logging.debug("Event detector event received")
+        logger.debug("Event detector event received")
         try:
-            with db_rwlock.gen_rlock():  # Đồng bộ hóa truy cập database
+            # Get list of unprocessed log files from database
+            with db_rwlock.gen_rlock():
                 conn = get_db_connection()
                 cursor = conn.cursor()
                 cursor.execute("SELECT log_file FROM processed_logs WHERE is_processed = 0")
                 log_files = [row[0] for row in cursor.fetchall()]
                 conn.close()
-                logging.info(f"Found {len(log_files)} unprocessed log files")
+                logger.info(f"Found {len(log_files)} unprocessed log files")
 
+            # If no logs to process, signal frame samplers to continue
             if not log_files:
                 event_detector_event.clear()
-                event_detector_done.set()  # Báo hiệu Frame Sampler tiếp tục
-                logging.info("No log files to process, clearing event and signaling done")
+                event_detector_done.set()  # Signal frame samplers they can continue
+                logger.info("No log files to process, clearing event and signaling done")
                 continue
 
+            # Process each log file through event detection algorithms
             for log_file in log_files:
-                logging.info(f"Event Detector processing: {log_file}")
-                process_single_log(log_file)
+                logger.info(f"Event Detector processing: {log_file}")
+                process_single_log(log_file)  # Analyze log for events and patterns
+                
+            # Signal completion to frame samplers after processing all logs
             event_detector_event.clear()
-            event_detector_done.set()  # Báo hiệu Frame Sampler tiếp tục sau khi xử lý hết log
-            logging.info("All log files processed, clearing event and signaling done")
+            event_detector_done.set()  # Allow frame samplers to continue with next video
+            logger.info("All log files processed, clearing event and signaling done")
+            
         except Exception as e:
-            logging.error(f"Error in Event Detector thread: {str(e)}")
+            logger.error(f"Error in Event Detector thread: {str(e)}")
             event_detector_event.clear()
-            event_detector_done.set()  # Vẫn báo hiệu Frame Sampler tiếp tục nếu có lỗi
+            event_detector_done.set()  # Still signal completion even on error to prevent deadlock

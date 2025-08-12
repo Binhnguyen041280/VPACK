@@ -1,77 +1,160 @@
+"""Batch Scheduler Module for V_Track Video Processing System.
+
+This module provides the core scheduling and resource management functionality for the V_Track
+video processing system. It manages batch processing of video files with dynamic resource
+optimization and system monitoring capabilities.
+
+Classes:
+    SystemMonitor: Monitors system resources and calculates optimal batch sizes
+    BatchScheduler: Main scheduler class for coordinating video processing tasks
+
+Thread Safety:
+    All database operations are protected by RWLocks (db_rwlock) to ensure thread-safe
+    concurrent access. The scheduler manages multiple worker threads and coordinates
+    their execution using threading events.
+
+Key Features:
+    - Dynamic batch size adjustment based on CPU/memory usage
+    - Timeout handling for stalled video processing
+    - Coordinated file scanning and processing
+    - Thread pool management for frame samplers and event detectors
+"""
+
 import os
 import threading
 import time
-import logging
 import sqlite3
 import pytz
-import psutil  # THÊM IMPORT MỚI
+import psutil
 from datetime import datetime, timedelta
+from typing import List, Tuple, Optional
 from modules.db_utils import get_db_connection
+from modules.config.logging_config import get_logger
 from .db_sync import db_rwlock, frame_sampler_event, event_detector_event
 from .file_lister import run_file_scan
 from .program_runner import start_frame_sampler_thread, start_event_detector_thread
-import logging
+from .config.scheduler_config import SchedulerConfig
 
-logger = logging.getLogger("app")
+logger = get_logger(__name__, {"module": "batch_scheduler"})
 logger.info("BatchScheduler logging initialized")
 
 # Cấu hình múi giờ Việt Nam
 VIETNAM_TZ = pytz.timezone('Asia/Ho_Chi_Minh')
 
 class SystemMonitor:
-    """Theo dõi tài nguyên hệ thống và tính batch_size động."""
+    """Monitors system resources and dynamically calculates optimal batch sizes.
+    
+    This class continuously monitors CPU and memory usage to determine the appropriate
+    batch size for video processing. It prevents system overload by reducing batch sizes
+    when resources are constrained and increases them when resources are available.
+    
+    Attributes:
+        cpu_threshold_low (float): CPU usage threshold below which batch size can be increased
+        cpu_threshold_high (float): CPU usage threshold above which batch size must be reduced
+        base_batch_size (int): Default batch size to return to under normal conditions
+        max_batch_size (int): Maximum allowed batch size regardless of available resources
+    
+    Thread Safety:
+        This class is thread-safe and can be called from multiple threads simultaneously.
+    """
     def __init__(self):
-        self.cpu_threshold_low = 70
-        self.cpu_threshold_high = 90
-        self.base_batch_size = 2
-        self.max_batch_size = 6
+        self.cpu_threshold_low = SchedulerConfig.CPU_THRESHOLD_LOW
+        self.cpu_threshold_high = SchedulerConfig.CPU_THRESHOLD_HIGH
+        self.base_batch_size = SchedulerConfig.BATCH_SIZE_DEFAULT
+        self.max_batch_size = SchedulerConfig.BATCH_SIZE_MAX
 
-    def get_cpu_usage(self):
-        """Lấy CPU usage thực tế từ hệ thống"""
+    def get_cpu_usage(self) -> float:
+        """Get current CPU usage percentage from the system.
+        
+        Returns:
+            float: CPU usage percentage (0-100), or 50 if unable to determine
+            
+        Note:
+            Uses psutil with a 1-second sampling interval for accurate measurement.
+            Returns a fallback value of 50% if any errors occur during measurement.
+        """
         try:
-            # Lấy CPU usage trung bình trong 1 giây
+            # Lấy CPU usage trung bình trong 1 giây và đảm bảo trả về float
             cpu_percent = psutil.cpu_percent(interval=1)
+            # Cast về float để tránh lỗi type hint khi psutil trả về list
+            if isinstance(cpu_percent, list):
+                cpu_percent = sum(cpu_percent) / len(cpu_percent)
             logger.debug(f"Current CPU usage: {cpu_percent}%")
-            return cpu_percent
+            return float(cpu_percent)
         except Exception as e:
             logger.error(f"Error getting CPU usage: {e}")
-            return 50  # Fallback value nếu có lỗi
+            return 50.0  # Fallback value nếu có lỗi
 
-    def get_memory_usage(self):
-        """Lấy memory usage thực tế"""
+    def get_memory_usage(self) -> float:
+        """Get current memory usage percentage from the system.
+        
+        Returns:
+            float: Memory usage percentage (0-100), or 50 if unable to determine
+            
+        Note:
+            Returns a fallback value of 50% if any errors occur during measurement.
+        """
         try:
             memory_percent = psutil.virtual_memory().percent
             logger.debug(f"Current memory usage: {memory_percent}%")
             return memory_percent
         except Exception as e:
             logger.error(f"Error getting memory usage: {e}")
-            return 50  # Fallback value
+            return 50.0  # Fallback value
 
-    def get_batch_size(self, current_batch_size):
+    def get_batch_size(self, current_batch_size: int) -> int:
+        """Calculate optimal batch size based on current system resource usage.
+        
+        This method implements a dynamic batch size adjustment algorithm:
+        - Reduces batch size when CPU > high threshold OR memory > memory threshold
+        - Increases batch size when CPU < low threshold AND memory < 70%
+        - Maintains current size when resources are in the stable range
+        
+        Args:
+            current_batch_size (int): Current batch size being used
+            
+        Returns:
+            int: Recommended batch size (between base_batch_size and max_batch_size)
+            
+        Algorithm Details:
+            - Reduction: Decreases by 1 when overloaded (min: base_batch_size)
+            - Increase: Increases by 1 when underutilized (max: max_batch_size)
+            - Stability: No change when resources are in acceptable range
+        """
         cpu_usage = self.get_cpu_usage()
         memory_usage = self.get_memory_usage()
         
         logger.debug(f"Resource usage - CPU: {cpu_usage}%, Memory: {memory_usage}%")
         
-        # Kiểm tra nếu tài nguyên quá tải
-        if cpu_usage > self.cpu_threshold_high or memory_usage > 85:
+        # Check for resource overload - reduce batch size to prevent system strain
+        if cpu_usage > self.cpu_threshold_high or memory_usage > SchedulerConfig.MEMORY_THRESHOLD:
             if current_batch_size > self.base_batch_size:
                 new_batch_size = current_batch_size - 1
                 logger.warning(f"High resource usage (CPU: {cpu_usage}%, RAM: {memory_usage}%), reducing batch size: {current_batch_size} -> {new_batch_size}")
                 return new_batch_size
         
-        # Kiểm tra nếu tài nguyên nhàn rỗi
+        # Check for resource availability - increase batch size to improve throughput
         elif cpu_usage < self.cpu_threshold_low and memory_usage < 70:
             if current_batch_size < self.max_batch_size:
                 new_batch_size = current_batch_size + 1
                 logger.info(f"Low resource usage (CPU: {cpu_usage}%, RAM: {memory_usage}%), increasing batch size: {current_batch_size} -> {new_batch_size}")
                 return new_batch_size
         
-        # Giữ nguyên nếu tài nguyên ổn định
+        # Maintain current batch size when resources are in stable range
         return current_batch_size
 
-    def log_system_info(self):
-        """Log thông tin hệ thống khi khởi động"""
+    def log_system_info(self) -> None:
+        """Log system information at startup for diagnostic purposes.
+        
+        Logs:
+            - CPU core count
+            - Total RAM in GB
+            - Batch size configuration (base and max)
+            - CPU threshold settings
+            
+        This information is useful for understanding system capacity and
+        troubleshooting performance issues.
+        """
         try:
             cpu_count = psutil.cpu_count()
             memory_total = psutil.virtual_memory().total / (1024**3)  # GB
@@ -82,23 +165,80 @@ class SystemMonitor:
             logger.error(f"Error logging system info: {e}")
 
 class BatchScheduler:
-    def __init__(self):
-        self.batch_size = 2
+    """Main scheduler class for coordinating video processing tasks.
+    
+    The BatchScheduler is the central component that manages the entire video processing
+    workflow. It coordinates file scanning, resource monitoring, thread management,
+    and batch processing execution.
+    
+    Key Responsibilities:
+        - Dynamic batch size management based on system resources
+        - Coordination of frame sampler and event detector threads
+        - Periodic file scanning for new video content
+        - Timeout handling for stalled processing jobs
+        - Thread lifecycle management (start/stop/pause/resume)
+    
+    Architecture:
+        - Runs two main background threads: file scanner and batch processor
+        - Manages a pool of frame sampler threads (size determined by SystemMonitor)
+        - Coordinates with a single event detector thread
+        - Uses threading events for inter-thread communication
+    
+    Thread Safety:
+        All database operations use RWLocks to ensure thread-safe concurrent access.
+        Thread coordination is handled through threading.Event objects.
+    
+    Attributes:
+        batch_size (int): Current number of frame sampler threads
+        sys_monitor (SystemMonitor): System resource monitor for dynamic sizing
+        running (bool): Flag indicating if scheduler is active
+        pause_event (threading.Event): Event for pause/resume functionality
+        sampler_threads (List[threading.Thread]): List of active frame sampler threads
+        detector_thread (threading.Thread): Single event detector thread
+    """
+    def __init__(self) -> None:
+        """Initialize the BatchScheduler with default configuration.
+        
+        Sets up:
+            - Default batch size from configuration
+            - System monitor instance
+            - Scan interval and timeout settings
+            - Thread management structures
+            - Pause/resume event (initially set to running)
+        """
+        self.batch_size = SchedulerConfig.BATCH_SIZE_DEFAULT
         self.sys_monitor = SystemMonitor()
-        self.scan_interval = 60
-        self.timeout_seconds = 3600
+        self.scan_interval = SchedulerConfig.SCAN_INTERVAL_SECONDS
+        self.timeout_seconds = SchedulerConfig.TIMEOUT_SECONDS
         self.running = False
-        self.queue_limit = 5
+        self.queue_limit = SchedulerConfig.QUEUE_LIMIT
         self.sampler_threads = []
         self.detector_thread = None
         self.pause_event = threading.Event()
-        self.pause_event.set()
+        self.pause_event.set()  # Start in unpaused state
 
-    def pause(self):
+    def pause(self) -> None:
+        """Pause the BatchScheduler, stopping new file processing.
+        
+        This method pauses all scheduler activity without terminating threads.
+        Existing processing will complete, but no new files will be processed
+        until resume() is called.
+        
+        Thread Safety:
+            Safe to call from any thread. Uses threading.Event for coordination.
+        """
         logger.info(f"BatchScheduler paused, current_batch_size={self.batch_size}")
         self.pause_event.clear()
 
-    def resume(self):
+    def resume(self) -> None:
+        """Resume the BatchScheduler, allowing new file processing to continue.
+        
+        This method resumes scheduler activity that was previously paused.
+        File scanning and processing will continue from where it left off.
+        
+        Thread Safety:
+            Safe to call from any thread. Uses threading.Event for coordination.
+        """
         logger.info(f"BatchScheduler resumed, current_batch_size={self.batch_size}")
         self.pause_event.set()
 
@@ -181,7 +321,7 @@ class BatchScheduler:
                 if not self.sampler_threads or len(self.sampler_threads) != self.batch_size:
                     for thread in self.sampler_threads:
                         if thread.is_alive():
-                            thread.join(timeout=1)
+                            thread.join(timeout=SchedulerConfig.THREAD_JOIN_TIMEOUT)
                     self.sampler_threads = start_frame_sampler_thread(self.batch_size)
                     logger.info(f"Started {self.batch_size} frame sampler threads")
 
@@ -210,10 +350,11 @@ class BatchScheduler:
             self.sys_monitor.log_system_info()
             
             self.running = True
-            days = [(datetime.now(VIETNAM_TZ) - timedelta(days=i)).date().isoformat() for i in range(6, -1, -1)]
-            logger.info(f"Initial scan for days: {days}")
+            # Sửa lỗi: truyền số ngày (int) thay vì list cho parameter days
+            initial_scan_days = 7  # Quét 7 ngày đầu
+            logger.info(f"Initial scan for {initial_scan_days} days")
             try:
-                run_file_scan("default", days=days)
+                run_file_scan("default", days=initial_scan_days)
                 frame_sampler_event.set()
             except Exception as e:
                 logger.error(f"Initial scan failed: {e}")
@@ -243,7 +384,7 @@ class BatchScheduler:
         for i, thread in enumerate(self.sampler_threads):
             if thread and thread.is_alive():
                 try:
-                    thread.join(timeout=0.5)  # Timeout ngắn
+                    thread.join(timeout=SchedulerConfig.THREAD_JOIN_TIMEOUT)  # Timeout ngắn
                     if thread.is_alive():
                         logger.warning(f"Sampler thread {i} did not stop gracefully")
                 except Exception as e:
@@ -252,7 +393,7 @@ class BatchScheduler:
         # Dừng detector thread
         if self.detector_thread and self.detector_thread.is_alive():
             try:
-                self.detector_thread.join(timeout=0.5)
+                self.detector_thread.join(timeout=SchedulerConfig.THREAD_JOIN_TIMEOUT)
                 if self.detector_thread.is_alive():
                     logger.warning("Detector thread did not stop gracefully")
             except Exception as e:

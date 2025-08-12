@@ -261,6 +261,59 @@ def verify_license_with_cloud(license_key, email, fingerprint):
     # Returns validation result + license metadata
 ```
 
+## Path Management & Import Guidelines
+
+### CRITICAL: Always run Python from backend/ directory
+```bash
+# ✅ ĐÚNG - Luôn chạy từ backend/
+cd /Users/annhu/vtrack_app/V_Track/backend
+python3 app.py
+python3 -c "from modules.license.license_manager import LicenseManager; print(LicenseManager())"
+
+# ❌ SAI - Sẽ gây lỗi ModuleNotFoundError
+cd /Users/annhu/vtrack_app/V_Track
+python3 backend/app.py
+```
+
+### CRITICAL: Import Patterns
+```python
+# ✅ ĐÚNG - Absolute imports từ modules/
+from modules.config.logging_config import get_logger
+from modules.db_utils import get_db_connection
+from modules.license.license_manager import LicenseManager
+from modules.scheduler.db_sync import db_rwlock
+
+# ✅ ĐÚNG - Local relative (cùng package)
+from .config.scheduler_config import SchedulerConfig
+from .db_sync import frame_sampler_event
+
+# ❌ SAI - Relative imports phức tạp
+from ..licensing.repositories.license_repository import get_license_repository
+from ...payments.cloud_function_client import get_cloud_client
+
+# ❌ SAI - sys.path manipulation
+sys.path.append(os.path.join(os.path.dirname(__file__), 'modules'))
+```
+
+### CRITICAL: Common Error Fixes
+```python
+# "not a known attribute" - Import cụ thể class/function
+# ❌ SAI:
+import modules.license.license_manager
+result = modules.license.license_manager.LicenseManager()  # AttributeError
+
+# ✅ ĐÚNG:
+from modules.license.license_manager import LicenseManager
+result = LicenseManager()
+```
+
+### Project Root Path (for Claude reference)
+```
+PROJECT_ROOT: /Users/annhu/vtrack_app/V_Track/
+BACKEND_ROOT: /Users/annhu/vtrack_app/V_Track/backend/
+FRONTEND_ROOT: /Users/annhu/vtrack_app/V_Track/frontend/
+```
+
 ## Important Notes for Development
 
 ### License System Dependencies
