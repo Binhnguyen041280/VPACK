@@ -3,6 +3,13 @@
 resources/
 service/
 
+# Thư mục development tools và cache
+.serena/
+serena/
+cloud_sync/
+docs/
+flask_session/
+
 # ===== BUILD & CACHE =====
 # Node.js
 node_modules/
@@ -68,6 +75,22 @@ instance/
 # ===== GIT & VERSION CONTROL =====
 .git/
 *.orig
+
+# ===== TEST & DEBUG FILES =====
+test_*.py
+*_test.py
+test*.py
+*test*.py
+debug_*.py
+*_debug.py
+fix_*.py
+*_fix.py
+simple_*.py
+*_simple.py
+# Test directories
+tests/
+test/
+__tests__/
 
 # ===== CREDENTIALS & SENSITIVE =====
 *.key
