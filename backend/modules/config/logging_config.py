@@ -20,8 +20,10 @@ class LogSizeFilter(logging.Filter):
 
 class ContextAdapter(logging.LoggerAdapter):
     def process(self, msg, kwargs):
-        context = " ".join(f"{k}={v}" for k, v in self.extra.items())
-        return f"[{context}] {msg}", kwargs
+        if self.extra:
+            context = " ".join(f"{k}={v}" for k, v in self.extra.items())
+            return f"[{context}] {msg}", kwargs
+        return msg, kwargs
 
 def setup_logging(base_dir, app_name="app", log_level=logging.INFO):
     log_dir = os.path.join(base_dir, "resources", "output_clips", "LOG")

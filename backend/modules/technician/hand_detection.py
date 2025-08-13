@@ -6,6 +6,7 @@ import json
 import os
 import glob
 from datetime import datetime
+from typing import Dict, Any, Optional
 
 # Định nghĩa BASE_DIR
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -20,8 +21,13 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-mp_hands = mp.solutions.hands
-mp_drawing = mp.solutions.drawing_utils
+# Type-safe MediaPipe imports
+try:
+    mp_hands = mp.solutions.hands  # type: ignore
+    mp_drawing = mp.solutions.drawing_utils  # type: ignore
+except AttributeError as e:
+    logging.error(f"MediaPipe import error: {e}")
+    raise ImportError("MediaPipe modules not found. Please reinstall MediaPipe.")
 
 # Đặt bước nhảy frame
 FRAME_STEP = 5
@@ -43,7 +49,7 @@ def ensure_directory_exists(directory):
         logging.error(f"Lỗi khi tạo thư mục {directory}: {str(e)}")
         raise
 
-def select_roi(video_path, camera_id, step="packing"):
+def select_roi(video_path: str, camera_id: str, step: str = "packing") -> Dict[str, Any]:
     """
     Mở video và cho phép người dùng vẽ ROI bằng OpenCV, lưu kết quả vào CameraROI, sau đó phát hiện tay.
     Args:
@@ -159,7 +165,7 @@ def select_roi(video_path, camera_id, step="packing"):
         cv2.destroyAllWindows()
         return {"success": False, "error": f"Lỗi hệ thống: {str(e)}"}
 
-def detect_hands(video_path, roi):
+def detect_hands(video_path: str, roi: Dict[str, int]) -> Dict[str, Any]:
     """
     Hiển thị video với phát hiện tay trong vùng ROI, trả về trạng thái phát hiện tay.
     Args:
@@ -177,12 +183,20 @@ def detect_hands(video_path, roi):
         # Mở video
         logging.debug("Đang mở video để phát hiện tay...")
         cap = cv2.VideoCapture(video_path)
+        
+        # Initialize MediaPipe Hands with explicit parameters
+        hands = mp_hands.Hands(
+            static_image_mode=False,
+            max_num_hands=2,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+        )
+        
         try:
             if not cap.isOpened():
                 logging.error("Không thể mở video.")
                 return {"success": False, "hand_detected": False, "error": "Không thể mở video."}
 
-            hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5)
             frame_count = 0
             start_time = time.time()
             hand_detected = False
@@ -208,7 +222,11 @@ def detect_hands(video_path, roi):
                         hand_detected = True
                         for hand_landmarks in results.multi_hand_landmarks:
                             # Vẽ keypoints ngay khi phát hiện tay
-                            mp_drawing.draw_landmarks(roi_frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                            mp_drawing.draw_landmarks(
+                                roi_frame, 
+                                hand_landmarks, 
+                                mp_hands.HAND_CONNECTIONS
+                            )
 
                 # Hiển thị video
                 elapsed_time = time.time() - start_time
@@ -224,15 +242,16 @@ def detect_hands(video_path, roi):
             return {"success": True, "hand_detected": hand_detected}
         
         finally:
+            hands.close()
             cap.release()
-            cv2.destroyWindow("ROI Hand Detection")  # Chỉ đóng cửa sổ của detect_hands
+            cv2.destroyWindow("ROI Hand Detection")
             logging.debug("Đã giải phóng tài nguyên video (cap.release) trong detect_hands.")
     
     except Exception as e:
         logging.error(f"Lỗi trong detect_hands: {str(e)}")
         return {"success": False, "hand_detected": False, "error": f"Lỗi hệ thống: {str(e)}"}
 
-def finalize_roi(video_path, camera_id, rois):
+def finalize_roi(video_path: str, camera_id: str, rois: list) -> Dict[str, Any]:
     """
     Vẽ tất cả các vùng ROI (packing, MVD, trigger) lên frame và lưu vào thư mục CameraROI.
     Args:
