@@ -7,7 +7,7 @@ import subprocess
 import json
 import numpy as np
 from datetime import datetime, timezone, timedelta
-from modules.db_utils import get_db_connection
+from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import frame_sampler_event, db_rwlock
 import math
 from modules.config.logging_config import get_logger
@@ -28,41 +28,53 @@ class FrameSamplerTrigger:
         self.setup_wechat_qr()
 
     def setup_logging(self):
-        self.logger = get_logger(__name__, {"video_id": os.path.basename(self.video_file)})
+        self.logger = get_logger(__name__, {})
         self.logger.info("Logging initialized")
+
+    def setup_wechat_qr(self):
+        for model_file in [DETECT_PROTO, DETECT_MODEL, SR_PROTO, SR_MODEL]:
+            if not os.path.exists(model_file):
+                logging.error(f"Model file not found: {model_file}")
+                raise FileNotFoundError(f"Model file not found: {model_file}")
+        try:
+            # Using pattern from qr_detector.py with proper error handling
+            self.qr_detector = cv2.wechat_qrcode_WeChatQRCode(DETECT_PROTO, DETECT_MODEL, SR_PROTO, SR_MODEL)  # type: ignore
+            logging.info("WeChat QRCode detector initialized")
+        except Exception as e:
+            logging.error(f"Failed to initialize WeChat QRCode: {str(e)}")
+            self.qr_detector = None
 
     def load_config(self):
         logging.info("Loading configuration from database")
         with db_rwlock.gen_rlock():
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT input_path FROM processing_config WHERE id = 1")
-            result = cursor.fetchone()
-            self.video_root = result[0] if result else os.path.join(BASE_DIR, "Inputvideo")
-            cursor.execute("SELECT output_path FROM processing_config WHERE id = 1")
-            result = cursor.fetchone()
-            self.output_path = result[0] if result else os.path.join(BASE_DIR, "output_clips")
-            self.log_dir = os.path.join(self.output_path, "LOG", "Frame")
-            os.makedirs(self.log_dir, exist_ok=True)
-            cursor.execute("SELECT timezone FROM general_info WHERE id = 1")
-            result = cursor.fetchone()
-            tz_hours = int(result[0].split("+")[1]) if result and "+" in result[0] else 7
-            self.video_timezone = timezone(timedelta(hours=tz_hours))
-            cursor.execute("SELECT frame_rate, frame_interval, min_packing_time FROM processing_config WHERE id = 1")
-            result = cursor.fetchone()
-            self.fps, self.frame_interval, self.min_packing_time = result if result else (30, 5, 5)
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT input_path FROM processing_config WHERE id = 1")
+                result = cursor.fetchone()
+                self.video_root = result[0] if result else os.path.join(BASE_DIR, "Inputvideo")
+                cursor.execute("SELECT output_path FROM processing_config WHERE id = 1")
+                result = cursor.fetchone()
+                self.output_path = result[0] if result else os.path.join(BASE_DIR, "output_clips")
+                self.log_dir = os.path.join(self.output_path, "LOG", "Frame")
+                os.makedirs(self.log_dir, exist_ok=True)
+                cursor.execute("SELECT timezone FROM general_info WHERE id = 1")
+                result = cursor.fetchone()
+                tz_hours = int(result[0].split("+")[1]) if result and "+" in result[0] else 7
+                self.video_timezone = timezone(timedelta(hours=tz_hours))
+                cursor.execute("SELECT frame_rate, frame_interval, min_packing_time FROM processing_config WHERE id = 1")
+                result = cursor.fetchone()
+                self.fps, self.frame_interval, self.min_packing_time = result if result else (30, 5, 5)
             logging.info(f"Config loaded: video_root={self.video_root}, output_path={self.output_path}, timezone={self.video_timezone}, fps={self.fps}, frame_interval={self.frame_interval}, min_packing_time={self.min_packing_time}")
 
     def get_packing_area(self, camera_name):
         logging.info(f"Querying qr_mvd_area and jump_time_ratio for camera {camera_name}")
         with db_rwlock.gen_rlock():
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT qr_mvd_area, jump_time_ratio FROM packing_profiles WHERE profile_name = ?", (camera_name,))
-            result = cursor.fetchone()
-            cursor.execute("SELECT qr_trigger_area FROM packing_profiles WHERE profile_name = ?", (camera_name,))
-            trigger_result = cursor.fetchone()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT qr_mvd_area, jump_time_ratio FROM packing_profiles WHERE profile_name = ?", (camera_name,))
+                result = cursor.fetchone()
+                cursor.execute("SELECT qr_trigger_area FROM packing_profiles WHERE profile_name = ?", (camera_name,))
+                trigger_result = cursor.fetchone()
         if result and result[1] is not None:
             self.jump_time_ratio = float(result[1])
             logging.info(f"Loaded jump_time_ratio: {self.jump_time_ratio}")
@@ -79,8 +91,10 @@ class FrameSamplerTrigger:
                     parsed = json.loads(qr_mvd_area)
                     if isinstance(parsed, list) and len(parsed) == 4:
                         x, y, w, h = parsed
+                    elif isinstance(parsed, dict):
+                        x, y, w, h = parsed.get('x', 0), parsed.get('y', 0), parsed.get('w', 0), parsed.get('h', 0)
                     else:
-                        x, y, w, h = parsed['x'], parsed['y'], parsed['w'], parsed['h']
+                        x, y, w, h = 0, 0, 0, 0
                 roi = (x, y, w, h)
                 logging.info(f"Using qr_mvd_area: {roi}")
             except (ValueError, json.JSONDecodeError, KeyError, TypeError) as e:
@@ -104,11 +118,10 @@ class FrameSamplerTrigger:
 
     def load_video_files(self):
         with db_rwlock.gen_rlock():
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT file_path FROM file_list WHERE is_processed = 0 AND status != 'xong' ORDER BY priority DESC, created_at ASC")
-            video_files = [row[0] for row in cursor.fetchall()]
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT file_path FROM file_list WHERE is_processed = 0 AND status != 'xong' ORDER BY priority DESC, created_at ASC")
+                video_files = [row[0] for row in cursor.fetchall()]
         if not video_files:
             logging.info("No video files found with is_processed = 0 and status != 'xong'.")
         return video_files
@@ -117,6 +130,8 @@ class FrameSamplerTrigger:
         try:
             if len(frame.shape) == 2:
                 frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+            if self.qr_detector is None:
+                return "Off", ""
             texts, _ = self.qr_detector.detectAndDecode(frame)
             state = "Off"
             mvd = ""
@@ -151,13 +166,11 @@ class FrameSamplerTrigger:
         log_file_handle.write(f"# Start: {start_second}, End: {end_second}, Start_Time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}, Camera_Name: {camera_name}, Video_File: {video_file}\n")
         log_file_handle.flush()
         with db_rwlock.gen_wlock():
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1 FROM processed_logs WHERE log_file = ?", (log_file,))
-            if not cursor.fetchone():
-                cursor.execute("INSERT INTO processed_logs (log_file, is_processed) VALUES (?, 0)", (log_file,))
-            conn.commit()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1 FROM processed_logs WHERE log_file = ?", (log_file,))
+                if not cursor.fetchone():
+                    cursor.execute("INSERT INTO processed_logs (log_file, is_processed) VALUES (?, 0)", (log_file,))
         return log_file_handle
 
     def run(self):
@@ -182,42 +195,33 @@ class FrameSamplerTrigger:
             if not os.path.exists(video_file):
                 logging.error(f"File '{video_file}' does not exist")
                 with db_rwlock.gen_wlock():
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
-                    conn.commit()
-                    conn.close()
+                    with safe_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
                 return None
             with db_rwlock.gen_wlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("đang frame sampler ...", video_file))
-                cursor.execute("SELECT camera_name FROM file_list WHERE file_path = ?", (video_file,))
-                result = cursor.fetchone()
-                camera_name = result[0] if result and result[0] else "CamTest"
-                conn.commit()
-                conn.close()
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("đang frame sampler ...", video_file))
+                    cursor.execute("SELECT camera_name FROM file_list WHERE file_path = ?", (video_file,))
+                    result = cursor.fetchone()
+                    camera_name = result[0] if result and result[0] else "CamTest"
             video = cv2.VideoCapture(video_file)
             if not video.isOpened():
                 logging.error(f"Failed to open video '{video_file}'")
                 with db_rwlock.gen_wlock():
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
-                    conn.commit()
-                    conn.close()
-                return None
+                    with safe_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
             start_time_obj = self._get_video_start_time(video_file)
             roi, trigger = get_packing_area_func(camera_name)
             total_seconds = self.get_video_duration(video_file)
             if total_seconds is None:
                 logging.error(f"Failed to get duration of video {video_file}")
                 with db_rwlock.gen_wlock():
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
-                    conn.commit()
-                    conn.close()
+                    with safe_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
                 return None
             logging.info(f"Video duration {video_file}: {total_seconds} seconds")
             video_name = os.path.splitext(os.path.basename(video_file))[0]
@@ -313,10 +317,8 @@ class FrameSamplerTrigger:
             log_file_handle.close()
             video.release()
             with db_rwlock.gen_wlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("UPDATE file_list SET is_processed = 1, status = ? WHERE file_path = ?", ("xong", video_file))
-                conn.commit()
-                conn.close()
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("UPDATE file_list SET is_processed = 1, status = ? WHERE file_path = ?", ("xong", video_file))
             logging.info(f"Completed processing video: {video_file}")
             return log_file

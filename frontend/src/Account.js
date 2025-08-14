@@ -319,7 +319,20 @@ const Account = ({ authState, onLogout }) => {
                         userEmail={authState?.userEmail}
                         onUpgradeInitiated={(upgradeInfo) => {
                           console.log('Upgrade initiated:', upgradeInfo);
-                          showCustomNotification('Đang chuyển hướng đến trang thanh toán...', 'info');
+                          
+                          if (upgradeInfo.completed) {
+                            // Upgrade completed successfully, refresh license status
+                            showCustomNotification('✅ Nâng cấp thành công! Đang cập nhật thông tin license...', 'success');
+                            
+                            // Refresh license status after successful upgrade
+                            setTimeout(() => {
+                              checkLicenseStatus();
+                              setShowUpgrade(false); // Close upgrade modal
+                            }, 1500);
+                          } else {
+                            // Payment process initiated
+                            showCustomNotification('Đang chuyển hướng đến trang thanh toán...', 'info');
+                          }
                         }}
                         onClose={() => setShowUpgrade(false)}
                       />

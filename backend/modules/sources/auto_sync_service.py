@@ -3,8 +3,9 @@ import logging
 import time
 from datetime import datetime, timedelta
 import json
-from modules.db_utils import get_db_connection
-from database import get_sync_status, initialize_sync_status
+from modules.db_utils.safe_connection import safe_db_connection
+# Import PyDriveDownloader for sync status functions
+from .pydrive_downloader import pydrive_downloader
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +42,9 @@ class AutoSyncService:
             return True
             
         # Initialize status if not exists
-        current_status = get_sync_status(source_id)
+        current_status = pydrive_downloader.get_sync_status(source_id)
         if not current_status:
-            initialize_sync_status(source_id, sync_enabled=True, interval_minutes=10)
+            pydrive_downloader.initialize_sync_status(source_id, sync_enabled=True, interval_minutes=10)
             
         self.sync_locks[source_id] = threading.Lock()
         self._schedule_next_sync(source_id)
@@ -64,17 +65,15 @@ class AutoSyncService:
             del self.sync_locks[source_id]
             
             # Update status
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE sync_status 
-                SET sync_enabled = 0, 
-                    last_sync_status = 'stopped',
-                    last_sync_message = 'Auto-sync stopped by user'
-                WHERE source_id = ?
-            """, (source_id,))
-            conn.commit()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE sync_status 
+                    SET sync_enabled = 0, 
+                        last_sync_status = 'stopped',
+                        last_sync_message = 'Auto-sync stopped by user'
+                    WHERE source_id = ?
+                """, (source_id,))
             
             logger.info(f"Auto-sync stopped for source {source_id}")
             return True
@@ -85,21 +84,20 @@ class AutoSyncService:
             
     def get_sync_status(self, source_id: int) -> dict:
         """Get current sync status"""
-        return get_sync_status(source_id) or {}
+        return pydrive_downloader.get_sync_status(source_id) or {}
         
     def _sync_latest_recordings(self, source_id: int) -> dict:
         """Perform sync of latest recordings"""
         with self.sync_locks.get(source_id, threading.Lock()):
             try:
                 # Get source config and type
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT config, source_type FROM video_sources 
-                    WHERE id = ?
-                """, (source_id,))
-                result = cursor.fetchone()
-                conn.close()
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT config, source_type FROM video_sources 
+                        WHERE id = ?
+                    """, (source_id,))
+                    result = cursor.fetchone()
                 
                 if not result:
                     return {'success': False, 'message': 'Source not found'}
@@ -108,16 +106,14 @@ class AutoSyncService:
                 source_type = result[1]
                 
                 # Update status to in_progress
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("""
-                    UPDATE sync_status 
-                    SET last_sync_status = 'in_progress',
-                        last_sync_message = 'Sync started'
-                    WHERE source_id = ?
-                """, (source_id,))
-                conn.commit()
-                conn.close()
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        UPDATE sync_status 
+                        SET last_sync_status = 'in_progress',
+                            last_sync_message = 'Sync started'
+                        WHERE source_id = ?
+                    """, (source_id,))
                 
                 # Get appropriate downloader
                 downloader = self._get_downloader_for_source(source_type)
@@ -134,26 +130,24 @@ class AutoSyncService:
                 download_result = downloader.download_latest_recordings(config, time_range)
                 
                 # Update status
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("""
-                    UPDATE sync_status 
-                    SET last_sync_timestamp = ?,
-                        last_sync_status = ?,
-                        last_sync_message = ?,
-                        files_downloaded_count = files_downloaded_count + ?,
-                        total_download_size_mb = total_download_size_mb + ?
-                    WHERE source_id = ?
-                """, (
-                    datetime.now().isoformat(),
-                    'success' if download_result['success'] else 'failed',
-                    download_result['message'],
-                    download_result.get('files_downloaded', 0),
-                    download_result.get('total_size_mb', 0.0),
-                    source_id
-                ))
-                conn.commit()
-                conn.close()
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        UPDATE sync_status 
+                        SET last_sync_timestamp = ?,
+                            last_sync_status = ?,
+                            last_sync_message = ?,
+                            files_downloaded_count = files_downloaded_count + ?,
+                            total_download_size_mb = total_download_size_mb + ?
+                        WHERE source_id = ?
+                    """, (
+                        datetime.now().isoformat(),
+                        'success' if download_result['success'] else 'failed',
+                        download_result['message'],
+                        download_result.get('files_downloaded', 0),
+                        download_result.get('total_size_mb', 0.0),
+                        source_id
+                    ))
                 
                 return download_result
                 
@@ -161,16 +155,14 @@ class AutoSyncService:
                 logger.error(f"Sync error for {source_id}: {e}")
                 
                 # Update error status
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("""
-                    UPDATE sync_status 
-                    SET last_sync_status = 'failed',
-                        last_sync_message = ?
-                    WHERE source_id = ?
-                """, (str(e), source_id))
-                conn.commit()
-                conn.close()
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        UPDATE sync_status 
+                        SET last_sync_status = 'failed',
+                            last_sync_message = ?
+                        WHERE source_id = ?
+                    """, (str(e), source_id))
                 
                 return {'success': False, 'message': str(e)}
     
@@ -184,15 +176,13 @@ class AutoSyncService:
         next_sync = datetime.now() + timedelta(minutes=interval)
         
         # Update next timestamp
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE sync_status 
-            SET next_sync_timestamp = ?
-            WHERE source_id = ?
-        """, (next_sync.isoformat(), source_id))
-        conn.commit()
-        conn.close()
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE sync_status 
+                SET next_sync_timestamp = ?
+                WHERE source_id = ?
+            """, (next_sync.isoformat(), source_id))
         
         # Schedule timer
         timer = threading.Timer(interval * 60, self._perform_sync, args=(source_id,))

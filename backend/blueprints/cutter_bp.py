@@ -1,9 +1,8 @@
-import sqlite3
 import os
 from datetime import datetime
 import subprocess
 from flask import Blueprint, request, jsonify
-from modules.db_utils import get_db_connection
+from modules.db_utils.safe_connection import safe_db_connection
 import ast
 from modules.technician.cutter.cutter_complete import cut_complete_event
 from modules.technician.cutter.cutter_incomplete import cut_incomplete_event, merge_incomplete_events
@@ -13,14 +12,13 @@ from modules.scheduler.db_sync import db_rwlock
 cutter_bp = Blueprint('cutter', __name__)
 
 with db_rwlock.gen_rlock():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT output_path FROM processing_config LIMIT 1")
-    result = cursor.fetchone()
-    output_dir = result[0] if result else os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../resources/output_clips")
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    conn.close()
+    with safe_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT output_path FROM processing_config LIMIT 1")
+        result = cursor.fetchone()
+        output_dir = result[0] if result else os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../resources/output_clips")
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
 
 def get_video_duration(video_file):
     try:
@@ -32,8 +30,8 @@ def get_video_duration(video_file):
 
 def cut_and_update_events(selected_events, tracking_codes_filter, brand_name="Alan"):
     with db_rwlock.gen_wlock():
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
         cursor.execute("SELECT video_buffer, max_packing_time FROM processing_config LIMIT 1")
         result = cursor.fetchone()
         video_buffer = result[0] if result else 5
@@ -152,8 +150,7 @@ def cut_and_update_events(selected_events, tracking_codes_filter, brand_name="Al
                 print(f"Bỏ qua: Sự kiện {event_id} không có ts hoặc te")
                 continue
 
-        conn.commit()
-        conn.close()
+            # Auto-commit handled by context manager
     return cut_files
 
 @cutter_bp.route('/cut-videos', methods=['POST'])

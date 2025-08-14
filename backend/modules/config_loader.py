@@ -1,6 +1,7 @@
 import sqlite3
 import os
 from modules.path_utils import get_paths
+from modules.db_utils.safe_connection import safe_db_connection
 
 
 def get_processing_config():
@@ -12,11 +13,10 @@ def get_processing_config():
     db_path = paths["DB_PATH"]
 
     try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT input_path, output_path FROM processing_config LIMIT 1")
-        row = cursor.fetchone()
-        conn.close()
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT input_path, output_path FROM processing_config LIMIT 1")
+            row = cursor.fetchone()
 
         if row:
             return {

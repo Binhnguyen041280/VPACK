@@ -12,26 +12,21 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, Tuple, Union
 from datetime import datetime
 
-# Import database utilities with fallback - FIXED FOR CURRENT LOCATION
-import sys
-import os
-# Add project root to path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_dir))))
-sys.path.insert(0, project_root)
-
+# Import database utilities with proper error handling
 try:
-    from backend.modules.db_utils import get_db_connection
-except ImportError:
-    try:
-        # Try relative path from current location
-        sys.path.insert(0, os.path.join(current_dir, '..', '..', '..'))
-        from db_utils import get_db_connection
-    except ImportError:
-        # Last resort - create a mock for testing
-        def get_db_connection():
-            import sqlite3
-            return sqlite3.connect(':memory:')
+    from modules.db_utils import get_db_connection
+    from modules.db_utils.safe_connection import safe_db_connection
+except ImportError as e:
+    import sys
+    import os
+    logger = logging.getLogger(__name__)
+    logger.error(f"❌ Critical: Cannot import database utilities: {e}")
+    logger.error("💡 Ensure you're running from backend/ directory:")
+    logger.error("   cd /Users/annhu/vtrack_app/V_Track/backend")
+    logger.error("   python3 your_script.py")
+    logger.error("📁 Current working directory: %s", os.getcwd())
+    logger.error("🐍 Python path: %s", sys.path[:3])
+    raise ImportError("Database utilities not found. Check PYTHONPATH and working directory.")
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +50,7 @@ class BaseRepository(ABC):
             return True
             
         try:
-            with get_db_connection() as conn:
+            with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT 1")
                 result = cursor.fetchone()
@@ -78,7 +73,7 @@ class BaseRepository(ABC):
         ELIMINATES: 8 duplicate PRAGMA table_info calls
         """
         try:
-            with get_db_connection() as conn:
+            with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(f"PRAGMA table_info({table_name})")
                 columns = [col[1] for col in cursor.fetchall()]
@@ -179,7 +174,7 @@ class BaseRepository(ABC):
             if not self._test_connection():
                 raise DatabaseError("Database connection not available")
             
-            with get_db_connection() as conn:
+            with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(query, params)
                 rows = cursor.fetchall()
@@ -245,7 +240,7 @@ class BaseRepository(ABC):
             if not self._test_connection():
                 raise DatabaseError("Database connection not available")
             
-            with get_db_connection() as conn:
+            with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(query, params)
                 

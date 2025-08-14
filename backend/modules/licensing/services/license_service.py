@@ -24,11 +24,14 @@ except ImportError:
 # Import database utilities
 try:
     from modules.db_utils import get_db_connection
+    from modules.db_utils.safe_connection import safe_db_connection
 except ImportError:
     try:
         from backend.modules.db_utils import get_db_connection
+        from backend.modules.db_utils.safe_connection import safe_db_connection
     except ImportError:
         get_db_connection = None
+        safe_db_connection = None
 
 logger = logging.getLogger(__name__)
 
@@ -258,12 +261,12 @@ class LicenseService:
         Replaces scattered activation queries and logic
         """
         try:
-            if not get_db_connection:
+            if not get_db_connection or not safe_db_connection:
                 return {'error': 'Database unavailable', 'can_activate': False}
             
             current_fingerprint = self._get_machine_fingerprint()
             
-            with get_db_connection() as conn:
+            with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT machine_fingerprint, activation_time, status, device_info
@@ -351,7 +354,11 @@ class LicenseService:
             
             device_info_json = json.dumps(device_info)
             
-            with get_db_connection() as conn:
+            if not safe_db_connection:
+                logger.error("Database connection unavailable")
+                return False
+            
+            with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT OR REPLACE INTO license_activations 

@@ -7,7 +7,8 @@ import base64
 import pandas as pd
 import json
 from io import BytesIO
-from modules.db_utils import find_project_root, get_db_connection
+from modules.db_utils import find_project_root
+from modules.db_utils.safe_connection import safe_db_connection
 from ..utils.file_parser import parse_uploaded_file
 from modules.scheduler.db_sync import db_rwlock  # Thêm import db_rwlock
 
@@ -131,31 +132,31 @@ def query_events():
         print(f"Time range: from_timestamp={from_timestamp}, to_timestamp={to_timestamp}")  # Log khoảng thời gian
 
         with db_rwlock.gen_rlock():  # Thêm khóa đọc
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
 
-            query = """
+                query = """
                 SELECT event_id, ts, te, duration, tracking_codes, video_file, packing_time_start, packing_time_end
                 FROM events
                 WHERE is_processed = 0
             """
-            params = []
-            # Chỉ thêm điều kiện thời gian nếu packing_time_start không null
-            if from_timestamp and to_timestamp:
-                query += " AND (packing_time_start IS NULL OR (packing_time_start >= ? AND packing_time_start <= ?))"
-                params.extend([from_timestamp, to_timestamp])
-            if selected_cameras:
-                query += " AND camera_name IN ({})".format(','.join('?' * len(selected_cameras)))
-                params.extend(selected_cameras)
+                params = []
+                # Chỉ thêm điều kiện thời gian nếu packing_time_start không null
+                if from_timestamp and to_timestamp:
+                    query += " AND (packing_time_start IS NULL OR (packing_time_start >= ? AND packing_time_start <= ?))"
+                    params.extend([from_timestamp, to_timestamp])
+                if selected_cameras:
+                    query += " AND camera_name IN ({})".format(','.join('?' * len(selected_cameras)))
+                    params.extend(selected_cameras)
 
-            print(f"Executing query: {query} with params: {params}")  # Log truy vấn
-            cursor.execute(query, params)
-            events = cursor.fetchall()
-            print(f"Fetched events: {events}")  # Log kết quả truy vấn
+                print(f"Executing query: {query} with params: {params}")  # Log truy vấn
+                cursor.execute(query, params)
+                events = cursor.fetchall()
+                print(f"Fetched events: {events}")  # Log kết quả truy vấn
 
-            filtered_events = []
-            for event in events:
-                event_dict = {
+                filtered_events = []
+                for event in events:
+                    event_dict = {
                     'event_id': event[0],
                     'ts': event[1],
                     'te': event[2],
@@ -184,9 +185,7 @@ def query_events():
                         if code in tracking_codes_list:
                             filtered_events.append(event_dict)
                             break
-            print(f"Filtered events: {filtered_events}")  # Log kết quả sau khi lọc
-
-            conn.close()
+                print(f"Filtered events: {filtered_events}")  # Log kết quả sau khi lọc
         return jsonify({'events': filtered_events}), 200
     except Exception as e:
         print(f"Error in query_events: {str(e)}")  # Log lỗi chi tiết

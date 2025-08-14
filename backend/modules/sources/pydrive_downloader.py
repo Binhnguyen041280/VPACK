@@ -19,7 +19,7 @@ from .pydrive_core import PyDriveCore
 from .pydrive_error_manager import PyDriveErrorManager
 
 # Existing VTrack infrastructure  
-from modules.db_utils import get_db_connection
+from modules.db_utils.safe_connection import safe_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -49,20 +49,19 @@ class PyDriveDownloader:
     def get_sync_status(self, source_id: int):
         """Get sync status for a source - local implementation"""
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                SELECT * FROM sync_status WHERE source_id = ?
-            """, (source_id,))
-            
-            result = cursor.fetchone()
-            conn.close()
-            
-            if result:
-                columns = [description[0] for description in cursor.description]
-                return dict(zip(columns, result))
-            return None
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                    SELECT * FROM sync_status WHERE source_id = ?
+                """, (source_id,))
+                
+                result = cursor.fetchone()
+                
+                if result:
+                    columns = [description[0] for description in cursor.description]
+                    return dict(zip(columns, result))
+                return None
         except Exception as e:
             logger.error(f"Error getting sync status: {e}")
             return None
@@ -70,29 +69,26 @@ class PyDriveDownloader:
     def initialize_sync_status(self, source_id: int, sync_enabled: bool = True, interval_minutes: int = 10):
         """Initialize sync status for a new source - local implementation"""
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            now = datetime.now()
-            next_sync = now + timedelta(minutes=interval_minutes)
-            
-            cursor.execute("""
-                INSERT OR REPLACE INTO sync_status (
-                    source_id, sync_enabled, last_sync_timestamp, next_sync_timestamp,
-                    sync_interval_minutes, last_sync_status, last_sync_message
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                source_id, 
-                1 if sync_enabled else 0,
-                now.isoformat(),
-                next_sync.isoformat(),
-                interval_minutes,
-                'initialized',
-                'Auto-sync initialized'
-            ))
-            
-            conn.commit()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                
+                now = datetime.now()
+                next_sync = now + timedelta(minutes=interval_minutes)
+                
+                cursor.execute("""
+                    INSERT OR REPLACE INTO sync_status (
+                        source_id, sync_enabled, last_sync_timestamp, next_sync_timestamp,
+                        sync_interval_minutes, last_sync_status, last_sync_message
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    source_id, 
+                    1 if sync_enabled else 0,
+                    now.isoformat(),
+                    next_sync.isoformat(),
+                    interval_minutes,
+                    'initialized',
+                    'Auto-sync initialized'
+                ))
             return True
         except Exception as e:
             logger.error(f"Error initializing sync status: {e}")
@@ -239,27 +235,25 @@ class PyDriveDownloader:
     def _update_success_status(self, source_id: int, result: Dict):
         """Update status after successful sync"""
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE sync_status 
-                SET last_sync_timestamp = ?,
-                    last_sync_status = 'success',
-                    last_sync_message = ?,
-                    files_downloaded_count = files_downloaded_count + ?,
-                    total_download_size_mb = total_download_size_mb + ?,
-                    error_count = 0,
-                    last_error_type = NULL
-                WHERE source_id = ?
-            """, (
-                datetime.now().isoformat(),
-                result.get('message', 'Sync completed'),
-                result.get('files_downloaded', 0),
-                result.get('total_size_mb', 0.0),
-                source_id
-            ))
-            conn.commit()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE sync_status 
+                    SET last_sync_timestamp = ?,
+                        last_sync_status = 'success',
+                        last_sync_message = ?,
+                        files_downloaded_count = files_downloaded_count + ?,
+                        total_download_size_mb = total_download_size_mb + ?,
+                        error_count = 0,
+                        last_error_type = NULL
+                    WHERE source_id = ?
+                """, (
+                    datetime.now().isoformat(),
+                    result.get('message', 'Sync completed'),
+                    result.get('files_downloaded', 0),
+                    result.get('total_size_mb', 0.0),
+                    source_id
+                ))
         except Exception as e:
             logger.error(f"❌ Error updating success status: {e}")
     
@@ -275,41 +269,37 @@ class PyDriveDownloader:
             elif 'quota' in error_message.lower() or 'limit' in error_message.lower():
                 error_type = 'quota'
             
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE sync_status 
-                SET last_sync_timestamp = ?,
-                    last_sync_status = 'failed',
-                    last_sync_message = ?,
-                    error_count = error_count + 1,
-                    last_error_type = ?
-                WHERE source_id = ?
-            """, (
-                datetime.now().isoformat(),
-                error_message,
-                error_type,
-                source_id
-            ))
-            conn.commit()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE sync_status 
+                    SET last_sync_timestamp = ?,
+                        last_sync_status = 'failed',
+                        last_sync_message = ?,
+                        error_count = error_count + 1,
+                        last_error_type = ?
+                    WHERE source_id = ?
+                """, (
+                    datetime.now().isoformat(),
+                    error_message,
+                    error_type,
+                    source_id
+                ))
         except Exception as e:
             logger.error(f"❌ Error updating error status: {e}")
     
     def _update_simple_status(self, source_id: int, status: str, message: str):
         """Simple status update"""
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE sync_status 
-                SET last_sync_timestamp = ?,
-                    last_sync_status = ?,
-                    last_sync_message = ?
-                WHERE source_id = ?
-            """, (datetime.now().isoformat(), status, message, source_id))
-            conn.commit()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE sync_status 
+                    SET last_sync_timestamp = ?,
+                        last_sync_status = ?,
+                        last_sync_message = ?
+                    WHERE source_id = ?
+                """, (datetime.now().isoformat(), status, message, source_id))
         except Exception as e:
             logger.error(f"❌ Error updating status: {e}")
     
@@ -335,15 +325,13 @@ class PyDriveDownloader:
             next_sync_time = datetime.now() + timedelta(minutes=interval)
             
             # Update database
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE sync_status 
-                SET next_sync_timestamp = ?
-                WHERE source_id = ?
-            """, (next_sync_time.isoformat(), source_id))
-            conn.commit()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE sync_status 
+                    SET next_sync_timestamp = ?
+                    WHERE source_id = ?
+                """, (next_sync_time.isoformat(), source_id))
             
             # Schedule timer
             timer = threading.Timer(interval * 60, self._timer_callback, args=(source_id,))
@@ -406,16 +394,15 @@ class PyDriveDownloader:
         try:
             logger.info("🚀 Auto-starting enabled cloud sources...")
             
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT vs.id, vs.name, ss.sync_enabled 
-                FROM video_sources vs
-                LEFT JOIN sync_status ss ON vs.id = ss.source_id
-                WHERE vs.active = 1 AND vs.source_type = 'cloud'
-            """)
-            sources = cursor.fetchall()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT vs.id, vs.name, ss.sync_enabled 
+                    FROM video_sources vs
+                    LEFT JOIN sync_status ss ON vs.id = ss.source_id
+                    WHERE vs.active = 1 AND vs.source_type = 'cloud'
+                """)
+                sources = cursor.fetchall()
             
             started_count = 0
             for source_id, name, sync_enabled in sources:

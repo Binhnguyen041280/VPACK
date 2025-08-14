@@ -343,46 +343,26 @@ class VTrackCloudClient:
             return {'success': False, 'error': error_msg}
     
     def get_packages(self) -> Dict[str, Any]:
-        """Get packages - UNCHANGED but streamlined"""
+        """Get packages from CloudFunction pricing service instead of hardcode"""
         try:
-            packages = {
-                'personal_1m': {
-                    'name': 'Personal Monthly',
-                    'price': int(os.getenv('PERSONAL_1M_PRICE', '2000')),
-                    'duration_days': 30,
-                    'features': os.getenv('PERSONAL_1M_FEATURES', 'unlimited_cameras,basic_analytics,email_support').split(','),
-                    'description': 'Gói cá nhân cho hộ gia đình'
-                },
-                'personal_1y': {
-                    'name': 'Personal Annual',
-                    'price': int(os.getenv('PERSONAL_1Y_PRICE', '20000')),
-                    'duration_days': 365,
-                    'features': os.getenv('PERSONAL_1Y_FEATURES', 'unlimited_cameras,advanced_analytics,priority_support').split(','),
-                    'description': 'Gói cá nhân tiết kiệm (Save 16%)'
-                },
-                'business_1m': {
-                    'name': 'Business Monthly',
-                    'price': int(os.getenv('BUSINESS_1M_PRICE', '5000')),
-                    'duration_days': 30,
-                    'features': os.getenv('BUSINESS_1M_FEATURES', 'unlimited_cameras,advanced_analytics,api_access,priority_support').split(','),
-                    'description': 'Gói doanh nghiệp cho văn phòng'
-                },
-                'business_1y': {
-                    'name': 'Business Annual',
-                    'price': int(os.getenv('BUSINESS_1Y_PRICE', '50000')),
-                    'duration_days': 365,
-                    'features': os.getenv('BUSINESS_1Y_FEATURES', 'unlimited_cameras,advanced_analytics,api_access,dedicated_support').split(','),
-                    'description': 'Gói doanh nghiệp tiết kiệm (Save 16%)'
-                }
-            }
+            logger.info("📦 Fetching packages from CloudFunction pricing service...")
             
-            logger.info(f"📦 Retrieved {len(packages)} packages")
-            return {'success': True, 'packages': packages}
+            # Use CloudFunction pricing service as single source
+            from modules.pricing.cloud_pricing_client import get_cloud_pricing_client
+            pricing_client = get_cloud_pricing_client()
+            pricing_data = pricing_client.fetch_pricing_for_upgrade()
             
+            if pricing_data.get('success'):
+                packages = pricing_data.get('packages', {})
+                logger.info(f"✅ Retrieved {len(packages)} packages from CloudFunction")
+                return {'success': True, 'packages': packages}
+            else:
+                logger.error(f"❌ CloudFunction pricing failed: {pricing_data.get('error')}")
+                return {'success': False, 'error': pricing_data.get('error', 'Pricing service unavailable')}
+                
         except Exception as e:
-            error_msg = f"Package retrieval error: {str(e)}"
-            logger.error(error_msg)
-            return {'success': False, 'error': error_msg}
+            logger.error(f"❌ Package retrieval error: {str(e)}")
+            return {'success': False, 'error': str(e)}
     
     def test_connection(self) -> Dict[str, Any]:
         """Test connection - SIMPLIFIED"""
@@ -421,6 +401,27 @@ class VTrackCloudClient:
         except Exception as e:
             return {'success': False, 'status': 'error', 'error': str(e)}
     
+    def get_system_status(self) -> Dict[str, Any]:
+        """Get system status including environment configuration"""
+        try:
+            logger.info("🔍 Getting system status...")
+            
+            return {
+                'success': True,
+                'environment': {
+                    'unified_redirect_url': self.unified_redirect_url,
+                    'timeout': self.timeout,
+                    'retry_attempts': self.retry_attempts,
+                    'offline_fallback_enabled': self.offline_fallback_enabled,
+                    'endpoints_configured': all(url for url in self.endpoints.values())
+                },
+                'timestamp': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ System status failed: {str(e)}")
+            return {'success': False, 'error': str(e)}
+
     def health_check(self) -> Dict[str, Any]:
         """Health check - STREAMLINED"""
         try:

@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 from .machine_fingerprint import generate_machine_fingerprint
 from .license_config import *
+from ..db_utils.safe_connection import safe_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -182,12 +183,7 @@ class LicenseManager:
         """Create activation record - SIMPLIFIED with database utils"""
         try:
             # Import database utilities (keep for activation records)
-            try:
-                from modules.db_utils import get_db_connection
-            except ImportError:
-                from backend.modules.db_utils import get_db_connection
-            
-            with get_db_connection() as conn:
+            with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT OR REPLACE INTO license_activations 

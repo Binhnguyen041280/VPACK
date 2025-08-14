@@ -5,7 +5,7 @@ import logging
 import uuid
 from datetime import datetime
 import pytz
-from modules.db_utils import get_db_connection
+from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import db_rwlock
 
 # Cấu hình múi giờ Việt Nam - ĐỒNG NHẤT VỚI FILE_LISTER
@@ -19,28 +19,27 @@ class PathManager:
         """Get all active video sources from database"""
         try:
             with db_rwlock.gen_rlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT id, source_type, name, path, config, active, created_at 
-                    FROM video_sources 
-                    WHERE active = 1 
-                    ORDER BY source_type, name
-                """)
-                sources = []
-                for row in cursor.fetchall():
-                    source = {
-                        'id': row[0],
-                        'source_type': row[1],
-                        'name': row[2],
-                        'path': row[3],
-                        'config': json.loads(row[4]) if row[4] else {},
-                        'active': row[5],
-                        'created_at': row[6]
-                    }
-                    sources.append(source)
-                conn.close()
-                return sources
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT id, source_type, name, path, config, active, created_at 
+                        FROM video_sources 
+                        WHERE active = 1 
+                        ORDER BY source_type, name
+                    """)
+                    sources = []
+                    for row in cursor.fetchall():
+                        source = {
+                            'id': row[0],
+                            'source_type': row[1],
+                            'name': row[2],
+                            'path': row[3],
+                            'config': json.loads(row[4]) if row[4] else {},
+                            'active': row[5],
+                            'created_at': row[6]
+                        }
+                        sources.append(source)
+                    return sources
         except Exception as e:
             self.logger.error(f"Error getting active sources: {e}")
             return []
@@ -54,26 +53,25 @@ class PathManager:
         """Get specific video source by ID"""
         try:
             with db_rwlock.gen_rlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT id, source_type, name, path, config, active, created_at 
-                    FROM video_sources 
-                    WHERE id = ?
-                """, (source_id,))
-                row = cursor.fetchone()
-                conn.close()
-                if row:
-                    return {
-                        'id': row[0],
-                        'source_type': row[1],
-                        'name': row[2],
-                        'path': row[3],
-                        'config': json.loads(row[4]) if row[4] else {},
-                        'active': row[5],
-                        'created_at': row[6]
-                    }
-                return None
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT id, source_type, name, path, config, active, created_at 
+                        FROM video_sources 
+                        WHERE id = ?
+                    """, (source_id,))
+                    row = cursor.fetchone()
+                    if row:
+                        return {
+                            'id': row[0],
+                            'source_type': row[1],
+                            'name': row[2],
+                            'path': row[3],
+                            'config': json.loads(row[4]) if row[4] else {},
+                            'active': row[5],
+                            'created_at': row[6]
+                        }
+                    return None
         except Exception as e:
             self.logger.error(f"Error getting source by id {source_id}: {e}")
             return None
@@ -82,12 +80,11 @@ class PathManager:
         """Get source ID by name"""
         try:
             with db_rwlock.gen_rlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("SELECT id FROM video_sources WHERE name = ?", (source_name,))
-                result = cursor.fetchone()
-                conn.close()
-                return result[0] if result else None
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id FROM video_sources WHERE name = ?", (source_name,))
+                    result = cursor.fetchone()
+                    return result[0] if result else None
         except Exception as e:
             self.logger.error(f"Error getting source id by name {source_name}: {e}")
             return None
@@ -96,25 +93,20 @@ class PathManager:
         """Set single active source (disable all others)"""
         try:
             with db_rwlock.gen_wlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                
-                # Disable all sources first
-                cursor.execute("UPDATE video_sources SET active = 0")
-                
-                # Enable the specified source
-                cursor.execute("UPDATE video_sources SET active = 1 WHERE id = ?", (source_id,))
-                
-                if cursor.rowcount == 0:
-                    conn.rollback()
-                    conn.close()
-                    return False, f"No source found with id {source_id}"
-                
-                conn.commit()
-                conn.close()
-                
-                self.logger.info(f"Set source id {source_id} as active")
-                return True, "Active source updated successfully"
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    
+                    # Disable all sources first
+                    cursor.execute("UPDATE video_sources SET active = 0")
+                    
+                    # Enable the specified source
+                    cursor.execute("UPDATE video_sources SET active = 1 WHERE id = ?", (source_id,))
+                    
+                    if cursor.rowcount == 0:
+                        return False, f"No source found with id {source_id}"
+                    
+                    self.logger.info(f"Set source id {source_id} as active")
+                    return True, "Active source updated successfully"
                 
         except Exception as e:
             self.logger.error(f"Error setting active source: {e}")
@@ -239,27 +231,24 @@ class PathManager:
             config_json = json.dumps(config) if config else None
             
             with db_rwlock.gen_wlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                
-                # Check if name already exists
-                cursor.execute("SELECT COUNT(*) FROM video_sources WHERE name = ?", (name,))
-                if cursor.fetchone()[0] > 0:
-                    conn.close()
-                    return False, f"Source name '{name}' already exists"
-                
-                # ✅ FIXED: Use VIETNAM_TZ for created_at - ĐỒNG NHẤT VỚI FILE_LISTER
-                cursor.execute("""
-                    INSERT INTO video_sources (source_type, name, path, config, active, created_at)
-                    VALUES (?, ?, ?, ?, 1, ?)
-                """, (source_type, name, path, config_json, datetime.now(VIETNAM_TZ)))
-                
-                source_id = cursor.lastrowid
-                conn.commit()
-                conn.close()
-                
-                self.logger.info(f"Added new video source: {name} (id: {source_id})")
-                return True, f"Source '{name}' added successfully"
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    
+                    # Check if name already exists
+                    cursor.execute("SELECT COUNT(*) FROM video_sources WHERE name = ?", (name,))
+                    if cursor.fetchone()[0] > 0:
+                        return False, f"Source name '{name}' already exists"
+                    
+                    # ✅ FIXED: Use VIETNAM_TZ for created_at - ĐỒNG NHẤT VỚI FILE_LISTER
+                    cursor.execute("""
+                        INSERT INTO video_sources (source_type, name, path, config, active, created_at)
+                        VALUES (?, ?, ?, ?, 1, ?)
+                    """, (source_type, name, path, config_json, datetime.now(VIETNAM_TZ)))
+                    
+                    source_id = cursor.lastrowid
+                    
+                    self.logger.info(f"Added new video source: {name} (id: {source_id})")
+                    return True, f"Source '{name}' added successfully"
                 
         except Exception as e:
             self.logger.error(f"Error adding source: {e}")
@@ -289,21 +278,17 @@ class PathManager:
             update_values.append(source_id)
             
             with db_rwlock.gen_wlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                
-                query = f"UPDATE video_sources SET {', '.join(update_fields)} WHERE id = ?"
-                cursor.execute(query, update_values)
-                
-                if cursor.rowcount == 0:
-                    conn.close()
-                    return False, f"No source found with id {source_id}"
-                
-                conn.commit()
-                conn.close()
-                
-                self.logger.info(f"Updated video source id: {source_id}")
-                return True, "Source updated successfully"
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    
+                    query = f"UPDATE video_sources SET {', '.join(update_fields)} WHERE id = ?"
+                    cursor.execute(query, update_values)
+                    
+                    if cursor.rowcount == 0:
+                        return False, f"No source found with id {source_id}"
+                    
+                    self.logger.info(f"Updated video source id: {source_id}")
+                    return True, "Source updated successfully"
                 
         except Exception as e:
             self.logger.error(f"Error updating source: {e}")
@@ -313,20 +298,16 @@ class PathManager:
         """Delete video source"""
         try:
             with db_rwlock.gen_wlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                
-                cursor.execute("DELETE FROM video_sources WHERE id = ?", (source_id,))
-                
-                if cursor.rowcount == 0:
-                    conn.close()
-                    return False, f"No source found with id {source_id}"
-                
-                conn.commit()
-                conn.close()
-                
-                self.logger.info(f"Deleted video source id: {source_id}")
-                return True, "Source deleted successfully"
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    
+                    cursor.execute("DELETE FROM video_sources WHERE id = ?", (source_id,))
+                    
+                    if cursor.rowcount == 0:
+                        return False, f"No source found with id {source_id}"
+                    
+                    self.logger.info(f"Deleted video source id: {source_id}")
+                    return True, "Source deleted successfully"
                 
         except Exception as e:
             self.logger.error(f"Error deleting source: {e}")
@@ -336,21 +317,17 @@ class PathManager:
         """Toggle source active status"""
         try:
             with db_rwlock.gen_wlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                
-                cursor.execute("UPDATE video_sources SET active = ? WHERE id = ?", (active, source_id,))
-                
-                if cursor.rowcount == 0:
-                    conn.close()
-                    return False, f"No source found with id {source_id}"
-                
-                conn.commit()
-                conn.close()
-                
-                status = "activated" if active else "deactivated"
-                self.logger.info(f"Source id {source_id} {status}")
-                return True, f"Source {status} successfully"
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    
+                    cursor.execute("UPDATE video_sources SET active = ? WHERE id = ?", (active, source_id,))
+                    
+                    if cursor.rowcount == 0:
+                        return False, f"No source found with id {source_id}"
+                    
+                    status = "activated" if active else "deactivated"
+                    self.logger.info(f"Source id {source_id} {status}")
+                    return True, f"Source {status} successfully"
                 
         except Exception as e:
             self.logger.error(f"Error toggling source status: {e}")

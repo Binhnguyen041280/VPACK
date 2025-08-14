@@ -9,7 +9,7 @@ import queue
 import numpy as np
 import mediapipe as mp
 from datetime import datetime, timezone, timedelta
-from modules.db_utils import get_db_connection
+from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import frame_sampler_event, db_rwlock
 import math
 from modules.config.logging_config import get_logger
@@ -28,9 +28,19 @@ class FrameSamplerNoTrigger:
         self.load_config()
         self.video_lock = threading.Lock()
         self.setup_wechat_qr()
-        # Initialize MediaPipe Hands
-        self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5)
+        # Initialize MediaPipe Hands (using pattern from hand_detection.py)
+        try:
+            self.mp_hands = mp.solutions.hands  # type: ignore
+            self.mp_drawing = mp.solutions.drawing_utils  # type: ignore
+            self.hands = self.mp_hands.Hands(
+                static_image_mode=False,
+                max_num_hands=2,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5
+            )
+        except AttributeError as e:
+            logging.error(f"MediaPipe import error: {e}")
+            raise ImportError("MediaPipe modules not found. Please reinstall MediaPipe.")
         # Initialize log queue and writer thread
         self.log_queue = queue.Queue()
         self.log_thread = threading.Thread(target=self._log_writer)
@@ -38,7 +48,7 @@ class FrameSamplerNoTrigger:
         self.log_thread.start()
 
     def setup_logging(self):
-        self.logger = get_logger(__name__, {"video_id": os.path.basename(self.video_file)})
+        self.logger = get_logger(__name__, {})
         self.logger.info("Logging initialized")
 
     def setup_wechat_qr(self):
@@ -47,43 +57,42 @@ class FrameSamplerNoTrigger:
                 logging.error(f"Model file not found: {model_file}")
                 raise FileNotFoundError(f"Model file not found: {model_file}")
         try:
-            self.qr_detector = cv2.wechat_qrcode_WeChatQRCode(DETECT_PROTO, DETECT_MODEL, SR_PROTO, SR_MODEL)
+            # Using pattern from qr_detector.py with proper error handling
+            self.qr_detector = cv2.wechat_qrcode_WeChatQRCode(DETECT_PROTO, DETECT_MODEL, SR_PROTO, SR_MODEL)  # type: ignore
             logging.info("WeChat QRCode detector initialized")
         except Exception as e:
             logging.error(f"Failed to initialize WeChat QRCode: {str(e)}")
-            raise
+            self.qr_detector = None
 
     def load_config(self):
         logging.info("Loading configuration from database")
         with db_rwlock.gen_rlock():
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT input_path FROM processing_config WHERE id = 1")
-            result = cursor.fetchone()
-            self.video_root = result[0] if result else os.path.join(BASE_DIR, "Inputvideo")
-            cursor.execute("SELECT output_path FROM processing_config WHERE id = 1")
-            result = cursor.fetchone()
-            self.output_path = result[0] if result else os.path.join(BASE_DIR, "output_clips")
-            self.log_dir = os.path.join(self.output_path, "LOG", "Frame")
-            os.makedirs(self.log_dir, exist_ok=True)
-            cursor.execute("SELECT timezone FROM general_info WHERE id = 1")
-            result = cursor.fetchone()
-            tz_hours = int(result[0].split("+")[1]) if result and "+" in result[0] else 7
-            self.video_timezone = timezone(timedelta(hours=tz_hours))
-            cursor.execute("SELECT frame_rate, frame_interval, min_packing_time, motion_threshold, stable_duration_sec FROM processing_config WHERE id = 1")
-            result = cursor.fetchone()
-            self.fps, self.frame_interval, self.min_packing_time, self.motion_threshold, self.stable_duration_sec = result if result else (30, 5, 3, 0.1, 1.0)
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT input_path FROM processing_config WHERE id = 1")
+                result = cursor.fetchone()
+                self.video_root = result[0] if result else os.path.join(BASE_DIR, "Inputvideo")
+                cursor.execute("SELECT output_path FROM processing_config WHERE id = 1")
+                result = cursor.fetchone()
+                self.output_path = result[0] if result else os.path.join(BASE_DIR, "output_clips")
+                self.log_dir = os.path.join(self.output_path, "LOG", "Frame")
+                os.makedirs(self.log_dir, exist_ok=True)
+                cursor.execute("SELECT timezone FROM general_info WHERE id = 1")
+                result = cursor.fetchone()
+                tz_hours = int(result[0].split("+")[1]) if result and "+" in result[0] else 7
+                self.video_timezone = timezone(timedelta(hours=tz_hours))
+                cursor.execute("SELECT frame_rate, frame_interval, min_packing_time, motion_threshold, stable_duration_sec FROM processing_config WHERE id = 1")
+                result = cursor.fetchone()
+                self.fps, self.frame_interval, self.min_packing_time, self.motion_threshold, self.stable_duration_sec = result if result else (30, 5, 3, 0.1, 1.0)
             logging.info(f"Config loaded: video_root={self.video_root}, output_path={self.output_path}, timezone={self.video_timezone}, fps={self.fps}, frame_interval={self.frame_interval}, min_packing_time={self.min_packing_time}, motion_threshold={self.motion_threshold}, stable_duration_sec={self.stable_duration_sec}")
 
     def get_packing_area(self, camera_name):
         logging.info(f"Querying qr_mvd_area for camera {camera_name}")
         with db_rwlock.gen_rlock():
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT qr_mvd_area FROM packing_profiles WHERE profile_name = ?", (camera_name,))
-            result = cursor.fetchone()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT qr_mvd_area FROM packing_profiles WHERE profile_name = ?", (camera_name,))
+                result = cursor.fetchone()
         if result and result[0]:
             try:
                 qr_mvd_area = result[0]
@@ -93,8 +102,10 @@ class FrameSamplerNoTrigger:
                     parsed = json.loads(qr_mvd_area)
                     if isinstance(parsed, list) and len(parsed) == 4:
                         x, y, w, h = parsed
+                    elif isinstance(parsed, dict):
+                        x, y, w, h = parsed.get('x', 0), parsed.get('y', 0), parsed.get('w', 0), parsed.get('h', 0)
                     else:
-                        x, y, w, h = parsed['x'], parsed['y'], parsed['w'], parsed['h']
+                        x, y, w, h = 0, 0, 0, 0
                 roi = (x, y, w, h)
                 logging.info(f"Using qr_mvd_area: {roi}")
             except (ValueError, json.JSONDecodeError, KeyError, TypeError) as e:
@@ -116,11 +127,10 @@ class FrameSamplerNoTrigger:
 
     def load_video_files(self):
         with db_rwlock.gen_rlock():
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT file_path FROM file_list WHERE is_processed = 0 AND status != 'xong' ORDER BY priority DESC, created_at ASC")
-            video_files = [row[0] for row in cursor.fetchall()]
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT file_path FROM file_list WHERE is_processed = 0 AND status != 'xong' ORDER BY priority DESC, created_at ASC")
+                video_files = [row[0] for row in cursor.fetchall()]
         if not video_files:
             logging.info("No video files found with is_processed = 0 and status != 'xong'.")
         return video_files
@@ -129,6 +139,8 @@ class FrameSamplerNoTrigger:
         try:
             if len(frame.shape) == 2:
                 frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+            if self.qr_detector is None:
+                return []
             texts, _ = self.qr_detector.detectAndDecode(frame)
             for text in texts:
                 if text and text != "TimeGo":
@@ -146,7 +158,7 @@ class FrameSamplerNoTrigger:
             # Process frame with MediaPipe Hands
             results = self.hands.process(rgb_frame)
             # Return True if hand landmarks are detected
-            return bool(results.multi_hand_landmarks)
+            return bool(results.multi_hand_landmarks) if results and hasattr(results, 'multi_hand_landmarks') else False
         except Exception as e:
             logging.error(f"Error in hand detection: {str(e)}")
             return False
@@ -201,13 +213,11 @@ class FrameSamplerNoTrigger:
             'video': video_file
         }
         with db_rwlock.gen_wlock():
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1 FROM processed_logs WHERE log_file = ?", (log_file,))
-            if not cursor.fetchone():
-                cursor.execute("INSERT INTO processed_logs (log_file, is_processed) VALUES (?, 0)", (log_file,))
-            conn.commit()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1 FROM processed_logs WHERE log_file = ?", (log_file,))
+                if not cursor.fetchone():
+                    cursor.execute("INSERT INTO processed_logs (log_file, is_processed) VALUES (?, 0)", (log_file,))
         return lambda entry, ts: self.log_queue.put((log_file, f"{ts},{entry}", timestamp))
 
     def run(self):
@@ -232,30 +242,24 @@ class FrameSamplerNoTrigger:
             if not os.path.exists(video_file):
                 logging.error(f"File '{video_file}' does not exist")
                 with db_rwlock.gen_wlock():
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
-                    conn.commit()
-                    conn.close()
+                    with safe_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
                 return None
             with db_rwlock.gen_wlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("đang frame sampler ...", video_file))
-                cursor.execute("SELECT camera_name FROM file_list WHERE file_path = ?", (video_file,))
-                result = cursor.fetchone()
-                camera_name = result[0] if result and result[0] else "CamTest"
-                conn.commit()
-                conn.close()
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("đang frame sampler ...", video_file))
+                    cursor.execute("SELECT camera_name FROM file_list WHERE file_path = ?", (video_file,))
+                    result = cursor.fetchone()
+                    camera_name = result[0] if result and result[0] else "CamTest"
             video = cv2.VideoCapture(video_file)
             if not video.isOpened():
                 logging.error(f"Failed to open video '{video_file}'")
                 with db_rwlock.gen_wlock():
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
-                    conn.commit()
-                    conn.close()
+                    with safe_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
                 return None
             start_time_obj = self._get_video_start_time(video_file)
             roi = get_packing_area_func(camera_name)
@@ -263,11 +267,9 @@ class FrameSamplerNoTrigger:
             if total_seconds is None:
                 logging.error(f"Failed to get duration of video {video_file}")
                 with db_rwlock.gen_wlock():
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
-                    conn.commit()
-                    conn.close()
+                    with safe_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
                 return None
             logging.info(f"Video duration {video_file}: {total_seconds} seconds")
             video_name = os.path.splitext(os.path.basename(video_file))[0]
@@ -324,7 +326,7 @@ class FrameSamplerNoTrigger:
                             stable_start = frame_count
                             is_stable = True
                     else:
-                        if is_stable and (frame_count - stable_start) >= min_stable_frames * frame_interval:
+                        if is_stable and stable_start is not None and (frame_count - stable_start) >= min_stable_frames * frame_interval:
                             start_second = round((stable_start - 1) / self.fps, 1)
                             end_second = round((frame_count - frame_interval - 1) / self.fps, 1)
                             if start_second >= start_time and end_second <= end_time:
@@ -341,7 +343,7 @@ class FrameSamplerNoTrigger:
                     os.makedirs(camera_log_dir, exist_ok=True)
                     log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
                     log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
-            if is_stable and (frame_count - stable_start) >= min_stable_frames * frame_interval:
+            if is_stable and stable_start is not None and (frame_count - stable_start) >= min_stable_frames * frame_interval:
                 start_second = round((stable_start - 1) / self.fps, 1)
                 end_second = round((frame_count - 1) / self.fps, 1)
                 if start_second >= start_time and end_second <= end_time:
@@ -499,10 +501,8 @@ class FrameSamplerNoTrigger:
                 prev_te_frame = te_frame
             video.release()
             with db_rwlock.gen_wlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("UPDATE file_list SET is_processed = 1, status = ? WHERE file_path = ?", ("xong", video_file))
-                conn.commit()
-                conn.close()
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("UPDATE file_list SET is_processed = 1, status = ? WHERE file_path = ?", ("xong", video_file))
             logging.info(f"Completed processing video: {video_file}")
             return log_file

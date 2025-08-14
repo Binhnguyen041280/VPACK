@@ -28,7 +28,7 @@ import pytz
 import psutil
 from datetime import datetime, timedelta
 from typing import List, Tuple, Optional
-from modules.db_utils import get_db_connection
+from modules.db_utils.safe_connection import safe_db_connection
 from modules.config.logging_config import get_logger
 from .db_sync import db_rwlock, frame_sampler_event, event_detector_event
 from .file_lister import run_file_scan
@@ -246,12 +246,11 @@ class BatchScheduler:
         """Lấy danh sách file chưa xử lý, giới hạn queue_limit."""
         try:
             with db_rwlock.gen_rlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("SELECT file_path, camera_name FROM file_list WHERE status = 'pending' AND is_processed = 0 ORDER BY priority DESC, created_at ASC LIMIT ?", 
-                             (self.queue_limit,))
-                files = [(row[0], row[1]) for row in cursor.fetchall()]
-                conn.close()
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT file_path, camera_name FROM file_list WHERE status = 'pending' AND is_processed = 0 ORDER BY priority DESC, created_at ASC LIMIT ?", 
+                                 (self.queue_limit,))
+                    files = [(row[0], row[1]) for row in cursor.fetchall()]
             return files
         except Exception as e:
             logger.error(f"Error retrieving pending files: {e}")
@@ -261,12 +260,10 @@ class BatchScheduler:
         """Cập nhật trạng thái file trong file_list."""
         try:
             with db_rwlock.gen_wlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("UPDATE file_list SET status = ?, is_processed = ? WHERE file_path = ?",
-                             (status, 1 if status in ['xong', 'lỗi', 'timeout'] else 0, file_path))
-                conn.commit()
-                conn.close()
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("UPDATE file_list SET status = ?, is_processed = ? WHERE file_path = ?",
+                                 (status, 1 if status in ['xong', 'lỗi', 'timeout'] else 0, file_path))
         except Exception as e:
             logger.error(f"Error updating file status for {file_path}: {e}")
 
@@ -274,17 +271,15 @@ class BatchScheduler:
         """Kiểm tra và cập nhật trạng thái timeout cho file quá 900s."""
         try:
             with db_rwlock.gen_wlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("SELECT file_path, created_at FROM file_list WHERE status = 'đang frame sampler ...'")
-                for row in cursor.fetchall():
-                    created_at = datetime.fromisoformat(row[1].replace('Z', '+00:00')) if row[1] else datetime.min.replace(tzinfo=VIETNAM_TZ)
-                    if (datetime.now(VIETNAM_TZ) - created_at).total_seconds() > self.timeout_seconds:
-                        cursor.execute("UPDATE file_list SET status = ?, is_processed = 1 WHERE file_path = ?", 
-                                     ('timeout', row[0]))
-                        logger.warning(f"Timeout processing {row[0]} after {self.timeout_seconds}s")
-                conn.commit()
-                conn.close()
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT file_path, created_at FROM file_list WHERE status = 'đang frame sampler ...'")
+                    for row in cursor.fetchall():
+                        created_at = datetime.fromisoformat(row[1].replace('Z', '+00:00')) if row[1] else datetime.min.replace(tzinfo=VIETNAM_TZ)
+                        if (datetime.now(VIETNAM_TZ) - created_at).total_seconds() > self.timeout_seconds:
+                            cursor.execute("UPDATE file_list SET status = ?, is_processed = 1 WHERE file_path = ?", 
+                                         ('timeout', row[0]))
+                            logger.warning(f"Timeout processing {row[0]} after {self.timeout_seconds}s")
         except Exception as e:
             logger.error(f"Error checking timeout: {e}")
 
@@ -296,11 +291,10 @@ class BatchScheduler:
                 logger.debug("Kiểm tra quét lặp, running=%s, paused=%s", self.running, not self.pause_event.is_set())
                 self.pause_event.wait()
                 with db_rwlock.gen_rlock():
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT COUNT(*) FROM file_list WHERE status = 'pending' AND is_processed = 0")
-                    pending_count = cursor.fetchone()[0]
-                    conn.close()
+                    with safe_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT COUNT(*) FROM file_list WHERE status = 'pending' AND is_processed = 0")
+                        pending_count = cursor.fetchone()[0]
 
                 if pending_count >= self.queue_limit:
                     logger.warning(f"Queue full ({pending_count}/{self.queue_limit}), skipping file scan")

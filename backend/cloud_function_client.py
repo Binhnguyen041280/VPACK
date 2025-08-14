@@ -221,7 +221,7 @@ def get_cloud_client() -> CloudFunctionClient:
 def create_payment_proxy():
     """
     Proxy endpoint for payment creation
-    Replaces the original ZaloPay handler in desktop app
+    Handles payment creation via cloud functions
     """
     try:
         # Handle CORS preflight

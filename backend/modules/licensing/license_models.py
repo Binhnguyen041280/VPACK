@@ -19,6 +19,12 @@ try:
 except ImportError:
     from backend.modules.db_utils import get_db_connection
 
+# Import safe database connection
+try:
+    from modules.db_utils.safe_connection import safe_db_connection
+except ImportError:
+    from backend.modules.db_utils.safe_connection import safe_db_connection
+
 # Import repository pattern
 try:
     from .repositories.license_repository import get_license_repository
@@ -33,7 +39,7 @@ logger = logging.getLogger(__name__)
 def init_license_db():
     """Check if license tables exist - UNCHANGED"""
     try:
-        with get_db_connection() as conn:
+        with safe_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='licenses'")
             
@@ -48,12 +54,12 @@ def init_license_db():
         return False
 
 class PaymentTransaction:
-    """Payment transactions - KEPT AS-IS (not in scope for this refactor)"""
+    """Payment transactions - MIGRATED for database safety"""
     
     @staticmethod
     def create(app_trans_id: str, customer_email: str, amount: int, payment_data: Optional[Dict] = None) -> Optional[int]:
         try:
-            with get_db_connection() as conn:
+            with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 payment_data_json = json.dumps(payment_data) if payment_data else None
                 cursor.execute("""
@@ -72,7 +78,7 @@ class PaymentTransaction:
     @staticmethod
     def get_by_app_trans_id(app_trans_id: str) -> Optional[Dict[str, Any]]:
         try:
-            with get_db_connection() as conn:
+            with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT * FROM payment_transactions WHERE app_trans_id = ?", (app_trans_id,))
                 row = cursor.fetchone()
@@ -92,15 +98,15 @@ class PaymentTransaction:
             return None
     
     @staticmethod
-    def update_status(app_trans_id: str, status: str, zalopay_trans_id: Optional[str] = None) -> bool:
+    def update_status(app_trans_id: str, status: str, payment_trans_id: Optional[str] = None) -> bool:
         try:
-            with get_db_connection() as conn:
+            with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 update_fields = ["status = ?"]
                 params = [status]
-                if zalopay_trans_id:
-                    update_fields.append("zalopay_trans_id = ?")
-                    params.append(zalopay_trans_id)
+                if payment_trans_id:
+                    update_fields.append("payment_trans_id = ?")
+                    params.append(payment_trans_id)
                 if status == 'completed':
                     update_fields.append("completed_at = ?")
                     params.append(datetime.now().isoformat())

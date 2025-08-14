@@ -3,14 +3,14 @@
 import logging
 from typing import Dict, Optional
 from datetime import datetime
-from modules.db_utils import get_db_connection
+from modules.db_utils.safe_connection import safe_db_connection
 
 logger = logging.getLogger(__name__)
 
 def check_user_status() -> Dict[str, bool]:
     """Check if user exists and has license"""
     try:
-        with get_db_connection() as conn:
+        with safe_db_connection() as conn:
             cursor = conn.cursor()
             
             # Check users
@@ -36,22 +36,19 @@ def check_user_status() -> Dict[str, bool]:
 def create_user_profile(user_info: dict) -> bool:
     """Create new user profile from OAuth data"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            INSERT OR REPLACE INTO user_profiles (
-                gmail_address, display_name, photo_url, 
-                first_login, last_login, auto_setup_complete
-            ) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, FALSE)
-        """, (
-            user_info.get('email'),
-            user_info.get('name'),
-            user_info.get('picture')
-        ))
-        
-        conn.commit()
-        conn.close()
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                INSERT OR REPLACE INTO user_profiles (
+                    gmail_address, display_name, photo_url, 
+                    first_login, last_login, auto_setup_complete
+                ) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, FALSE)
+            """, (
+                user_info.get('email'),
+                user_info.get('name'),
+                user_info.get('picture')
+            ))
         
         logger.info(f"✅ User profile created: {user_info.get('email')}")
         return True

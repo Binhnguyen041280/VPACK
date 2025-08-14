@@ -10,6 +10,7 @@ import logging
 import json
 from datetime import datetime
 from .cloud_function_client import get_cloud_client
+from modules.pricing.cloud_pricing_client import get_cloud_pricing_client
 
 def is_obviously_invalid_license(license_key: str) -> bool:
     """Reject obviously invalid license keys"""
@@ -36,10 +37,10 @@ def extract_package_from_license_key(license_key: str) -> dict:
         if len(parts) < 3:
             return default_package
         
-        # Extract package code (e.g., P1M, P1Y, B1M, B1Y)
+        # Extract package code (e.g., P1M, P1Y, B1M, B1Y, T24H)
         package_code = parts[1] if len(parts) > 1 else ''
         
-        # Map package codes to actual package info
+        # ✅ UPDATED: Enhanced package mapping with trial support
         package_mapping = {
             'P1M': {
                 'product_type': 'personal_1m',
@@ -60,6 +61,11 @@ def extract_package_from_license_key(license_key: str) -> dict:
                 'product_type': 'business_1y',
                 'expires_days': 365,
                 'package_name': 'Business Annual'
+            },
+            'T24H': {  # ✅ NEW: Trial 24h package
+                'product_type': 'trial_24h',
+                'expires_days': 1,
+                'package_name': '24 Hours Trial Extension'
             }
         }
         
@@ -76,10 +82,10 @@ def extract_package_from_license_key(license_key: str) -> dict:
 
 # Import database utilities
 try:
-    from modules.db_utils import get_db_connection
+    from modules.db_utils.safe_connection import safe_db_connection
 except ImportError:
     # Fallback import path
-    from backend.modules.db_utils import get_db_connection
+    from backend.modules.db_utils.safe_connection import safe_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +106,32 @@ def create_payment():
                     'success': False,
                     'error': f'Missing required field: {field}'
                 }), 400
+        
+        # ✅ NEW: Validate package_type exists in CloudFunction
+        package_type = data.get('package_type')
+        
+        try:
+            pricing_client = get_cloud_pricing_client()
+            pricing_data = pricing_client.fetch_pricing_for_upgrade()
+            
+            if pricing_data.get('success'):
+                available_packages = pricing_data.get('packages', {})
+                if package_type not in available_packages:
+                    logger.error(f"❌ Invalid package type: {package_type}. Available: {list(available_packages.keys())}")
+                    return jsonify({
+                        'success': False,
+                        'error': f'Invalid package type: {package_type}',
+                        'available_packages': list(available_packages.keys())
+                    }), 400
+                
+                logger.info(f"✅ Package type validated: {package_type}")
+            else:
+                logger.warning(f"⚠️ Cannot validate package {package_type} - pricing service unavailable")
+                # Continue without validation (fallback behavior)
+                
+        except Exception as validation_error:
+            logger.warning(f"⚠️ Package validation failed: {str(validation_error)} - continuing anyway")
+            # Continue without validation (fallback behavior)
         
         # FIXED: Ensure unified redirect URLs are set
         # This ensures both success and cancel scenarios are handled consistently
@@ -148,50 +180,51 @@ def create_payment():
 
 @payment_bp.route('/packages', methods=['GET'])
 def get_packages():
-    """Get available payment packages - Testing pricing"""
+    """Get packages from CloudFunction - unified endpoint"""
     try:
-        # Testing packages with scaled pricing (÷100)
-        packages = {
-            'personal_1m': {
-                'name': 'Personal Monthly',
-                'price': 2000,  # 2k VND for testing
-                'duration_days': 30,
-                'features': ['Unlimited cameras', 'Basic analytics', 'Email support'],
-                'description': 'Gói cá nhân cho hộ gia đình'
-            },
-            'personal_1y': {
-                'name': 'Personal Annual',
-                'price': 20000,  # 20k VND for testing (save 16%)
-                'duration_days': 365,
-                'features': ['Unlimited cameras', 'Advanced analytics', 'Priority support'],
-                'description': 'Gói cá nhân tiết kiệm (Save 16%)'
-            },
-            'business_1m': {
-                'name': 'Business Monthly',
-                'price': 5000,  # 5k VND for testing
-                'duration_days': 30,
-                'features': ['Multi-location support', 'Advanced analytics', 'API access', 'Priority support'],
-                'description': 'Gói doanh nghiệp cho văn phòng'
-            },
-            'business_1y': {
-                'name': 'Business Annual',
-                'price': 50000,  # 50k VND for testing (save 16%)
-                'duration_days': 365,
-                'features': ['Multi-location support', 'Advanced analytics', 'API access', 'Dedicated support'],
-                'description': 'Gói doanh nghiệp tiết kiệm (Save 16%)'
-            }
-        }
+        # Check if this is for upgrade action
+        for_upgrade = request.args.get('for_upgrade', 'false').lower() == 'true'
+        force_fresh = request.args.get('fresh', 'false').lower() == 'true'
         
-        return jsonify({
-            'success': True,
-            'packages': packages
-        })
+        pricing_client = get_cloud_pricing_client()
+        
+        if for_upgrade or force_fresh:
+            # User clicked upgrade or explicit fresh request
+            logger.info("📦 Fetching fresh pricing for upgrade")
+            pricing_data = pricing_client.fetch_pricing_for_upgrade()
+        else:
+            # Normal display - use cached if available
+            pricing_data = pricing_client.get_cached_pricing()
+            
+            if not pricing_data:
+                # No cache available, fetch fresh
+                logger.info("📦 No cache available, fetching fresh pricing")
+                pricing_data = pricing_client.fetch_pricing_for_upgrade()
+        
+        # Add server metadata
+        pricing_data['server_timestamp'] = datetime.now().isoformat()
+        pricing_data['request_type'] = 'upgrade' if for_upgrade else 'display'
+        
+        return jsonify(pricing_data)
         
     except Exception as e:
-        logger.error(f"Error fetching packages: {str(e)}")
+        logger.error(f"❌ Get packages failed: {str(e)}")
+        
+        # Try to return cached data as fallback
+        try:
+            pricing_client = get_cloud_pricing_client()
+            fallback_data = pricing_client.get_cached_pricing()
+            if fallback_data:
+                fallback_data['fallback'] = True
+                fallback_data['error'] = str(e)
+                return jsonify(fallback_data)
+        except:
+            pass
+        
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': str(e),
+            'packages': {}
         }), 500
 
 @payment_bp.route('/validate-license', methods=['POST'])
@@ -334,6 +367,19 @@ def health_check():
             'error': str(e)
         }), 500
 
+@payment_bp.route('/pricing/test', methods=['GET'])
+def test_pricing_connection():
+    """Test connection to pricing service"""
+    try:
+        pricing_client = get_cloud_pricing_client()
+        result = pricing_client.test_connection()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({
+            'connected': False,
+            'error': str(e)
+        }), 500
+
 @payment_bp.route('/activate-license', methods=['POST'])
 def activate_license():
     """
@@ -428,7 +474,7 @@ def activate_license():
             logger.info(f"📝 Creating new license record for key: {license_key[:12]}...")
             license_id = License.create(
                 license_key=license_key,
-                customer_email=license_data.get('customer_email', 'unknown@email.com'),
+                customer_email=license_data.get('customer_email') or 'trial@vtrack.com',
                 payment_transaction_id=None,  # No local payment transaction
                 product_type=package_info.get('product_type', license_data.get('product_type', 'desktop')),
                 features=license_data.get('features', ['full_access']),
@@ -449,7 +495,7 @@ def activate_license():
         current_fingerprint = generate_machine_fingerprint()
         
         try:
-            with get_db_connection() as conn:
+            with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT machine_fingerprint, activation_time, status 
@@ -531,7 +577,7 @@ def activate_license():
         try:
             activation_time = datetime.now().isoformat()
             
-            with get_db_connection() as conn:
+            with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT OR REPLACE INTO license_activations 
@@ -675,7 +721,7 @@ def _database_only_activation(license_key: str, original_error: str):
         license_id = existing_license['id']
         
         # Check existing activations
-        with get_db_connection() as conn:
+        with safe_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT machine_fingerprint, activation_time, status 
@@ -739,7 +785,7 @@ def _database_only_activation(license_key: str, original_error: str):
         # Create new activation record
         activation_time = datetime.now().isoformat()
         
-        with get_db_connection() as conn:
+        with safe_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO license_activations 
@@ -821,7 +867,7 @@ def get_license_status():
             from backend.modules.licensing.license_models import License
         
         # Get all active licenses from local database
-        with get_db_connection() as conn:
+        with safe_db_connection() as conn:
             cursor = conn.cursor()
             
             cursor.execute("""

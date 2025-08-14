@@ -3,8 +3,7 @@ from modules.technician.hand_detection import finalize_roi
 import os
 import glob
 import json
-import sqlite3
-from datetime import datetime
+from modules.db_utils.safe_connection import safe_db_connection
 import logging
 
 roi_bp = Blueprint('roi', __name__)
@@ -124,43 +123,42 @@ def finalize_roi_endpoint():
                         qr_trigger_area = [roi["x"], roi["y"], roi["w"], roi["h"]]
 
         profile_name = camera_id
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM packing_profiles WHERE profile_name = ?", (profile_name,))
-        exists = cursor.fetchone()
-        
-        if exists:
-            cursor.execute('''
-                UPDATE packing_profiles
-                SET qr_trigger_area = ?, qr_motion_area = ?, qr_mvd_area = ?, packing_area = ?,
-                    min_packing_time = ?, jump_time_ratio = ?, scan_mode = ?, fixed_threshold = ?, margin = ?, additional_params = ?, mvd_jump_ratio = ?
-                WHERE profile_name = ?
-            ''', (
-                json.dumps(qr_trigger_area),
-                None,  # qr_motion_area
-                json.dumps(qr_mvd_area),
-                json.dumps(packing_roi),
-                10, 0.5, "full", 20, 60, json.dumps({}),
-                None,  # mvd_jump_ratio
-                profile_name
-            ))
-        else:
-            cursor.execute('''
-                INSERT INTO packing_profiles (
-                    profile_name, qr_trigger_area, qr_motion_area, qr_mvd_area, packing_area,
-                    min_packing_time, jump_time_ratio, scan_mode, fixed_threshold, margin, additional_params, mvd_jump_ratio
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                profile_name,
-                json.dumps(qr_trigger_area),
-                None,  # qr_motion_area
-                json.dumps(qr_mvd_area),
-                json.dumps(packing_roi),
-                10, 0.5, "full", 20, 60, json.dumps({}),
-                None   # mvd_jump_ratio
-            ))
-        conn.commit()
-        conn.close()
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM packing_profiles WHERE profile_name = ?", (profile_name,))
+            exists = cursor.fetchone()
+            
+            if exists:
+                cursor.execute('''
+                    UPDATE packing_profiles
+                    SET qr_trigger_area = ?, qr_motion_area = ?, qr_mvd_area = ?, packing_area = ?,
+                        min_packing_time = ?, jump_time_ratio = ?, scan_mode = ?, fixed_threshold = ?, margin = ?, additional_params = ?, mvd_jump_ratio = ?
+                    WHERE profile_name = ?
+                ''', (
+                    json.dumps(qr_trigger_area),
+                    None,  # qr_motion_area
+                    json.dumps(qr_mvd_area),
+                    json.dumps(packing_roi),
+                    10, 0.5, "full", 20, 60, json.dumps({}),
+                    None,  # mvd_jump_ratio
+                    profile_name
+                ))
+            else:
+                cursor.execute('''
+                    INSERT INTO packing_profiles (
+                        profile_name, qr_trigger_area, qr_motion_area, qr_mvd_area, packing_area,
+                        min_packing_time, jump_time_ratio, scan_mode, fixed_threshold, margin, additional_params, mvd_jump_ratio
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    profile_name,
+                    json.dumps(qr_trigger_area),
+                    None,  # qr_motion_area
+                    json.dumps(qr_mvd_area),
+                    json.dumps(packing_roi),
+                    10, 0.5, "full", 20, 60, json.dumps({}),
+                    None   # mvd_jump_ratio
+                ))
+            # Auto-commit handled by context manager
         logging.info(f"Lưu ROI vào packing_profiles với profile_name: {profile_name}")
 
         result = finalize_roi(video_path, camera_id, rois)

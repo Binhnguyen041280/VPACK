@@ -6,11 +6,9 @@ Exposes PyDriveDownloader methods as REST APIs
 
 import logging
 from flask import Blueprint, request, jsonify
-from typing import Dict, Any
 
 # Import the PyDrive downloader
 from .pydrive_downloader import pydrive_downloader, start_source_sync, stop_source_sync, force_sync_source
-from database import get_sync_status
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +38,7 @@ def start_auto_sync():
         
         if success:
             # Get initial status
-            status = get_sync_status(source_id)
+            status = pydrive_downloader.get_sync_status(source_id)
             return jsonify({
                 'success': True,
                 'message': f'Auto-sync started for source {source_id}',
@@ -104,8 +102,8 @@ def stop_auto_sync():
 def get_sync_status_api(source_id: int):
     """Get sync status for a source"""
     try:
-        # Get sync status from database
-        status = get_sync_status(source_id)
+        # Get sync status from database using pydrive_downloader
+        status = pydrive_downloader.get_sync_status(source_id)
         
         if status:
             # Add runtime information
@@ -170,34 +168,33 @@ def force_sync_api(source_id: int):
 def get_sync_dashboard():
     """Get comprehensive sync dashboard data"""
     try:
-        from modules.db_utils import get_db_connection
+        from modules.db_utils.safe_connection import safe_db_connection
         
         # Get all cloud sources with sync status
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT 
-                vs.id as source_id,
-                vs.name as source_name,
-                vs.source_type,
-                vs.path as source_path,
-                ss.sync_enabled,
-                ss.last_sync_timestamp,
-                ss.next_sync_timestamp,
-                ss.sync_interval_minutes,
-                ss.last_sync_status,
-                ss.last_sync_message,
-                ss.files_downloaded_count,
-                ss.total_download_size_mb
-            FROM video_sources vs
-            LEFT JOIN sync_status ss ON vs.id = ss.source_id
-            WHERE vs.active = 1 AND vs.source_type = 'cloud'
-            ORDER BY vs.name
-        """)
-        
-        results = cursor.fetchall()
-        conn.close()
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT 
+                    vs.id as source_id,
+                    vs.name as source_name,
+                    vs.source_type,
+                    vs.path as source_path,
+                    ss.sync_enabled,
+                    ss.last_sync_timestamp,
+                    ss.next_sync_timestamp,
+                    ss.sync_interval_minutes,
+                    ss.last_sync_status,
+                    ss.last_sync_message,
+                    ss.files_downloaded_count,
+                    ss.total_download_size_mb
+                FROM video_sources vs
+                LEFT JOIN sync_status ss ON vs.id = ss.source_id
+                WHERE vs.active = 1 AND vs.source_type = 'cloud'
+                ORDER BY vs.name
+            """)
+            
+            results = cursor.fetchall()
         
         # Format dashboard data
         dashboard_data = []
@@ -245,10 +242,9 @@ def test_pydrive_connection():
     try:
         # Test PyDrive2 import
         from pydrive2.auth import GoogleAuth
-        from pydrive2.drive import GoogleDrive
         
         # Test basic functionality
-        auth_test = GoogleAuth()
+        GoogleAuth()
         
         return jsonify({
             'success': True,
@@ -275,7 +271,7 @@ def test_pydrive_connection():
 def debug_credentials(source_id: int):
     """Debug credentials loading step by step"""
     try:
-        from modules.db_utils import get_db_connection
+        from modules.db_utils.safe_connection import safe_db_connection
         import json
         import hashlib
         import os
@@ -283,14 +279,13 @@ def debug_credentials(source_id: int):
         debug_info = {}
         
         # Step 1: Get source config
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT config FROM video_sources 
-            WHERE id = ? AND source_type = 'cloud' AND active = 1
-        """, (source_id,))
-        result = cursor.fetchone()
-        conn.close()
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT config FROM video_sources 
+                WHERE id = ? AND source_type = 'cloud' AND active = 1
+            """, (source_id,))
+            result = cursor.fetchone()
         
         if not result or not result[0]:
             return jsonify({
@@ -357,16 +352,19 @@ def debug_credentials(source_id: int):
         try:
             from google.oauth2.credentials import Credentials
             credentials = Credentials(
-                token=credential_data['token'],
-                refresh_token=credential_data['refresh_token'],
-                token_uri=credential_data['token_uri'],
-                client_id=credential_data['client_id'],
-                client_secret=credential_data['client_secret'],
-                scopes=credential_data['scopes']
-            )
-            debug_info['step6_credentials_created'] = True
-            debug_info['step6_credentials_expired'] = credentials.expired
-            debug_info['step6_has_refresh_token'] = credentials.refresh_token is not None
+                token=credential_data.get('token'),
+                refresh_token=credential_data.get('refresh_token'),
+                token_uri=credential_data.get('token_uri'),
+                client_id=credential_data.get('client_id'),
+                client_secret=credential_data.get('client_secret'),
+                scopes=credential_data.get('scopes')
+            ) if credential_data else None
+            debug_info['step6_credentials_created'] = credentials is not None
+            if credentials:
+                debug_info['step6_credentials_expired'] = credentials.expired
+                debug_info['step6_has_refresh_token'] = credentials.refresh_token is not None
+            else:
+                debug_info['step6_credentials_error'] = 'Credentials object is None'
         except Exception as e:
             debug_info['step6_credentials_error'] = str(e)
             return jsonify({
@@ -417,17 +415,16 @@ def debug_credentials(source_id: int):
 def auto_start_cloud_sync():
     """Auto-start sync for all active cloud sources (called when backend starts)"""
     try:
-        from modules.db_utils import get_db_connection
+        from modules.db_utils.safe_connection import safe_db_connection
         
         # Get all active cloud sources
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, name FROM video_sources 
-            WHERE active = 1 AND source_type = 'cloud'
-        """)
-        sources = cursor.fetchall()
-        conn.close()
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, name FROM video_sources 
+                WHERE active = 1 AND source_type = 'cloud'
+            """)
+            sources = cursor.fetchall()
         
         started_sources = []
         failed_sources = []
@@ -467,7 +464,7 @@ def sync_health_check():
     try:
         active_timers = len(pydrive_downloader.sync_timers)
         active_locks = len(pydrive_downloader.sync_locks)
-        cached_clients = len(pydrive_downloader.drive_clients)
+        cached_clients = len(pydrive_downloader.core.drive_clients)
         
         return jsonify({
             'success': True,

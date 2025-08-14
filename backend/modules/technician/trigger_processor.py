@@ -3,7 +3,7 @@ import logging
 import time
 import os
 from datetime import timedelta
-from modules.db_utils import get_db_connection
+from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import db_rwlock
 
 def run_trigger_logic(
@@ -27,14 +27,12 @@ def run_trigger_logic(
     log_file_handle.write(f"# Start: {current_start_second}, End: {current_end_second}, Start_Time: {(video_metadata['start_time_obj'] + timedelta(seconds=current_start_second)).strftime('%Y-%m-%d %H:%M:%S')}, Camera_Name: {video_metadata['camera_name']}, Video_File: {video_metadata['absolute_video_path']}\n")
     log_file_handle.flush()
     with db_rwlock.gen_wlock():
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM processed_logs WHERE log_file = ?", (log_file,))
-        log_exists = cursor.fetchone()
-        if not log_exists:
-            cursor.execute("INSERT INTO processed_logs (log_file, is_processed) VALUES (?, 0)", (log_file,))
-        conn.commit()
-        conn.close()
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM processed_logs WHERE log_file = ?", (log_file,))
+            log_exists = cursor.fetchone()
+            if not log_exists:
+                cursor.execute("INSERT INTO processed_logs (log_file, is_processed) VALUES (?, 0)", (log_file,))
     while video_capture.isOpened():
         ret, bgr_frame = video_capture.read()
         if not ret: break
@@ -58,14 +56,12 @@ def run_trigger_logic(
             log_file_handle.write(f"# Start: {current_start_second}, End: {current_end_second}, Start_Time: {(video_metadata['start_time_obj'] + timedelta(seconds=current_start_second)).strftime('%Y-%m-%d %H:%M:%S')}, Camera_Name: {video_metadata['camera_name']}, Video_File: {video_metadata['absolute_video_path']}\n")
             log_file_handle.flush()
             with db_rwlock.gen_wlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("SELECT 1 FROM processed_logs WHERE log_file = ?", (log_file,))
-                log_exists = cursor.fetchone()
-                if not log_exists:
-                    cursor.execute("INSERT INTO processed_logs (log_file, is_processed) VALUES (?, 0)", (log_file,))
-                conn.commit()
-                conn.close()
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT 1 FROM processed_logs WHERE log_file = ?", (log_file,))
+                    log_exists = cursor.fetchone()
+                    if not log_exists:
+                        cursor.execute("INSERT INTO processed_logs (log_file, is_processed) VALUES (?, 0)", (log_file,))
         if len(frame_states_buffer_list_tr) == 5:
             on_count_tr = frame_states_buffer_list_tr.count("On")
             determined_final_state_tr = "On" if on_count_tr >= 3 else "Off"

@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 from .license_manager import LicenseManager
 from .license_config import AUTO_CHECK_ON_STARTUP, GRACE_PERIOD_DAYS, CLOUD_VALIDATION_TIMEOUT
+from ..db_utils.safe_connection import safe_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -379,9 +380,7 @@ class LicenseChecker:
     def _update_cloud_validation_timestamp(self, license_key: str):
         """Update local database with cloud validation timestamp"""
         try:
-            from ..db_utils import get_db_connection
-            
-            with get_db_connection() as conn:
+            with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     UPDATE licenses 

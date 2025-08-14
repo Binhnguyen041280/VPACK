@@ -282,15 +282,14 @@ def cloud_authenticate():
 def user_exists_in_db(email):
     """Check if user exists in user_profiles table"""
     try:
-        from modules.db_utils import get_db_connection
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        from modules.db_utils.safe_connection import safe_db_connection
         
-        cursor.execute("SELECT COUNT(*) FROM user_profiles WHERE gmail_address = ?", (email,))
-        count = cursor.fetchone()[0]
-        conn.close()
-        
-        return count > 0
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT COUNT(*) FROM user_profiles WHERE gmail_address = ?", (email,))
+            count = cursor.fetchone()[0]
+            return count > 0
     except Exception as e:
         logger.error(f"Error checking user existence: {e}")
         return False

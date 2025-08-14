@@ -33,7 +33,7 @@ import time
 import os
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple
-from modules.db_utils.db_utils import get_db_connection
+from modules.db_utils.safe_connection import safe_db_connection
 from modules.technician.frame_sampler_trigger import FrameSamplerTrigger
 from modules.technician.frame_sampler_no_trigger import FrameSamplerNoTrigger
 from modules.technician.IdleMonitor import IdleMonitor
@@ -124,11 +124,10 @@ def run_frame_sampler() -> None:
         try:
             # Get list of pending video files from database queue
             with db_rwlock.gen_rlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("SELECT file_path, camera_name FROM file_list WHERE is_processed = 0 ORDER BY priority DESC, created_at ASC")
-                video_files = [(row[0], row[1]) for row in cursor.fetchall()]
-                conn.close()
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT file_path, camera_name FROM file_list WHERE is_processed = 0 ORDER BY priority DESC, created_at ASC")
+                    video_files = [(row[0], row[1]) for row in cursor.fetchall()]
                 logger.info(f"Found {len(video_files)} unprocessed video files")
 
             # If no work available, clear event and wait for new signals
@@ -141,11 +140,10 @@ def run_frame_sampler() -> None:
             for video_file, camera_name in video_files:
                 # Check if video is already being processed or completed
                 with db_rwlock.gen_rlock():
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT status, is_processed FROM file_list WHERE file_path = ?", (video_file,))
-                    result = cursor.fetchone()
-                    conn.close()
+                    with safe_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT status, is_processed FROM file_list WHERE file_path = ?", (video_file,))
+                        result = cursor.fetchone()
                     if result and (result[0] == "đang frame sampler ..." or result[1] == 1):
                         logger.info(f"Skipping video {video_file}: already being processed or completed")
                         continue
@@ -166,16 +164,15 @@ def run_frame_sampler() -> None:
                     
                     # STEP 1: Load camera profile configuration for processing parameters
                     with db_rwlock.gen_rlock():
-                        conn = get_db_connection()
-                        cursor = conn.cursor()
-                        search_name = camera_name if camera_name else "CamTest"
-                        if not camera_name:
-                            logger.warning(f"No camera_name for {video_file}, falling back to CamTest")
-                        
-                        # Query packing profiles for camera-specific configuration
-                        cursor.execute("SELECT id, profile_name, qr_trigger_area, packing_area FROM packing_profiles WHERE profile_name LIKE ?", (f'%{search_name}%',))
-                        profiles = cursor.fetchall()
-                        conn.close()
+                        with safe_db_connection() as conn:
+                            cursor = conn.cursor()
+                            search_name = camera_name if camera_name else "CamTest"
+                            if not camera_name:
+                                logger.warning(f"No camera_name for {video_file}, falling back to CamTest")
+                            
+                            # Query packing profiles for camera-specific configuration
+                            cursor.execute("SELECT id, profile_name, qr_trigger_area, packing_area FROM packing_profiles WHERE profile_name LIKE ?", (f'%{search_name}%',))
+                            profiles = cursor.fetchall()
                     
                     # Select the profile with the highest ID (most recent)
                     trigger = [0, 0, 0, 0]  # Default trigger area coordinates
@@ -221,11 +218,9 @@ def run_frame_sampler() -> None:
                     if work_block_queue.empty():
                         logger.info(f"No work blocks found for {video_file}, skipping FrameSampler and log file creation")
                         with db_rwlock.gen_wlock():
-                            conn = get_db_connection()
-                            cursor = conn.cursor()
-                            cursor.execute("UPDATE file_list SET status = ?, is_processed = 1 WHERE file_path = ?", ("xong", video_file))
-                            conn.commit()
-                            conn.close()
+                            with safe_db_connection() as conn:
+                                cursor = conn.cursor()
+                                cursor.execute("UPDATE file_list SET status = ?, is_processed = 1 WHERE file_path = ?", ("xong", video_file))
                         continue  # Skip frame sampling for inactive videos
                     # STEP 3: Select appropriate FrameSampler based on trigger configuration
                     if trigger != [0, 0, 0, 0]:
@@ -239,11 +234,9 @@ def run_frame_sampler() -> None:
 
                     # STEP 4: Update database status to indicate processing has started
                     with db_rwlock.gen_wlock():
-                        conn = get_db_connection()
-                        cursor = conn.cursor()
-                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("đang frame sampler ...", video_file))
-                        conn.commit()
-                        conn.close()
+                        with safe_db_connection() as conn:
+                            cursor = conn.cursor()
+                            cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("đang frame sampler ...", video_file))
                         logger.debug(f"Updated status for {video_file} to 'đang frame sampler ...'")
                     
                     # STEP 5: Process video blocks identified by IdleMonitor
@@ -267,17 +260,15 @@ def run_frame_sampler() -> None:
                     
                     # STEP 6: Update final processing status and trigger event detection
                     with db_rwlock.gen_wlock():
-                        conn = get_db_connection()
-                        cursor = conn.cursor()
-                        if log_file:
-                            cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("xong", video_file))
-                            event_detector_event.set()  # Signal event detector that logs are ready
-                            logger.info(f"Video {video_file} processed successfully, log file: {log_file}")
-                        else:
-                            cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
-                            logger.error(f"Failed to process video {video_file}")
-                        conn.commit()
-                        conn.close()
+                        with safe_db_connection() as conn:
+                            cursor = conn.cursor()
+                            if log_file:
+                                cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("xong", video_file))
+                                event_detector_event.set()  # Signal event detector that logs are ready
+                                logger.info(f"Video {video_file} processed successfully, log file: {log_file}")
+                            else:
+                                cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
+                                logger.error(f"Failed to process video {video_file}")
                     
                     # STEP 7: Wait for event detector to process the generated logs
                     logger.info(f"Frame Sampler pausing after processing {video_file}, waiting for Event Detector...")
@@ -349,11 +340,10 @@ def run_event_detector() -> None:
         try:
             # Get list of unprocessed log files from database
             with db_rwlock.gen_rlock():
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("SELECT log_file FROM processed_logs WHERE is_processed = 0")
-                log_files = [row[0] for row in cursor.fetchall()]
-                conn.close()
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT log_file FROM processed_logs WHERE is_processed = 0")
+                    log_files = [row[0] for row in cursor.fetchall()]
                 logger.info(f"Found {len(log_files)} unprocessed log files")
 
             # If no logs to process, signal frame samplers to continue

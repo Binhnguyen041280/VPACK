@@ -12,7 +12,7 @@ import hashlib
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
-from modules.db_utils import get_db_connection
+from modules.db_utils.safe_connection import safe_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -56,14 +56,13 @@ class PyDriveCore:
     def _load_credentials(self, source_id: int) -> Optional[dict]:
         """Load credential data from storage"""
         # Get source config to extract user email
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT config FROM video_sources 
-            WHERE id = ? AND source_type = 'cloud' AND active = 1
-        """, (source_id,))
-        result = cursor.fetchone()
-        conn.close()
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT config FROM video_sources 
+                WHERE id = ? AND source_type = 'cloud' AND active = 1
+            """, (source_id,))
+            result = cursor.fetchone()
         
         if not result or not result[0]:
             return None
@@ -205,40 +204,35 @@ class PyDriveCore:
     
     def check_file_exists_locally(self, source_id: int, filename: str) -> bool:
         """Check if file already downloaded"""
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT COUNT(*) FROM downloaded_files 
-            WHERE source_id = ? AND (original_filename = ? OR local_file_path LIKE ?)
-        """, (source_id, filename, f'%{filename}'))
-        
-        count = cursor.fetchone()[0]
-        conn.close()
-        
-        return count > 0
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COUNT(*) FROM downloaded_files 
+                WHERE source_id = ? AND (original_filename = ? OR local_file_path LIKE ?)
+            """, (source_id, filename, f'%{filename}'))
+            
+            count = cursor.fetchone()[0]
+            return count > 0
     
     def track_downloaded_file(self, source_id: int, camera_name: str, file_info: Dict, local_path: str):
         """Track downloaded file in database"""
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            INSERT INTO downloaded_files (
-                source_id, camera_name, original_filename, local_file_path,
-                file_size_bytes, download_timestamp, file_format
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            source_id,
-            camera_name,
-            file_info['title'],
-            local_path,
-            int(file_info.get('fileSize', 0)),
-            datetime.now().isoformat(),
-            os.path.splitext(file_info['title'])[1]
-        ))
-        
-        conn.commit()
-        conn.close()
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                INSERT INTO downloaded_files (
+                    source_id, camera_name, original_filename, local_file_path,
+                    file_size_bytes, download_timestamp, file_format
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                source_id,
+                camera_name,
+                file_info['title'],
+                local_path,
+                int(file_info.get('fileSize', 0)),
+                datetime.now().isoformat(),
+                os.path.splitext(file_info['title'])[1]
+            ))
     
     # ==================== SYNC OPERATIONS ====================
     
@@ -356,23 +350,22 @@ class PyDriveCore:
     
     def _get_source_config(self, source_id: int) -> Optional[Dict]:
         """Get source configuration from database"""
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT source_type, name, path, config FROM video_sources 
-            WHERE id = ? AND active = 1
-        """, (source_id,))
-        result = cursor.fetchone()
-        conn.close()
-        
-        if result:
-            return {
-                'source_type': result[0],
-                'name': result[1], 
-                'path': result[2],
-                'config': result[3]
-            }
-        return None
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT source_type, name, path, config FROM video_sources 
+                WHERE id = ? AND active = 1
+            """, (source_id,))
+            result = cursor.fetchone()
+            
+            if result:
+                return {
+                    'source_type': result[0],
+                    'name': result[1], 
+                    'path': result[2],
+                    'config': result[3]
+                }
+            return None
     
     @staticmethod
     def _sanitize_filename(filename: str) -> str:

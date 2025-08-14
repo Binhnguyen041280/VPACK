@@ -203,7 +203,7 @@ def select_qr_roi(video_path, camera_id, roi_frame_path, step="mvd"):
             nonlocal qr_detected, qr_detected_roi1, qr_detected_roi2, qr_content, trigger_detected
             try:
                 logger.debug(f"[MVD] Khởi tạo WeChatQRCode cho ROI {roi_index + 1}")
-                local_detector = cv2.wechat_qrcode_WeChatQRCode(DETECT_PROTO, DETECT_MODEL, SR_PROTO, SR_MODEL)
+                local_detector = cv2.wechat_qrcode_WeChatQRCode(DETECT_PROTO, DETECT_MODEL, SR_PROTO, SR_MODEL)  # type: ignore
                 logger.debug(f"[MVD] WeChatQRCode khởi tạo thành công cho ROI {roi_index + 1}")
             except Exception as e:
                 logger.error(f"[MVD] OpenCV WeChatQRCode error in ROI {roi_index + 1}: {str(e)}\n{traceback.format_exc()}")

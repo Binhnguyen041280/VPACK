@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from datetime import datetime
 import json
 import os
-from modules.db_utils import get_db_connection
+from modules.db_utils.safe_connection import safe_db_connection
 from modules.sources.path_manager import PathManager
 from ..utils import detect_camera_folders, has_video_files, extract_cameras_from_cloud_folders
 
@@ -13,11 +13,10 @@ def debug_cameras():
     """Debug endpoint to check camera sync status"""
     try:
         # Get processing_config cameras
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT selected_cameras, input_path FROM processing_config WHERE id = 1")
-        result = cursor.fetchone()
-        conn.close()
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT selected_cameras, input_path FROM processing_config WHERE id = 1")
+            result = cursor.fetchone()
         
         if result:
             selected_cameras, input_path = result
@@ -66,13 +65,12 @@ def detect_cameras():
         # Get current selected cameras from processing_config
         selected_cameras = []
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT selected_cameras FROM processing_config WHERE id = 1")
-            result = cursor.fetchone()
-            if result and result[0]:
-                selected_cameras = json.loads(result[0])
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT selected_cameras FROM processing_config WHERE id = 1")
+                result = cursor.fetchone()
+                if result and result[0]:
+                    selected_cameras = json.loads(result[0])
         except Exception as e:
             print(f"Error getting selected cameras: {e}")
         
@@ -97,17 +95,14 @@ def update_source_cameras():
         selected_cameras = data.get('selected_cameras', [])
         
         # Update processing_config with selected cameras
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            UPDATE processing_config 
-            SET selected_cameras = ? 
-            WHERE id = 1
-        """, (json.dumps(selected_cameras),))
-        
-        conn.commit()
-        conn.close()
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                UPDATE processing_config 
+                SET selected_cameras = ? 
+                WHERE id = 1
+            """, (json.dumps(selected_cameras),))
         
         return jsonify({
             "message": "Camera selection updated successfully",
@@ -147,11 +142,10 @@ def get_cameras():
                 cameras.append({"name": active_source['name'], "path": active_source['path']})
         else:
             # Fallback to legacy behavior
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT input_path FROM processing_config WHERE id = 1")
-            result = cursor.fetchone()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT input_path FROM processing_config WHERE id = 1")
+                result = cursor.fetchone()
 
             if not result:
                 return jsonify({"error": "video_root not found in configuration. Please update via /save-config endpoint."}), 400
@@ -172,11 +166,10 @@ def get_cameras():
 def get_processing_cameras():
     """Get selected cameras from processing_config"""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT selected_cameras FROM processing_config WHERE id = 1")
-        result = cursor.fetchone()
-        conn.close()
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT selected_cameras FROM processing_config WHERE id = 1")
+            result = cursor.fetchone()
         
         if result and result[0]:
             selected_cameras = json.loads(result[0])
@@ -225,15 +218,13 @@ def sync_cloud_cameras():
             print(f"Generated cloud cameras: {cloud_cameras}")
             
             # Update processing_config
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE processing_config 
-                SET selected_cameras = ? 
-                WHERE id = 1
-            """, (json.dumps(cloud_cameras),))
-            conn.commit()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE processing_config 
+                    SET selected_cameras = ? 
+                    WHERE id = 1
+                """, (json.dumps(cloud_cameras),))
             
             print(f"Cloud cameras synced to processing_config")
             
@@ -304,15 +295,13 @@ def refresh_cameras():
         
         # Update processing_config if cameras found
         if cameras:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE processing_config 
-                SET selected_cameras = ? 
-                WHERE id = 1
-            """, (json.dumps(cameras),))
-            conn.commit()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE processing_config 
+                    SET selected_cameras = ? 
+                    WHERE id = 1
+                """, (json.dumps(cameras),))
             
             print(f"Updated processing_config with {len(cameras)} cameras")
         
@@ -337,11 +326,10 @@ def get_camera_status():
     """Get comprehensive camera status for debugging"""
     try:
         # Get processing_config cameras
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT selected_cameras, input_path FROM processing_config WHERE id = 1")
-        result = cursor.fetchone()
-        conn.close()
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT selected_cameras, input_path FROM processing_config WHERE id = 1")
+            result = cursor.fetchone()
         
         processing_cameras = []
         input_path = ""

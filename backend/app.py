@@ -27,6 +27,7 @@ warnings.filterwarnings('ignore')
 # ==================== IMPORT CORE MODULES ====================
 from modules.config.logging_config import setup_logging, get_logger
 from modules.config.config import config_bp, init_app_and_config
+from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.program import program_bp, scheduler
 from modules.query.query import query_bp
 from blueprints.cutter_bp import cutter_bp
@@ -560,15 +561,13 @@ if PAYMENT_INTEGRATION_AVAILABLE:
 def exit_handler():
     """Graceful shutdown handler"""
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=5)
-        cursor = conn.cursor()
-        last_stop_time = datetime.now(tz=timezone(timedelta(hours=7))).strftime('%Y-%m-%d %H:%M:%S')
-        cursor.execute("""
-            INSERT OR REPLACE INTO program_status (key, value)
-            VALUES ('last_stop_time', ?)
-        """, (last_stop_time,))
-        conn.commit()
-        conn.close()
+        with safe_db_connection(timeout=5) as conn:
+            cursor = conn.cursor()
+            last_stop_time = datetime.now(tz=timezone(timedelta(hours=7))).strftime('%Y-%m-%d %H:%M:%S')
+            cursor.execute("""
+                INSERT OR REPLACE INTO program_status (key, value)
+                VALUES ('last_stop_time', ?)
+            """, (last_stop_time,))
         logger.info("Application stopped gracefully")
     except Exception as e:
         logger.error(f"Error saving last_stop_time: {e}")
@@ -638,6 +637,36 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
+def validate_pricing_integration():
+    """Validate pricing integration on startup"""
+    try:
+        logger.info("🔍 Validating pricing integration...")
+        
+        from modules.pricing.cloud_pricing_client import get_cloud_pricing_client
+        pricing_client = get_cloud_pricing_client()
+        
+        # Test connection
+        connection_result = pricing_client.test_connection()
+        if not connection_result.get('connected'):
+            logger.warning(f"⚠️ Pricing service connection failed: {connection_result.get('error')}")
+            return False
+        
+        # Test package fetching
+        pricing_data = pricing_client.fetch_pricing_on_startup()
+        if not pricing_data.get('success'):
+            logger.error(f"❌ Cannot fetch packages: {pricing_data.get('error')}")
+            return False
+        
+        packages = pricing_data.get('packages', {})
+        logger.info(f"✅ Pricing integration validated: {len(packages)} packages available")
+        logger.info(f"📦 Available packages: {list(packages.keys())}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Pricing validation failed: {str(e)}")
+        return False
+
 def initialize_auto_sync():
     """Initialize auto-sync for cloud sources"""
     def startup_sync():
@@ -671,6 +700,13 @@ if __name__ == "__main__":
     license_ok = initialize_license_system()
     if not license_ok:
         logger.error("License initialization failed - continuing anyway")
+    
+    # Validate pricing integration
+    pricing_ok = validate_pricing_integration()
+    if not pricing_ok:
+        print("⚠️ Warning: Pricing service integration issues detected")
+    else:
+        print("💰 Pricing integration validated successfully")
     
     # Display startup information
     print("🚀 V_Track Desktop App Starting...")
@@ -712,6 +748,8 @@ if __name__ == "__main__":
     print(f"   📊 Analytics: http://0.0.0.0:{port}/analytics")
     print(f"   🏥 Health: http://0.0.0.0:{port}/health")
     print(f"   🔑 License Status: http://0.0.0.0:{port}/api/license-status")
+    if PAYMENT_INTEGRATION_AVAILABLE:
+        print(f"   💰 Pricing API: http://0.0.0.0:{port}/api/payment/packages")
     
     # Display webapp configuration
     print(f"\n📁 Webapp Configuration:")

@@ -34,7 +34,8 @@ import json
 from datetime import datetime, timedelta
 from statistics import median
 from typing import List, Tuple, Dict, Optional, Any
-from modules.db_utils import find_project_root, get_db_connection
+from modules.db_utils import find_project_root
+from modules.db_utils.safe_connection import safe_db_connection
 from modules.config.logging_config import get_logger
 from .db_sync import db_rwlock
 from .config.scheduler_config import SchedulerConfig
@@ -64,11 +65,10 @@ def get_db_path() -> str:
     """
     try:
         with db_rwlock.gen_rlock():
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT db_path FROM processing_config WHERE id = 1")
-            result = cursor.fetchone()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT db_path FROM processing_config WHERE id = 1")
+                result = cursor.fetchone()
             return result[0] if result else DB_PATH
     except Exception as e:
         logger.error(f"Lỗi khi lấy DB_PATH: {e}")
@@ -369,44 +369,44 @@ def save_files_to_db(conn: Any, video_files: List[str], file_ctimes: List[float]
 def list_files(video_root, scan_action, custom_path, days, db_path, default_scan_days=None, camera_ctime_map=None, is_initial_scan=False):
     try:
         with db_rwlock.gen_wlock():
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
 
-            if not os.path.exists(video_root):
-                try:
-                    os.makedirs(video_root, exist_ok=True)
-                    logger.info(f"Đã tạo thư mục video root: {video_root}")
-                except Exception as e:
-                    logger.error(f"Không thể tạo thư mục video root: {video_root}, lỗi: {str(e)}")
-                    raise Exception(f"Không thể tạo thư mục video root: {str(e)}")
+                if not os.path.exists(video_root):
+                    try:
+                        os.makedirs(video_root, exist_ok=True)
+                        logger.info(f"Đã tạo thư mục video root: {video_root}")
+                    except Exception as e:
+                        logger.error(f"Không thể tạo thư mục video root: {video_root}, lỗi: {str(e)}")
+                        raise Exception(f"Không thể tạo thư mục video root: {str(e)}")
 
-            cursor.execute('SELECT MAX(ctime) FROM file_list')
-            last_ctime = cursor.fetchone()[0]
-            max_ctime = datetime.fromisoformat(last_ctime.replace('Z', '+00:00')) if last_ctime else datetime.min.replace(tzinfo=VIETNAM_TZ)
+                cursor.execute('SELECT MAX(ctime) FROM file_list')
+                last_ctime = cursor.fetchone()[0]
+                max_ctime = datetime.fromisoformat(last_ctime.replace('Z', '+00:00')) if last_ctime else datetime.min.replace(tzinfo=VIETNAM_TZ)
 
-            cursor.execute("SELECT input_path, selected_cameras FROM processing_config WHERE id = 1")
-            result = cursor.fetchone()
-            if result:
-                video_root = result[0]
-                selected_cameras = json.loads(result[1]) if result[1] else []
-            else:
-                selected_cameras = []
-            logger.info(f"Sử dụng video_root: {video_root}, Camera được chọn: {selected_cameras}")
+                cursor.execute("SELECT input_path, selected_cameras FROM processing_config WHERE id = 1")
+                result = cursor.fetchone()
+                if result:
+                    video_root = result[0]
+                    selected_cameras = json.loads(result[1]) if result[1] else []
+                else:
+                    selected_cameras = []
+                logger.info(f"Sử dụng video_root: {video_root}, Camera được chọn: {selected_cameras}")
 
-            cursor.execute("SELECT working_days, from_time, to_time FROM general_info WHERE id = 1")
-            general_info = cursor.fetchone()
-            if general_info:
-                try:
-                    working_days_raw = general_info[0].encode('utf-8').decode('utf-8') if general_info[0] else ''
-                    working_days = json.loads(working_days_raw) if working_days_raw else []
-                except json.JSONDecodeError as e:
-                    logger.error(f"JSON không hợp lệ trong working_days: {general_info[0]}, lỗi: {e}")
-                    working_days = []
-                from_time = datetime.strptime(general_info[1], '%H:%M').time() if general_info[1] else None
-                to_time = datetime.strptime(general_info[2], '%H:%M').time() if general_info[2] else None
-            else:
-                working_days, from_time, to_time = [], None, None
-            logger.info(f"Ngày làm việc: {working_days}, from_time: {from_time}, to_time: {to_time}")
+                cursor.execute("SELECT working_days, from_time, to_time FROM general_info WHERE id = 1")
+                general_info = cursor.fetchone()
+                if general_info:
+                    try:
+                        working_days_raw = general_info[0].encode('utf-8').decode('utf-8') if general_info[0] else ''
+                        working_days = json.loads(working_days_raw) if working_days_raw else []
+                    except json.JSONDecodeError as e:
+                        logger.error(f"JSON không hợp lệ trong working_days: {general_info[0]}, lỗi: {e}")
+                        working_days = []
+                    from_time = datetime.strptime(general_info[1], '%H:%M').time() if general_info[1] else None
+                    to_time = datetime.strptime(general_info[2], '%H:%M').time() if general_info[2] else None
+                else:
+                    working_days, from_time, to_time = [], None, None
+                logger.info(f"Ngày làm việc: {working_days}, from_time: {from_time}, to_time: {to_time}")
 
             video_files = []
             file_ctimes = []
@@ -445,8 +445,7 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
                     working_days, from_time, to_time, selected_cameras, strict_date_match=True
                 )
 
-            save_files_to_db(conn, video_files, file_ctimes, scan_action, days, custom_path, video_root)
-            conn.close()
+                save_files_to_db(conn, video_files, file_ctimes, scan_action, days, custom_path, video_root)
         logger.info(f"Tìm thấy {len(video_files)} tệp video")
         return video_files, file_ctimes
     except Exception as e:
@@ -471,17 +470,15 @@ def cleanup_stale_jobs() -> None:
     try:
         # Reset stale jobs that have been stuck in processing state
         with db_rwlock.gen_wlock():
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE file_list 
-                SET status = 'pending'
-                WHERE status = 'đang frame sampler ...'
-                AND created_at < datetime('now', '-59 minutes')
-            """)
-            affected = cursor.rowcount
-            conn.commit()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE file_list 
+                    SET status = 'pending'
+                    WHERE status = 'đang frame sampler ...'
+                    AND created_at < datetime('now', '-59 minutes')
+                """)
+                affected = cursor.rowcount
             if affected > 0:
                 logger.info(f"Reset {affected} stale jobs to pending status")
     except Exception as e:
@@ -523,11 +520,10 @@ def run_file_scan(scan_action: str = "default", days: Optional[int] = None,
     try:
         # Load video root directory from configuration
         with db_rwlock.gen_rlock():
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT input_path FROM processing_config WHERE id = 1")
-            result = cursor.fetchone()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT input_path FROM processing_config WHERE id = 1")
+                result = cursor.fetchone()
             video_root = result[0] if result else ""
             
         if not video_root:

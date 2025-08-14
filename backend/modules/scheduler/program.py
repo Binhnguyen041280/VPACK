@@ -37,7 +37,8 @@ import threading
 import pytz
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
-from modules.db_utils import find_project_root, get_db_connection
+from modules.db_utils import find_project_root
+from modules.db_utils.safe_connection import safe_db_connection
 from modules.config.logging_config import get_logger
 from .file_lister import run_file_scan, get_db_path
 from .batch_scheduler import BatchScheduler
@@ -78,12 +79,11 @@ def init_default_program():
     logger.info("Initializing default program")
     try:
         with db_rwlock:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('SELECT value FROM program_status WHERE key = "first_run_completed"')
-            result = cursor.fetchone()
-            conn.close()
-        first_run_completed = result[0] == 'true' if result else False
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT value FROM program_status WHERE key = "first_run_completed"')
+                result = cursor.fetchone()
+                first_run_completed = result[0] == 'true' if result else False
         logger.info(f"First run completed: {first_run_completed}, Scheduler running: {scheduler.running}")
         if first_run_completed and not scheduler.running:
             logger.info("Chuyển sang chế độ chạy mặc định (quét lặp)")
@@ -149,12 +149,11 @@ def program():
         try:
             # Check if first run has already been completed to prevent duplicates
             with db_rwlock:
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute('SELECT value FROM program_status WHERE key = "first_run_completed"')
-                result = cursor.fetchone()
-                first_run_completed = result[0] == 'true' if result else False
-                conn.close()
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('SELECT value FROM program_status WHERE key = "first_run_completed"')
+                    result = cursor.fetchone()
+                    first_run_completed = result[0] == 'true' if result else False
             if first_run_completed:
                 logger.warning("First run already completed")
                 return jsonify({"error": "Lần đầu đã chạy trước đó, không thể chạy lại"}), 400
@@ -200,11 +199,10 @@ def program():
             try:
                 # Check if file has already been processed to avoid duplicates
                 with db_rwlock:
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT status, is_processed FROM file_list WHERE file_path = ? AND (status = 'xong' OR is_processed = 1)", (abs_path,))
-                    result = cursor.fetchone()
-                    conn.close()
+                    with safe_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT status, is_processed FROM file_list WHERE file_path = ? AND (status = 'xong' OR is_processed = 1)", (abs_path,))
+                        result = cursor.fetchone()
                     if result:
                         logger.warning(f"File {abs_path} already processed with status {result[0]}")
                         return jsonify({"error": "File đã được xử lý"}), 400
@@ -217,11 +215,10 @@ def program():
                 scheduler.pause()
                 run_file_scan(scan_action="custom", custom_path=abs_path)
                 with db_rwlock:
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT file_path FROM file_list WHERE custom_path = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1", (abs_path,))
-                    result = cursor.fetchone()
-                    conn.close()
+                    with safe_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT file_path FROM file_list WHERE custom_path = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1", (abs_path,))
+                        result = cursor.fetchone()
                 if result:
                     from .program_runner import start_frame_sampler_thread, start_event_detector_thread
                     frame_sampler_event.set()
@@ -231,11 +228,10 @@ def program():
                     import time
                     while True:
                         with db_rwlock:
-                            conn = get_db_connection()
-                            cursor = conn.cursor()
-                            cursor.execute("SELECT status FROM file_list WHERE file_path = ?", (result[0],))
-                            status_result = cursor.fetchone()
-                            conn.close()
+                            with safe_db_connection() as conn:
+                                cursor = conn.cursor()
+                                cursor.execute("SELECT status FROM file_list WHERE file_path = ?", (result[0],))
+                                status_result = cursor.fetchone()
                         if status_result and status_result[0] == 'xong':
                             break
                         time.sleep(2)
@@ -270,11 +266,9 @@ def program():
         if card == "Lần đầu":
             try:
                 with db_rwlock:
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("UPDATE program_status SET value = ? WHERE key = ?", ("true", "first_run_completed"))
-                    conn.commit()
-                    conn.close()
+                    with safe_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE program_status SET value = ? WHERE key = ?", ("true", "first_run_completed"))
                 logger.info("Chuyển sang chế độ chạy mặc định (quét lặp) sau khi hoàn thành Lần đầu")
             except Exception as e:
                 logger.error(f"Error updating first_run_completed: {e}")
@@ -366,11 +360,10 @@ def get_program_progress():
     logger.info("GET /program-progress called")
     try:
         with db_rwlock:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT file_path, status FROM file_list WHERE is_processed = 0 ORDER BY created_at DESC")
-            files_status = [{"file": row[0], "status": row[1]} for row in cursor.fetchall()]
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT file_path, status FROM file_list WHERE is_processed = 0 ORDER BY created_at DESC")
+                files_status = [{"file": row[0], "status": row[1]} for row in cursor.fetchall()]
         logger.info(f"Retrieved {len(files_status)} files for status")
         return jsonify({"files": files_status}), 200
     except Exception as e:
@@ -390,11 +383,10 @@ def check_first_run():
     logger.info("GET /check-first-run called")
     try:
         with db_rwlock:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('SELECT value FROM program_status WHERE key = "first_run_completed"')
-            result = cursor.fetchone()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT value FROM program_status WHERE key = "first_run_completed"')
+                result = cursor.fetchone()
             first_run_completed = result[0] == 'true' if result else False
         logger.info(f"First run completed: {first_run_completed}")
         return jsonify({"first_run_completed": first_run_completed}), 200
@@ -415,11 +407,10 @@ def get_cameras():
     logger.info("GET /get-cameras called")
     try:
         with db_rwlock:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT selected_cameras FROM processing_config WHERE id = 1")
-            result = cursor.fetchone()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT selected_cameras FROM processing_config WHERE id = 1")
+                result = cursor.fetchone()
             cameras = result[0] if result else "[]"
             cameras_list = json.loads(cameras) if cameras else []
         logger.info(f"Retrieved {len(cameras_list)} cameras")
@@ -442,12 +433,11 @@ def get_camera_folders():
     logger.info("GET /get-camera-folders called")
     try:
         with db_rwlock:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT input_path FROM processing_config WHERE id = 1")
-            result = cursor.fetchone()
-            video_root = result[0] if result else os.path.join(BASE_DIR, "Inputvideo")
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT input_path FROM processing_config WHERE id = 1")
+                result = cursor.fetchone()
+                video_root = result[0] if result else os.path.join(BASE_DIR, "Inputvideo")
 
         if not os.path.exists(video_root):
             logger.error(f"Directory {video_root} does not exist")

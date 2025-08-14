@@ -3,7 +3,7 @@ from typing import Dict, Any, Tuple, Optional
 import json
 import os
 import sqlite3
-from modules.db_utils import get_db_connection
+from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import db_rwlock
 from modules.sources.path_manager import PathManager
 from ..utils import get_working_path_for_source, load_config
@@ -84,65 +84,64 @@ def save_config():
 
         print(f"Final video_root for database: {video_root}")
 
-        # Database operations - only processing_config table
+        # FIXED: Consolidate ALL database operations in single context
         try:
-            conn = get_db_connection()
-            if not conn:
-                return jsonify({"error": "Database connection failed"}), 500
+            with safe_db_connection() as conn:
+                if not conn:
+                    return jsonify({"error": "Database connection failed"}), 500
+                    
+                cursor = conn.cursor()
                 
-            cursor = conn.cursor()
-            
-            # Check if processing_config table exists
-            cursor.execute("""
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND name='processing_config'
-            """)
-            if not cursor.fetchone():
-                return jsonify({"error": "processing_config table not found"}), 500
-            
-            # Add column if not exists (safe operation)
-            try:
-                cursor.execute("ALTER TABLE processing_config ADD COLUMN run_default_on_start INTEGER DEFAULT 1")
-                print("Added run_default_on_start column")
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-            
-            # Get DB_PATH
-            try:
-                from modules.db_utils import find_project_root
-                import os
-                BASE_DIR = find_project_root(os.path.abspath(__file__))
-                DB_PATH = os.path.join(BASE_DIR, "backend/database/events.db")
-            except ImportError:
-                # Fallback to default database path
-                BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
-                DB_PATH = os.path.join(BASE_DIR, "database", "events.db")
-            
-            # MAIN FIX: Only insert into processing_config (no frame_settings)
-            cursor.execute("""
-                INSERT OR REPLACE INTO processing_config (
-                    id, input_path, output_path, storage_duration, min_packing_time, 
-                    max_packing_time, frame_rate, frame_interval, video_buffer, default_frame_mode, 
-                    selected_cameras, db_path, run_default_on_start
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (1, video_root, output_path, default_days, min_packing_time, max_packing_time, 
-                  frame_rate, frame_interval, video_buffer, "default", json.dumps(selected_cameras), 
-                  DB_PATH, run_default_on_start))
+                # Check if processing_config table exists
+                cursor.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='processing_config'
+                """)
+                if not cursor.fetchone():
+                    return jsonify({"error": "processing_config table not found"}), 500
+                
+                # Add column if not exists (safe operation)
+                try:
+                    cursor.execute("ALTER TABLE processing_config ADD COLUMN run_default_on_start INTEGER DEFAULT 1")
+                    print("Added run_default_on_start column")
+                except sqlite3.OperationalError:
+                    pass  # Column already exists
+                
+                # Get DB_PATH
+                try:
+                    from modules.db_utils import find_project_root
+                    import os
+                    BASE_DIR = find_project_root(os.path.abspath(__file__))
+                    DB_PATH = os.path.join(BASE_DIR, "backend/database/events.db")
+                except ImportError:
+                    # Fallback to default database path
+                    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+                    DB_PATH = os.path.join(BASE_DIR, "database", "events.db")
+                
+                # INSERT/UPDATE processing_config (all in same context)
+                cursor.execute("""
+                    INSERT OR REPLACE INTO processing_config (
+                        id, input_path, output_path, storage_duration, min_packing_time, 
+                        max_packing_time, frame_rate, frame_interval, video_buffer, default_frame_mode, 
+                        selected_cameras, db_path, run_default_on_start
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (1, video_root, output_path, default_days, min_packing_time, max_packing_time, 
+                      frame_rate, frame_interval, video_buffer, "default", json.dumps(selected_cameras), 
+                      DB_PATH, run_default_on_start))
 
-            print("processing_config updated successfully")
+                print("processing_config updated successfully")
 
-            conn.commit()
-            
-            # Verify what was saved
-            cursor.execute("SELECT input_path, selected_cameras, frame_rate, frame_interval FROM processing_config WHERE id = 1")
-            result = cursor.fetchone()
-            if result:
-                saved_path, saved_cameras, saved_fr, saved_fi = result
-                print(f"Verified saved input_path: {saved_path}")
-                print(f"Verified saved cameras: {saved_cameras}")
-                print(f"Verified saved frame_rate: {saved_fr}, frame_interval: {saved_fi}")
-            
-            conn.close()
+                # Verify what was saved
+                cursor.execute("SELECT input_path, selected_cameras, frame_rate, frame_interval FROM processing_config WHERE id = 1")
+                result = cursor.fetchone()
+                if result:
+                    saved_path, saved_cameras, saved_fr, saved_fi = result
+                    print(f"Verified saved input_path: {saved_path}")
+                    print(f"Verified saved cameras: {saved_cameras}")
+                    print(f"Verified saved frame_rate: {saved_fr}, frame_interval: {saved_fi}")
+                
+                # Commit all changes together
+                conn.commit()
             
             print("Config saved successfully")
             return jsonify({
@@ -193,16 +192,16 @@ def save_general_info():
     to_time = data.get('to_time', "23:00")
 
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT OR REPLACE INTO general_info (
-                id, country, timezone, brand_name, working_days, from_time, to_time
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (1, country, timezone, brand_name, json.dumps(working_days_en), from_time, to_time))
-
-        conn.commit()
-        conn.close()
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO general_info (
+                    id, country, timezone, brand_name, working_days, from_time, to_time
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (1, country, timezone, brand_name, json.dumps(working_days_en), from_time, to_time))
+            
+            # Commit changes
+            conn.commit()
     except Exception as e:
         return jsonify({"error": f"Database error: {str(e)}. Ensure the database is accessible."}), 500
 

@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Union
 
 # Import base repository
-from base_repository import BaseRepository, DatabaseError
+from .base_repository import BaseRepository, DatabaseError
 
 logger = logging.getLogger(__name__)
 

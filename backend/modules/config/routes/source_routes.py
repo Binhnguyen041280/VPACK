@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 import json
 import os
-from modules.db_utils import get_db_connection
+from modules.db_utils.safe_connection import safe_db_connection
 from modules.sources.path_manager import PathManager
 from ..utils import (
     get_working_path_for_source,
@@ -47,21 +47,17 @@ def save_video_sources():
             print(f"Overwrite mode: Replacing existing source '{name}'")
             
             # Delete existing source with same name first
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM video_sources WHERE name = ?", (name,))
-            deleted_count = cursor.rowcount
-            conn.commit()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM video_sources WHERE name = ?", (name,))
+                deleted_count = cursor.rowcount
             
             print(f"Deleted {deleted_count} existing source(s) with name '{name}'")
         else:
             # EXISTING: Disable all existing sources first (normal mode)
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("UPDATE video_sources SET active = 0")
-            conn.commit()
-            conn.close()
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("UPDATE video_sources SET active = 0")
         
         # COMMON: Add new source as active
         success, message = path_manager.add_source(source_type, name, path, config_data)
@@ -73,63 +69,67 @@ def save_video_sources():
             # Calculate correct working path and update processing_config (NO NVR)
             working_path = get_working_path_for_source(source_type, name, path)
             
-            # Update processing_config.input_path to point to working path
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE processing_config 
-                SET input_path = ? 
-                WHERE id = 1
-            """, (working_path,))
-            
-            print(f"Updated processing_config.input_path to: {working_path}")
-            
-            # Handle different source types (existing logic)
-            if source_type == 'cloud':
-                print(f"PROCESSING CLOUD SOURCE...")
+            # FIXED: Consolidate ALL database operations in single context
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
                 
-                selected_folders = config_data.get('selected_folders', [])
-                tree_folders = config_data.get('selected_tree_folders', [])
-                all_folders = selected_folders + tree_folders
+                # Update processing_config.input_path to point to working path
+                cursor.execute("""
+                    UPDATE processing_config 
+                    SET input_path = ? 
+                    WHERE id = 1
+                """, (working_path,))
                 
-                if all_folders:
-                    cloud_cameras = extract_cameras_from_cloud_folders(all_folders)
-                    cloud_cameras = list(set(cloud_cameras))
+                print(f"Updated processing_config.input_path to: {working_path}")
+                
+                # Handle different source types (existing logic)
+                if source_type == 'cloud':
+                    print(f"PROCESSING CLOUD SOURCE...")
                     
-                    cursor.execute("""
-                        UPDATE processing_config 
-                        SET selected_cameras = ? 
-                        WHERE id = 1
-                    """, (json.dumps(cloud_cameras),))
+                    selected_folders = config_data.get('selected_folders', [])
+                    tree_folders = config_data.get('selected_tree_folders', [])
+                    all_folders = selected_folders + tree_folders
                     
-                    print(f"Cloud cameras synced to processing_config: {cloud_cameras}")
-                    
-                    # Create camera directories
-                    try:
-                        for camera_name in cloud_cameras:
-                            camera_dir = os.path.join(working_path, camera_name)
-                            os.makedirs(camera_dir, exist_ok=True)
-                            print(f"Created camera directory: {camera_dir}")
-                    except Exception as dir_error:
-                        print(f"Could not create camera directories: {dir_error}")
-            
-            elif source_type == 'local':
-                # Auto-detect cameras from file system
-                try:
-                    cameras = detect_camera_folders(working_path)
-                    if cameras:
+                    if all_folders:
+                        cloud_cameras = extract_cameras_from_cloud_folders(all_folders)
+                        cloud_cameras = list(set(cloud_cameras))
+                        
                         cursor.execute("""
                             UPDATE processing_config 
                             SET selected_cameras = ? 
                             WHERE id = 1
-                        """, (json.dumps(cameras),))
-                        print(f"Local cameras auto-selected: {cameras}")
-                except Exception as camera_error:
-                    print(f"Camera detection failed: {camera_error}")
-                    cursor.execute("UPDATE processing_config SET selected_cameras = '[]' WHERE id = 1")
-            
-            conn.commit()
-            conn.close()
+                        """, (json.dumps(cloud_cameras),))
+                        
+                        print(f"Cloud cameras synced to processing_config: {cloud_cameras}")
+                        
+                        # Create camera directories
+                        try:
+                            for camera_name in cloud_cameras:
+                                camera_dir = os.path.join(working_path, camera_name)
+                                os.makedirs(camera_dir, exist_ok=True)
+                                print(f"Created camera directory: {camera_dir}")
+                        except Exception as dir_error:
+                            print(f"Could not create camera directories: {dir_error}")
+                
+                elif source_type == 'local':
+                    # Auto-detect cameras from file system
+                    try:
+                        cameras = detect_camera_folders(working_path)
+                        if cameras:
+                            cursor.execute("""
+                                UPDATE processing_config 
+                                SET selected_cameras = ? 
+                                WHERE id = 1
+                            """, (json.dumps(cameras),))
+                            print(f"Local cameras auto-selected: {cameras}")
+                        else:
+                            cursor.execute("UPDATE processing_config SET selected_cameras = '[]' WHERE id = 1")
+                    except Exception as camera_error:
+                        print(f"Camera detection failed: {camera_error}")
+                        cursor.execute("UPDATE processing_config SET selected_cameras = '[]' WHERE id = 1")
+                
+                # Commit all changes together
+                conn.commit()
             
             # ENHANCED RESPONSE
             action_taken = "replaced" if overwrite else "added"
@@ -299,15 +299,13 @@ def delete_video_source(source_id):
         if success:
             # Clean reset processing_config 
             try:
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("""
-                    UPDATE processing_config 
-                    SET input_path = '', selected_cameras = '[]' 
-                    WHERE id = 1
-                """)
-                conn.commit()
-                conn.close()
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        UPDATE processing_config 
+                        SET input_path = '', selected_cameras = '[]' 
+                        WHERE id = 1
+                    """)
                 
                 print(f"Source '{source_name}' deleted and processing_config reset")
                 
@@ -334,61 +332,60 @@ def toggle_source_status(source_id):
     path_manager = PathManager()
     
     try:
-        if active:
-            # Disable all other sources first (Single Active Source)
-            conn = get_db_connection()
+        # FIXED: Consolidate ALL database operations in single context
+        with safe_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("UPDATE video_sources SET active = 0")
-            conn.commit()
-            conn.close()
-        
-        success, message = path_manager.toggle_source_status(source_id, active)
-        
-        if success and active:
-            # Update input_path to this source
-            source = path_manager.get_source_by_id(source_id)
-            if source:
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("""
-                    UPDATE processing_config 
-                    SET input_path = ? 
-                    WHERE id = 1
-                """, (source['path'],))
-                
-                # Auto-detect cameras for local sources
-                if source['source_type'] == 'local':
-                    try:
-                        cameras = detect_camera_folders(source['path'])
-                        if cameras:
-                            cursor.execute("""
-                                UPDATE processing_config 
-                                SET selected_cameras = ? 
-                                WHERE id = 1
-                            """, (json.dumps(cameras),))
-                        else:
+            
+            if active:
+                # Disable all other sources first (Single Active Source)
+                cursor.execute("UPDATE video_sources SET active = 0")
+            
+            success, message = path_manager.toggle_source_status(source_id, active)
+            
+            if success and active:
+                # Update input_path to this source
+                source = path_manager.get_source_by_id(source_id)
+                if source:
+                    # Update input_path
+                    cursor.execute("""
+                        UPDATE processing_config 
+                        SET input_path = ? 
+                        WHERE id = 1
+                    """, (source['path'],))
+                    
+                    # Auto-detect cameras for local sources
+                    if source['source_type'] == 'local':
+                        try:
+                            cameras = detect_camera_folders(source['path'])
+                            if cameras:
+                                cursor.execute("""
+                                    UPDATE processing_config 
+                                    SET selected_cameras = ? 
+                                    WHERE id = 1
+                                """, (json.dumps(cameras),))
+                            else:
+                                cursor.execute("""
+                                    UPDATE processing_config 
+                                    SET selected_cameras = '[]' 
+                                    WHERE id = 1
+                                """)
+                        except Exception as camera_error:
+                            print(f"Camera detection failed: {camera_error}")
                             cursor.execute("""
                                 UPDATE processing_config 
                                 SET selected_cameras = '[]' 
                                 WHERE id = 1
                             """)
-                    except Exception as camera_error:
-                        print(f"Camera detection failed: {camera_error}")
+                    else:
+                        # Clear cameras for non-local sources
                         cursor.execute("""
                             UPDATE processing_config 
                             SET selected_cameras = '[]' 
                             WHERE id = 1
                         """)
-                else:
-                    # Clear cameras for non-local sources
-                    cursor.execute("""
-                        UPDATE processing_config 
-                        SET selected_cameras = '[]' 
-                        WHERE id = 1
-                    """)
-                
-                conn.commit()
-                conn.close()
+                    
+                    # Commit all changes together
+                    conn.commit()
         
         if success:
             return jsonify({"message": message}), 200

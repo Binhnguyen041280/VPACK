@@ -14,8 +14,19 @@ class IdleMonitor:
         self.logger = get_logger("app", {"video_id": None})
         self.logger.setLevel(logging.INFO)
         self.work_block_queue = queue.Queue()  # Queue lưu work block
-        self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.6)
+        # Initialize MediaPipe Hands (using pattern from hand_detection.py)
+        try:
+            self.mp_hands = mp.solutions.hands  # type: ignore
+            self.mp_drawing = mp.solutions.drawing_utils  # type: ignore
+            self.hands = self.mp_hands.Hands(
+                static_image_mode=False,
+                max_num_hands=1,
+                min_detection_confidence=0.6,
+                min_tracking_confidence=0.5
+            )
+        except AttributeError as e:
+            logging.error(f"MediaPipe import error: {e}")
+            raise ImportError("MediaPipe modules not found. Please reinstall MediaPipe.")
         self.IDLE_GAP = 120  # seconds
         self.HAND_SAMPLE_INTERVAL = 1  # seconds
         self.MIN_WORK_BLOCK = 10  # seconds
