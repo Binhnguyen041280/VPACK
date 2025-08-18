@@ -5,6 +5,10 @@ import App from './App';
 import reportWebVitals from './reportWebVitals';
 import "@fontsource/montserrat";
 import "react-datepicker/dist/react-datepicker.css";
+// import { initializeApiIntegration } from './utils/ApiIntegrationInit';
+
+// TODO: Re-enable timezone integration after fixing authentication compatibility
+// initializeApiIntegration();
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(

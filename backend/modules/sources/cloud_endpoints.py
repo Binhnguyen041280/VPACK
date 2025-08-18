@@ -6,6 +6,8 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from requests_oauthlib.oauth2_session import TokenUpdated
+from oauthlib.oauth2.rfc6749.errors import InvalidScopeError, OAuth2Error
 import hashlib
 import json
 import os
@@ -175,9 +177,9 @@ def rate_limit(endpoint_type='default'):
 cloud_bp = Blueprint('cloud', __name__, url_prefix='/api/cloud')
 # 🔧 FIX: Add CORS to cloud blueprint
 CORS(cloud_bp, 
-     origins=['http://localhost:3000', 'http://127.0.0.1:3000'],
+     origins=['http://localhost:3000'],
      supports_credentials=True,
-     allow_headers=['Content-Type', 'Authorization', 'X-Requested-With'],
+     allow_headers=['Content-Type', 'Authorization', 'X-Requested-With', 'x-timezone-version', 'x-timezone-detection', 'x-client-offset', 'x-client-timezone', 'x-client-dst'],
      methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
 
 @cloud_bp.route('/authenticate', methods=['POST', 'OPTIONS'])
@@ -210,7 +212,10 @@ def cloud_authenticate():
             SCOPES = [
                 'https://www.googleapis.com/auth/drive.file',
                 'https://www.googleapis.com/auth/drive.readonly',
-                'https://www.googleapis.com/auth/drive.metadata.readonly'
+                'https://www.googleapis.com/auth/drive.metadata.readonly',
+                'https://www.googleapis.com/auth/userinfo.email',
+                'https://www.googleapis.com/auth/userinfo.profile',
+                'openid'
             ]
             
             # Create flow
@@ -219,16 +224,12 @@ def cloud_authenticate():
                 scopes=SCOPES
             )
             
-            # 🔧 FIX: Determine redirect URI dynamically
+            # 🔧 FIX: Standardized redirect URI to avoid OAuth origin mismatch
             if custom_redirect:
                 redirect_uri = custom_redirect
             else:
-                # Auto-detect based on request headers
-                host = request.headers.get('Host', 'localhost:8080')
-                if '127.0.0.1' in host:
-                    redirect_uri = 'http://127.0.0.1:8080/api/cloud/oauth/callback'
-                else:
-                    redirect_uri = 'http://localhost:8080/api/cloud/oauth/callback'
+                # Standardized to localhost to avoid OAuth origin mismatch
+                redirect_uri = 'http://localhost:8080/api/cloud/oauth/callback'
             
             flow.redirect_uri = redirect_uri
             
@@ -294,6 +295,398 @@ def user_exists_in_db(email):
         logger.error(f"Error checking user existence: {e}")
         return False
 
+# ==================== GMAIL-ONLY AUTHENTICATION ====================
+
+@cloud_bp.route('/gmail-auth', methods=['POST', 'OPTIONS'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
+def gmail_authenticate():
+    """Gmail-only authentication endpoint with minimal scopes"""
+    try:
+        logger.info("🔐 Starting Gmail-only authentication...")
+        
+        data = request.get_json()
+        action = data.get('action', 'initiate_auth')
+        
+        if action == 'initiate_auth':
+            # Use dedicated Gmail credentials file
+            CLIENT_SECRETS_FILE = os.path.join(
+                os.path.dirname(__file__), 
+                'credentials/gmail_credentials.json'
+            )
+            
+            if not os.path.exists(CLIENT_SECRETS_FILE):
+                return jsonify({
+                    'success': False,
+                    'message': f'Credentials file not found: {CLIENT_SECRETS_FILE}',
+                    'setup_required': True
+                }), 400
+            
+            # Gmail-only scopes (minimal permissions) - use full Google scope URIs
+            GMAIL_SCOPES = [
+                'openid',
+                'https://www.googleapis.com/auth/userinfo.email',
+                'https://www.googleapis.com/auth/userinfo.profile'
+            ]
+            
+            # Create flow with minimal scopes
+            flow = Flow.from_client_secrets_file(
+                CLIENT_SECRETS_FILE, 
+                scopes=GMAIL_SCOPES
+            )
+            
+            # Use dedicated Gmail callback endpoint - standardized to localhost
+            redirect_uri = 'http://localhost:8080/api/cloud/gmail-callback'
+            
+            flow.redirect_uri = redirect_uri
+            
+            # Generate secure state
+            state = secrets.token_urlsafe(32)
+            
+            # Generate authorization URL
+            authorization_url, _ = flow.authorization_url(
+                access_type='offline',
+                include_granted_scopes='true',
+                prompt='consent',
+                state=state
+            )
+            
+            # Store state in session
+            session['gmail_oauth_state'] = state
+            session['gmail_oauth_flow_data'] = {
+                'scopes': GMAIL_SCOPES,
+                'redirect_uri': flow.redirect_uri,
+                'client_secrets_file': CLIENT_SECRETS_FILE,
+                'auth_type': 'gmail_only'
+            }
+            session.permanent = True
+            
+            logger.info(f"✅ Gmail OAuth flow initiated")
+            logger.info(f"   Auth URL: {authorization_url}")
+            logger.info(f"   Redirect URI: {flow.redirect_uri}")
+            
+            return jsonify({
+                'success': True,
+                'auth_url': authorization_url,
+                'state': state,
+                'redirect_uri': flow.redirect_uri,
+                'auth_type': 'gmail_only',
+                'scopes': GMAIL_SCOPES,
+                'message': 'Gmail OAuth flow initiated'
+            }), 200
+            
+        else:
+            return jsonify({
+                'success': False,
+                'message': f'Unknown action: {action}'
+            }), 400
+            
+    except Exception as e:
+        logger.error(f"❌ Gmail authentication error: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Gmail authentication failed: {str(e)}'
+        }), 500
+
+@cloud_bp.route('/gmail-callback', methods=['GET', 'OPTIONS'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
+def gmail_oauth_callback():
+    """Gmail-only OAuth2 callback handler"""
+    try:
+        logger.info("🔄 Processing Gmail OAuth callback...")
+        logger.info(f"   Request URL: {request.url}")
+        
+        # Get OAuth parameters
+        code = request.args.get('code')
+        state = request.args.get('state')
+        error = request.args.get('error')
+        error_description = request.args.get('error_description')
+        
+        # Handle errors
+        if error:
+            logger.error(f"❌ Gmail OAuth error: {error}")
+            return _create_gmail_error_page(f"Gmail OAuth error: {error}", error_description)
+        
+        if not code or not state:
+            logger.error("❌ Missing required Gmail OAuth parameters")
+            return _create_gmail_error_page("Missing OAuth parameters", "Authorization code or state missing")
+        
+        # Verify state
+        stored_state = session.get('gmail_oauth_state')
+        if not stored_state or state != stored_state:
+            logger.error(f"❌ Gmail OAuth state mismatch: got {state}, expected {stored_state}")
+            return _create_gmail_error_page("Security verification failed", "Please try authenticating again")
+        
+        # Get flow data
+        flow_data = session.get('gmail_oauth_flow_data')
+        if not flow_data:
+            logger.error("❌ No Gmail OAuth flow data found")
+            return _create_gmail_error_page("Session expired", "Please start authentication again")
+        
+        # Recreate Gmail flow using dedicated credentials
+        CLIENT_SECRETS_FILE = os.path.join(
+            os.path.dirname(__file__), 
+            'credentials/gmail_credentials.json'
+        )
+        
+        GMAIL_SCOPES = [
+            'openid',
+            'https://www.googleapis.com/auth/userinfo.email',
+            'https://www.googleapis.com/auth/userinfo.profile'
+        ]
+        
+        flow = Flow.from_client_secrets_file(
+            CLIENT_SECRETS_FILE, 
+            scopes=GMAIL_SCOPES
+        )
+        flow.redirect_uri = flow_data['redirect_uri']
+        
+        # Exchange code for tokens
+        try:
+            logger.info(f"🔄 Attempting Gmail token exchange...")
+            flow.fetch_token(code=code)
+            credentials = flow.credentials
+            logger.info("✅ Gmail token exchange successful")
+        except Exception as token_error:
+            logger.error(f"❌ Gmail token exchange failed: {token_error}")
+            return _create_gmail_error_page("Token exchange failed", str(token_error))
+        
+        # Get user info using OAuth2 API (minimal scopes)
+        try:
+            service = build('oauth2', 'v2', credentials=credentials)
+            user_info_response = service.userinfo().get().execute()
+            
+            user_info = {
+                'email': user_info_response.get('email', 'unknown'),
+                'name': user_info_response.get('name', 'Unknown User'),
+                'photo_url': user_info_response.get('picture'),
+                'verified_email': user_info_response.get('verified_email', False),
+                'authentication_method': 'gmail_only'
+            }
+            logger.info(f"✅ Gmail user info retrieved: {user_info['email']}")
+            
+        except Exception as user_error:
+            logger.error(f"❌ Failed to get Gmail user info: {user_error}")
+            return _create_gmail_error_page("User info retrieval failed", str(user_error))
+        
+        # Create or update user profile
+        try:
+            from modules.account.account import create_user_profile
+            create_user_profile(user_info)
+            logger.info(f"✅ User profile created/updated for: {user_info['email']}")
+        except Exception as profile_error:
+            logger.warning(f"⚠️ User profile creation failed: {profile_error}")
+            # Continue anyway - profile creation is not critical for authentication
+        
+        # Generate session token for Gmail-only authentication
+        try:
+            session_token = generate_session_token(user_info['email'], user_info, expires_minutes=129600)  # 90 days
+            if not session_token:
+                raise Exception("Failed to generate session token")
+            
+            logger.info("✅ Gmail session token generated")
+        except Exception as token_error:
+            logger.error(f"❌ Failed to generate Gmail session token: {token_error}")
+            return _create_gmail_error_page("Session token generation failed", str(token_error))
+
+        # Store minimal authentication data (no Google Drive credentials)
+        try:
+            # Store authentication status
+            session['gmail_authenticated'] = True
+            session['gmail_user_email'] = user_info['email']
+            session['gmail_user_info'] = user_info
+            session['gmail_session_token'] = session_token
+            session['authentication_method'] = 'gmail_only'
+            
+            logger.info("✅ Gmail authentication data stored in session")
+        except Exception as storage_error:
+            logger.error(f"❌ Failed to store Gmail authentication data: {storage_error}")
+            return _create_gmail_error_page("Authentication storage failed", str(storage_error))
+
+        # Return success page with minimal data
+        return _create_gmail_success_page({
+            'success': True,
+            'authenticated': True,
+            'user_info': user_info,
+            'user_email': user_info['email'],
+            'session_token': session_token,
+            'authentication_method': 'gmail_only',
+            'google_drive_connected': False,
+            'message': f'Gmail authentication successful for {user_info["email"]}'
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Gmail OAuth callback error: {e}")
+        return _create_gmail_error_page("Authentication failed", str(e))
+
+def _create_gmail_success_page(data):
+    """Create success page for Gmail authentication"""
+    import json
+    
+    # Safely serialize user_info to JSON
+    user_info_json = json.dumps(data.get('user_info', {}))
+    
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Gmail Authentication Success</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }}
+            .container {{ max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+            .success {{ color: #28a745; }}
+            .info {{ color: #666; margin-top: 15px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h2 class="success">✅ Gmail Authentication Successful!</h2>
+            <p><strong>Welcome:</strong> {data.get('user_email', 'Unknown')}</p>
+            <p><strong>Authentication Method:</strong> Gmail Only</p>
+            <p class="info">You can now use V_Track with your Gmail identity. Google Drive connection is optional and can be configured later in settings.</p>
+        </div>
+        <script>
+            // Send success message to parent window
+            if (window.opener) {{
+                window.opener.postMessage({{
+                    type: 'GMAIL_AUTH_SUCCESS',
+                    user_info: {user_info_json},
+                    user_email: '{data.get('user_email', '')}',
+                    session_token: '{data.get('session_token', '')}',
+                    authentication_method: 'gmail_only',
+                    google_drive_connected: false,
+                    backend_port: 8080
+                }}, 'http://localhost:3000');
+                
+                // Close popup immediately after sending message
+                window.close();
+            }} else if (window.parent !== window) {{
+                // If opened in iframe
+                window.parent.postMessage({{
+                    type: 'GMAIL_AUTH_SUCCESS',
+                    user_info: {user_info_json},
+                    user_email: '{data.get('user_email', '')}',
+                    session_token: '{data.get('session_token', '')}',
+                    authentication_method: 'gmail_only',
+                    google_drive_connected: false
+                }}, '*');
+            }} else {{
+                // Fallback - redirect to main page
+                setTimeout(() => {{ window.location.href = '/'; }}, 2000);
+            }}
+        </script>
+    </body>
+    </html>
+    """
+
+def _create_gmail_error_page(error, details=None):
+    """Create error page for Gmail authentication"""
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Gmail Authentication Error</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }}
+            .container {{ max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+            .error {{ color: #dc3545; }}
+            .details {{ color: #666; margin-top: 15px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h2 class="error">❌ Gmail Authentication Failed</h2>
+            <p><strong>Error:</strong> {error}</p>
+            {f'<p class="details"><strong>Details:</strong> {details}</p>' if details else ''}
+            <p>Please close this window and try again.</p>
+        </div>
+        <script>
+            // Send error message to parent window
+            if (window.opener) {{
+                window.opener.postMessage({{
+                    type: 'GMAIL_AUTH_ERROR',
+                    message: '{error}',
+                    details: '{details or ''}'
+                }}, 'http://localhost:3000');
+                
+                // Close popup
+                setTimeout(() => {{ window.close(); }}, 3000);
+            }} else if (window.parent !== window) {{
+                window.parent.postMessage({{
+                    type: 'GMAIL_AUTH_ERROR',
+                    message: '{error}',
+                    details: '{details or ''}'
+                }}, '*');
+            }}
+        </script>
+    </body>
+    </html>
+    """
+
+@cloud_bp.route('/gmail-auth-status', methods=['GET', 'OPTIONS'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
+def gmail_auth_status():
+    """Check Gmail-only authentication status"""
+    try:
+        logger.info("🔍 Checking Gmail authentication status...")
+        
+        # Check session for Gmail authentication
+        gmail_authenticated = session.get('gmail_authenticated', False)
+        gmail_user_email = session.get('gmail_user_email')
+        gmail_session_token = session.get('gmail_session_token')
+        gmail_user_info = session.get('gmail_user_info', {})
+        
+        if gmail_authenticated and gmail_user_email and gmail_session_token:
+            # Verify session token is still valid
+            try:
+                token_payload = verify_session_token(gmail_session_token)
+                if token_payload and token_payload.get('user_email') == gmail_user_email:
+                    return jsonify({
+                        'success': True,
+                        'authenticated': True,
+                        'user_email': gmail_user_email,
+                        'user_info': gmail_user_info,
+                        'authentication_method': 'gmail_only',
+                        'google_drive_connected': False,
+                        'session_token': gmail_session_token,
+                        'message': 'Gmail authentication verified'
+                    }), 200
+                else:
+                    # Token expired, clear session
+                    session.pop('gmail_authenticated', None)
+                    session.pop('gmail_user_email', None)
+                    session.pop('gmail_session_token', None)
+                    session.pop('gmail_user_info', None)
+                    
+                    return jsonify({
+                        'success': False,
+                        'authenticated': False,
+                        'message': 'Gmail session expired',
+                        'requires_reauth': True
+                    }), 200
+            except Exception as token_error:
+                logger.error(f"❌ Gmail token validation error: {token_error}")
+                return jsonify({
+                    'success': False,
+                    'authenticated': False,
+                    'message': 'Gmail token validation failed',
+                    'requires_reauth': True
+                }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'authenticated': False,
+                'message': 'No Gmail authentication found'
+            }), 200
+            
+    except Exception as e:
+        logger.error(f"❌ Gmail auth status check error: {e}")
+        return jsonify({
+            'success': False,
+            'authenticated': False,
+            'error': str(e),
+            'message': 'Gmail auth status check failed'
+        }), 500
+
 @cloud_bp.route('/oauth/callback', methods=['GET', 'OPTIONS'])
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def cloud_oauth_callback():
@@ -318,7 +711,7 @@ def cloud_oauth_callback():
             logger.error("❌ Missing required OAuth parameters")
             return _create_error_page("Missing OAuth parameters", "Authorization code or state missing")
         
-        # 🔧 FIX: More flexible state verification
+        # This is Google Drive OAuth flow only
         stored_state = session.get('oauth2_state')
         if not stored_state:
             logger.warning("⚠️ No stored state found, but proceeding (session might have expired)")
@@ -327,10 +720,14 @@ def cloud_oauth_callback():
             logger.error(f"❌ State mismatch: got {state}, expected {stored_state}")
             return _create_error_page("Security verification failed", "Please try authenticating again")
         
-        # Get flow data (with fallback)
+        # Set flags for Google Drive flow
+        is_gmail_only = False
+        
+        # Get flow data (Google Drive only)
         flow_data = session.get('oauth2_flow_data')
+        
         if not flow_data:
-            logger.warning("⚠️ No flow data, using defaults")
+            logger.warning("⚠️ No flow data, using Google Drive defaults")
             flow_data = {
                 'scopes': [
                     'https://www.googleapis.com/auth/drive.file',
@@ -353,18 +750,55 @@ def cloud_oauth_callback():
         
         logger.info(f"   Using redirect URI: {flow.redirect_uri}")
         
-        # Exchange code for tokens
+        # Exchange code for tokens (Google Drive flow)
         try:
-            logger.info(f"🔄 Attempting token exchange...")
+            logger.info(f"🔄 Attempting Google Drive token exchange...")
             flow.fetch_token(code=code)
             credentials = flow.credentials
-            logger.info("✅ Token exchange successful")
+            logger.info("✅ Google Drive token exchange successful")
+            
+        except (InvalidScopeError, OAuth2Error) as scope_error:
+            # Handle scope validation errors more gracefully
+            error_msg = str(scope_error)
+            if "Scope has changed" in error_msg or "userinfo" in error_msg.lower():
+                logger.warning(f"⚠️ Google Drive scope validation: {error_msg}")
+                logger.info("🔄 Attempting token exchange without strict scope validation (Google auto-adds userinfo scopes)...")
+                
+                # Try to fetch token without scope validation by directly using the OAuth session
+                try:
+                    # Get the underlying OAuth2Session and disable scope validation
+                    oauth_session = flow.oauth2session
+                    original_scope_check = oauth_session._populate_attributes
+                    
+                    # Temporarily disable scope checking
+                    def bypass_scope_check(token):
+                        return token
+                    
+                    oauth_session._populate_attributes = bypass_scope_check
+                    
+                    # Retry token fetch
+                    flow.fetch_token(code=code)
+                    credentials = flow.credentials
+                    
+                    # Restore original scope checking
+                    oauth_session._populate_attributes = original_scope_check
+                    
+                    logger.info("✅ Google Drive token exchange successful (with scope tolerance)")
+                    
+                except Exception as retry_error:
+                    logger.error(f"❌ Google Drive token exchange failed even with scope tolerance: {retry_error}")
+                    return _create_error_page("Token exchange failed", str(retry_error))
+            else:
+                logger.error(f"❌ Google Drive OAuth error: {scope_error}")
+                return _create_error_page("OAuth authentication failed", str(scope_error))
+            
         except Exception as token_error:
-            logger.error(f"❌ Token exchange failed: {token_error}")
+            logger.error(f"❌ Google Drive token exchange failed: {token_error}")
             return _create_error_page("Token exchange failed", str(token_error))
         
-        # Get user info
+        # Get user info using Google Drive API
         try:
+            logger.info("💾 Using Drive API for Google Drive user info")
             service = build('drive', 'v3', credentials=credentials)
             about = service.about().get(fields='user,storageQuota').execute()
             
@@ -372,23 +806,30 @@ def cloud_oauth_callback():
                 'email': about.get('user', {}).get('emailAddress', 'unknown'),
                 'name': about.get('user', {}).get('displayName', 'Unknown User'),
                 'photo_url': about.get('user', {}).get('photoLink'),
+                'authentication_method': 'google_drive'
             }
-            logger.info(f"✅ User info retrieved: {user_info['email']}")
+            
+            logger.info(f"✅ Google Drive user info retrieved: {user_info['email']}")
             
         except Exception as user_error:
-            logger.error(f"❌ Failed to get user info: {user_error}")
-            user_info = {'email': 'unknown', 'name': 'Unknown User'}
+            logger.error(f"❌ Failed to get Google Drive user info: {user_error}")
+            user_info = {
+                'email': 'unknown', 
+                'name': 'Unknown User',
+                'authentication_method': 'google_drive'
+            }
         
-        # 🔐 PHASE 1 SECURITY: Store credentials safely and return session token only
+        # Store Google Drive credentials safely
         session_credentials = None
         try:
             session_credentials = _store_credentials_safely(credentials, user_info)
-            logger.info("✅ Credentials encrypted and session token generated")
+            logger.info("✅ Google Drive credentials encrypted and session token generated")
+                
         except Exception as storage_error:
-            logger.error(f"❌ Failed to store credentials securely: {storage_error}")
+            logger.error(f"❌ Failed to store Google Drive credentials securely: {storage_error}")
             return _create_error_page("Secure storage failed", str(storage_error))
 
-        # 🔐 SECURE SESSION RESULT - NO RAW CREDENTIALS
+        # 🔐 GOOGLE DRIVE SESSION RESULT
         session_result = {
             'success': True,
             'authenticated': True,
@@ -399,7 +840,9 @@ def cloud_oauth_callback():
             'folder_loading_required': True,
             'lazy_loading_enabled': True,
             'existing_auth': False,
-            'message': f'Authentication completed for {user_info["email"]}',
+            'authentication_method': 'google_drive',
+            'google_drive_connected': True,
+            'message': f'Google Drive authentication completed for {user_info["email"]}',
             'backend_port': 8080,
             'timestamp': datetime.now().isoformat(),
             'security_mode': 'encrypted_storage'  # Indicate security enhancement
@@ -409,7 +852,7 @@ def cloud_oauth_callback():
         session['auth_result'] = session_result
         session.permanent = True
         
-        # 🔧 FIX: Clear OAuth session data
+        # 🔧 FIX: Clear Google Drive OAuth session data
         session.pop('oauth2_state', None)
         session.pop('oauth2_flow_data', None)
         
@@ -484,6 +927,8 @@ def cloud_oauth_callback():
         else:
             # Normal OAuth flow - continue with existing logic
             logger.info(f"🔄 Normal OAuth flow for existing user: {user_info['email']}")
+            
+            # Return Google Drive success page
             return _create_success_page_with_postmessage(session_result)
         
     except Exception as e:
@@ -654,18 +1099,11 @@ def _create_success_page_with_postmessage(session_result):
                         if (window.opener && !window.opener.closed) {{
                             console.log('📬 Sending SECURE success message to parent window');
                             
-                            // 🔧 FIX: Send to both localhost:3000 and 127.0.0.1:3000
-                            const origins = [
-                                'http://localhost:3000',
-                                'http://127.0.0.1:3000'
-                            ];
-                            
-                            origins.forEach(origin => {{
-                                window.opener.postMessage({{
-                                    type: 'OAUTH_SUCCESS',
-                                    ...authData
-                                }}, origin);
-                            }});
+                            // ✅ FIXED: Send only to localhost:3000 to avoid origin mismatch
+                            window.opener.postMessage({{
+                                type: 'OAUTH_SUCCESS',
+                                ...authData
+                            }}, 'http://localhost:3000');
                             
                             statusEl.textContent = 'VTrack notified successfully! (Secure mode)';
                             statusEl.style.color = '#28a745';
@@ -766,15 +1204,13 @@ def _create_error_page(error_message, error_details=None):
             <script>
                 // Notify parent window of error
                 if (window.opener) {{
-                    const origins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
-                    origins.forEach(origin => {{
-                        window.opener.postMessage({{
-                            type: 'OAUTH_ERROR',
-                            error: '{error_message}',
-                            details: '{error_details or ""}',
-                            backend_port: 8080
-                        }}, origin);
-                    }});
+                    // Standardized to localhost only to avoid origin mismatch
+                    window.opener.postMessage({{
+                        type: 'OAUTH_ERROR',
+                        error: '{error_message}',
+                        details: '{error_details or ""}',
+                        backend_port: 8080
+                    }}, 'http://localhost:3000');
                 }}
                 
                 setTimeout(() => window.close(), 10000);
@@ -793,7 +1229,7 @@ def auth_status():
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})
         response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,x-timezone-version,x-timezone-detection,x-client-offset')
         response.headers.add('Access-Control-Allow-Methods', 'GET,OPTIONS')
         response.headers.add('Access-Control-Allow-Credentials', 'true')
         return response

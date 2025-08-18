@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify
+from flask_cors import cross_origin
 import json
 import os
 from modules.db_utils.safe_connection import safe_db_connection
@@ -13,6 +14,7 @@ from ..utils import (
 source_routes_bp = Blueprint('source_routes', __name__)
 
 @source_routes_bp.route('/save-sources', methods=['POST'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def save_video_sources():
     """Save single active video source - ENHANCED: Support overwrite"""
     data = request.json
@@ -150,7 +152,8 @@ def save_video_sources():
         print(f"Failed to save sources: {str(e)}")
         return jsonify({"error": f"Failed to save sources: {str(e)}"}), 500
 
-@source_routes_bp.route('/test-source', methods=['POST'])  
+@source_routes_bp.route('/test-source', methods=['POST'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def test_source_connection():
     """Test connectivity for local and cloud source types only"""
     try:
@@ -240,6 +243,7 @@ def test_source_connection():
         }), 500
 
 @source_routes_bp.route('/get-sources', methods=['GET'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def get_video_sources():
     """Get all video sources"""
     try:
@@ -252,6 +256,7 @@ def get_video_sources():
         return jsonify({"error": f"Failed to retrieve sources: {str(e)}"}), 500
 
 @source_routes_bp.route('/update-source/<int:source_id>', methods=['PUT'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def update_video_source(source_id):
     """Simple update video source - same type only, mainly for camera selection"""
     try:
@@ -285,6 +290,7 @@ def update_video_source(source_id):
         return jsonify({"error": f"Failed to update source: {str(e)}"}), 500
 
 @source_routes_bp.route('/delete-source/<int:source_id>', methods=['DELETE'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def delete_video_source(source_id):
     """Delete video source (used by Change button to reset workflow)"""
     path_manager = PathManager()
@@ -323,6 +329,7 @@ def delete_video_source(source_id):
         return jsonify({"error": f"Failed to delete source: {str(e)}"}), 500
 
 @source_routes_bp.route('/toggle-source/<int:source_id>', methods=['POST'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def toggle_source_status(source_id):
     """Toggle source active status"""
     data = request.json

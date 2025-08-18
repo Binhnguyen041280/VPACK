@@ -9,6 +9,8 @@ import numpy as np
 from datetime import datetime, timezone, timedelta
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import frame_sampler_event, db_rwlock
+from modules.utils.timezone_manager import timezone_manager
+from modules.utils.video_timezone_detector import video_timezone_detector, get_timezone_aware_creation_time
 import math
 from modules.config.logging_config import get_logger
 
@@ -57,10 +59,9 @@ class FrameSamplerTrigger:
                 self.output_path = result[0] if result else os.path.join(BASE_DIR, "output_clips")
                 self.log_dir = os.path.join(self.output_path, "LOG", "Frame")
                 os.makedirs(self.log_dir, exist_ok=True)
-                cursor.execute("SELECT timezone FROM general_info WHERE id = 1")
-                result = cursor.fetchone()
-                tz_hours = int(result[0].split("+")[1]) if result and "+" in result[0] else 7
-                self.video_timezone = timezone(timedelta(hours=tz_hours))
+                # Use TimezoneManager for user timezone instead of hardcoded parsing
+                self.video_timezone = timezone_manager.get_user_timezone()
+                logging.info(f"Using user timezone: {timezone_manager.get_user_timezone_name()}")
                 cursor.execute("SELECT frame_rate, frame_interval, min_packing_time FROM processing_config WHERE id = 1")
                 result = cursor.fetchone()
                 self.fps, self.frame_interval, self.min_packing_time = result if result else (30, 5, 5)
@@ -145,21 +146,56 @@ class FrameSamplerTrigger:
             logging.error(f"Error processing frame {frame_count}: {str(e)}")
             return "", ""
 
-    def _get_video_start_time(self, video_file):
+    def _get_video_start_time(self, video_file, camera_name=None):
+        """Get video start time with advanced timezone detection.
+        
+        Uses enhanced video timezone detection to get accurate creation time
+        with proper timezone information from metadata when available.
+        
+        Args:
+            video_file (str): Path to video file
+            camera_name (str, optional): Camera name for timezone detection
+            
+        Returns:
+            datetime: Timezone-aware video start time
+        """
         try:
-            result = subprocess.check_output(['ffprobe', '-v', 'quiet', '-show_entries', 'format_tags=creation_time', '-of', 'default=noprint_wrappers=1:nokey=1', video_file])
-            return datetime.strptime(result.decode().strip(), '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc).astimezone(self.video_timezone)
-        except (subprocess.CalledProcessError, ValueError):
+            # Provide database access to timezone detector for camera-specific timezones
+            if camera_name:
+                with db_rwlock.gen_rlock():
+                    with safe_db_connection() as conn:
+                        cursor = conn.cursor()
+                        # Let the timezone detector get camera-specific timezone settings
+                        camera_timezone = video_timezone_detector.set_camera_timezone_from_db(camera_name, conn, cursor)
+                        if camera_timezone:
+                            logging.info(f"Found camera-specific timezone for {camera_name}: {camera_timezone}")
+            
+            # Use enhanced timezone detection with camera context
+            timezone_aware_time = get_timezone_aware_creation_time(video_file, camera_name)
+            logging.info(f"Video start time with timezone detection: {timezone_aware_time}")
+            return timezone_aware_time
+            
+        except Exception as e:
+            logging.warning(f"Enhanced timezone detection failed for {video_file}: {e}, using fallback")
+            
+            # Fallback to original method with TimezoneManager
             try:
-                result = subprocess.check_output(['exiftool', '-CreateDate', '-d', '%Y-%m-%d %H:%M:%S', video_file])
-                return datetime.strptime(result.decode().split('CreateDate')[1].strip().split('\n')[0].strip(), '%Y-%m-%d %H:%M:%S').replace(tzinfo=self.video_timezone)
-            except (subprocess.CalledProcessError, IndexError):
+                result = subprocess.check_output(['ffprobe', '-v', 'quiet', '-show_entries', 'format_tags=creation_time', '-of', 'default=noprint_wrappers=1:nokey=1', video_file])
+                utc_time = datetime.strptime(result.decode().strip(), '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
+                return utc_time.astimezone(self.video_timezone)
+            except (subprocess.CalledProcessError, ValueError):
                 try:
-                    result = subprocess.check_output(['exiftool', '-FileCreateDate', '-d', '%Y-%m-%d %H:%M:%S', video_file])
-                    return datetime.strptime(result.decode().split('FileCreateDate')[1].strip().split('\n')[0].strip(), '%Y-%m-%d %H:%M:%S').replace(tzinfo=self.video_timezone)
+                    result = subprocess.check_output(['exiftool', '-CreateDate', '-d', '%Y-%m-%d %H:%M:%S', video_file])
+                    naive_time = datetime.strptime(result.decode().split('CreateDate')[1].strip().split('\n')[0].strip(), '%Y-%m-%d %H:%M:%S')
+                    return self.video_timezone.localize(naive_time) if hasattr(self.video_timezone, 'localize') else naive_time.replace(tzinfo=self.video_timezone)
                 except (subprocess.CalledProcessError, IndexError):
-                    logging.warning("No metadata found, using file creation time.")
-                    return datetime.fromtimestamp(os.path.getctime(video_file), tz=self.video_timezone)
+                    try:
+                        result = subprocess.check_output(['exiftool', '-FileCreateDate', '-d', '%Y-%m-%d %H:%M:%S', video_file])
+                        naive_time = datetime.strptime(result.decode().split('FileCreateDate')[1].strip().split('\n')[0].strip(), '%Y-%m-%d %H:%M:%S')
+                        return self.video_timezone.localize(naive_time) if hasattr(self.video_timezone, 'localize') else naive_time.replace(tzinfo=self.video_timezone)
+                    except (subprocess.CalledProcessError, IndexError):
+                        logging.warning("No metadata found, using file creation time.")
+                        return datetime.fromtimestamp(os.path.getctime(video_file), tz=self.video_timezone)
 
     def _update_log_file(self, log_file, start_second, end_second, start_time, camera_name, video_file):
         log_file_handle = open(log_file, 'w')
@@ -213,7 +249,7 @@ class FrameSamplerTrigger:
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
                         cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
-            start_time_obj = self._get_video_start_time(video_file)
+            start_time_obj = self._get_video_start_time(video_file, camera_name)
             roi, trigger = get_packing_area_func(camera_name)
             total_seconds = self.get_video_duration(video_file)
             if total_seconds is None:

@@ -54,6 +54,11 @@ class CloudAuthManager:
         'google_drive': [
             'https://www.googleapis.com/auth/drive.readonly',
             'https://www.googleapis.com/auth/drive.metadata.readonly'
+        ],
+        'gmail_only': [
+            'openid',
+            'email',
+            'profile'
         ]
     }
     
@@ -63,6 +68,11 @@ class CloudAuthManager:
             'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
             'token_uri': 'https://oauth2.googleapis.com/token',
             'client_secrets_file': 'google_drive_credentials_web.json'
+        },
+        'gmail_only': {
+            'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
+            'token_uri': 'https://oauth2.googleapis.com/token',
+            'client_secrets_file': 'google_drive_credentials_web.json'  # Same client, different scopes
         }
     }
     
@@ -161,7 +171,7 @@ class CloudAuthManager:
         try:
             logger.info(f"🔐 Initiating OAuth2 flow for {self.provider}")
             
-            if self.provider == 'google_drive':
+            if self.provider in ['google_drive', 'gmail_only']:
                 return self._initiate_google_oauth(redirect_uri)
             else:
                 return {
@@ -183,20 +193,20 @@ class CloudAuthManager:
             # Get client secrets file path
             client_secrets_file = os.path.join(
                 self.credentials_dir, 
-                self.OAUTH_ENDPOINTS['google_drive']['client_secrets_file']
+                self.OAUTH_ENDPOINTS[self.provider]['client_secrets_file']
             )
             
             if not os.path.exists(client_secrets_file):
                 return {
                     'success': False,
-                    'message': f"Google Drive credentials file not found: {client_secrets_file}",
+                    'message': f"Google credentials file not found: {client_secrets_file}",
                     'setup_required': True
                 }
             
             # Create OAuth2 flow
             flow = Flow.from_client_secrets_file(
                 client_secrets_file,
-                scopes=self.PROVIDER_SCOPES['google_drive'],
+                scopes=self.PROVIDER_SCOPES[self.provider],
                 redirect_uri=redirect_uri
             )
             
@@ -369,6 +379,8 @@ class CloudAuthManager:
         try:
             if self.provider == 'google_drive':
                 return self._get_google_user_info(credentials)
+            elif self.provider == 'gmail_only':
+                return self._get_gmail_user_info(credentials)
             else:
                 return {'email': 'unknown', 'name': 'Unknown User'}
                 
@@ -397,6 +409,25 @@ class CloudAuthManager:
         except Exception as e:
             logger.error(f"❌ Google user info error: {e}")
             return {'email': 'unknown', 'name': 'Unknown User', 'error': str(e)}
+    
+    def _get_gmail_user_info(self, credentials: Credentials) -> Dict[str, Any]:
+        """Get Gmail user information using OAuth2 userinfo endpoint"""
+        try:
+            # Use OAuth2 service to get user info with minimal scopes
+            service = build('oauth2', 'v2', credentials=credentials)
+            user_info = service.userinfo().get().execute()
+            
+            return {
+                'email': user_info.get('email', 'unknown'),
+                'name': user_info.get('name', 'Unknown User'),
+                'photo_url': user_info.get('picture'),
+                'gmail_verified': user_info.get('verified_email', False),
+                'authentication_method': 'gmail_only'
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Gmail user info error: {e}")
+            return {'email': 'unknown', 'name': 'Unknown User', 'error': str(e), 'authentication_method': 'gmail_only'}
     
     def _store_credentials_securely(self, credentials: Credentials, user_info: Dict[str, Any]) -> Dict[str, Any]:
         """🔐 PHASE 1 SECURITY: Securely store OAuth2 credentials with AES-256 encryption"""

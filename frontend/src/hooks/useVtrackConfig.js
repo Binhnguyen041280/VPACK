@@ -1,10 +1,28 @@
 import { useState, useEffect } from "react";
+import timezoneManager from "../utils/TimezoneManager";
+import TimezoneAwareFetch from "../utils/TimezoneAwareFetch";
+import useGlobalTimezone from "./useGlobalTimezone";
+import countriesAndTimezones from "../utils/CountriesAndTimezones";
 
-const useVtrackConfig = () => {
+const useVtrackConfig = (options = {}) => {
+  const { shouldFetchCameras = true, activeVideoSource = null } = options;
   const [fromTime, setFromTime] = useState(null);
   const [toTime, setToTime] = useState(null);
-  const [country, setCountry] = useState("Việt Nam");
-  const [timezone, setTimezone] = useState("UTC+7");
+  const [country, setCountry] = useState("Vietnam");
+  
+  // Use global timezone configuration instead of hardcoded values
+  const { timezoneOffset, getTimezoneOffset, getTimezoneIana, loading: timezoneLoading } = useGlobalTimezone();
+  const [timezone, setTimezone] = useState(() => {
+    // Initialize with global timezone or fallback
+    return timezoneOffset || "UTC+7"; // Fallback for backward compatibility
+  });
+  
+  // Update timezone when global timezone changes
+  useEffect(() => {
+    if (!timezoneLoading && timezoneOffset) {
+      setTimezone(timezoneOffset);
+    }
+  }, [timezoneOffset, timezoneLoading]);
   const [brandName, setBrandName] = useState("");
   const [inputPath, setInputPath] = useState("");
   const [outputPath, setOutputPath] = useState("");
@@ -21,26 +39,44 @@ const useVtrackConfig = () => {
   const [error, setError] = useState(null);
   const [runDefaultOnStart, setRunDefaultOnStart] = useState(false);
 
-  const countries = [
-    "Việt Nam", "Nhật Bản", "Hàn Quốc", "Thái Lan", "Singapore",
-    "Mỹ", "Anh", "Pháp", "Đức", "Úc"
-  ];
+  // Get all countries from the comprehensive countries library
+  const countries = countriesAndTimezones.getAllCountryNames(true); // true = prioritize common countries
 
-  const countryTimezones = {
-    "Việt Nam": "UTC+7", "Nhật Bản": "UTC+9", "Hàn Quốc": "UTC+9",
-    "Thái Lan": "UTC+7", "Singapore": "UTC+8", "Mỹ": "UTC-5",
-    "Anh": "UTC+0", "Pháp": "UTC+1", "Đức": "UTC+1", "Úc": "UTC+10"
+  // Get timezone offset for a country using the comprehensive library
+  const getCountryTimezoneOffset = (countryName) => {
+    return countriesAndTimezones.getTimezoneOffset(countryName);
+  };
+
+  // Get primary timezone IANA name for a country
+  const getCountryTimezone = (countryName) => {
+    return countriesAndTimezones.getTimezone(countryName);
   };
 
   const BASE_DIR = "/Users/annhu/vtrack_app/V_Track";
 
   useEffect(() => {
     const fetchCameraFolders = async () => {
+      // ✅ FIXED: Only fetch camera folders if explicitly requested and there's an active video source
+      if (!shouldFetchCameras) {
+        console.log("⏹️ Camera fetching disabled by parent component");
+        setCameras([]);
+        setError(null);
+        return;
+      }
+
+      if (!activeVideoSource) {
+        console.log("⏹️ No active video source - skipping camera folders API call");
+        setCameras([]);
+        setError(null); // Clear any previous errors
+        return;
+      }
+
       try {
-        // ✅ SIMPLIFIED - single source of truth
-        const response = await fetch("http://localhost:8080/get-camera-folders");
+        console.log("📡 Fetching camera folders for active source:", activeVideoSource.name);
+        // ✅ SIMPLIFIED - single source of truth with timezone-aware fetch
+        const response = await TimezoneAwareFetch.get("http://localhost:8080/get-camera-folders");
         if (response.ok) {
-          const data = await response.json();
+          const data = await TimezoneAwareFetch.parseJsonResponse(response);
           if (Array.isArray(data.folders)) {
             setCameras(data.folders);
             setError(null);
@@ -59,12 +95,31 @@ const useVtrackConfig = () => {
       }
     };
     fetchCameraFolders();
-  }, []);
+  }, [shouldFetchCameras, activeVideoSource]); // ✅ FIXED: Depend on both flags
 
   const handleCountryChange = (e) => {
     const selectedCountry = e.target.value;
     setCountry(selectedCountry);
-    setTimezone(countryTimezones[selectedCountry] || "UTC+0");
+    
+    // Get timezone information for the selected country
+    const selectedTimezoneOffset = getCountryTimezoneOffset(selectedCountry);
+    const selectedTimezoneIana = getCountryTimezone(selectedCountry);
+    
+    setTimezone(selectedTimezoneOffset);
+    
+    // Update TimezoneManager preference based on selected country
+    if (selectedTimezoneIana) {
+      try {
+        // Use the IANA timezone from the country mapper
+        timezoneManager.saveUserPreference(selectedTimezoneIana);
+        console.log(`Updated timezone to ${selectedTimezoneIana} for country ${selectedCountry}`);
+      } catch (error) {
+        console.error('Error updating timezone:', error);
+        // Fallback to global timezone if country-specific timezone fails
+        const fallbackTimezone = getTimezoneIana() || 'Asia/Ho_Chi_Minh';
+        timezoneManager.saveUserPreference(fallbackTimezone);
+      }
+    }
   };
 
   const handleFromTimeChange = (time) => {
@@ -117,21 +172,20 @@ const useVtrackConfig = () => {
       timezone,
       brand_name: brandName,
       working_days: workingDays.length > 0 ? workingDays : ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"],
-      from_time: fromTime ? fromTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }) : "07:00",
-      to_time: toTime ? toTime.toLocaleTimeString('en-GB', { hour: "2-digit", minute: "2-digit", hour12: false }) : "23:00",
+      from_time: fromTime ? fromTime : "07:00", // Let middleware handle timezone conversion
+      to_time: toTime ? toTime : "23:00", // Let middleware handle timezone conversion
     };
     console.log("Data sent to /api/config/save-general-info:", data);
     try {
-      const response = await fetch("http://localhost:8080/save-general-info", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (response.ok) alert("General info saved successfully");
-      else throw new Error("Failed to save general info");
+      const response = await TimezoneAwareFetch.post("http://localhost:8080/save-general-info", data);
+      if (response.ok) {
+        alert("General info saved successfully");
+      } else {
+        throw new Error("Failed to save general info");
+      }
     } catch (error) {
       console.error("Error saving general info:", error);
-      alert("Failed to save general info");
+      alert(`Failed to save general info: ${error.message}`);
     }
   };
 
@@ -173,18 +227,14 @@ const useVtrackConfig = () => {
     };
     console.log("Data sent to /save-config:", data);
     try {
-      const response = await fetch("http://localhost:8080/api/config/save-config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      const result = await response.json();
+      const response = await TimezoneAwareFetch.post("http://localhost:8080/api/config/save-config", data);
+      const result = await TimezoneAwareFetch.parseJsonResponse(response);
       if (response.ok) {
         localStorage.setItem("configSet", "true");
         alert("Configuration saved successfully");
         setShowCameraDialog(false);
-        const cameraResponse = await fetch("http://localhost:8080/get-cameras");
-        const cameraData = await cameraResponse.json();
+        const cameraResponse = await TimezoneAwareFetch.get("http://localhost:8080/get-cameras");
+        const cameraData = await TimezoneAwareFetch.parseJsonResponse(cameraResponse);
         if (cameraData && Array.isArray(cameraData.cameras)) {
           setCameras(cameraData.cameras.map(name => ({ name, path: "" })));
           setError(null);
@@ -259,6 +309,8 @@ const useVtrackConfig = () => {
     handleCameraSelection,
     runDefaultOnStart,
     setRunDefaultOnStart,
+    // Timezone utilities
+    timezoneManager,
   };
 };
 

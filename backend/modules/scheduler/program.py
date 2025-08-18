@@ -34,17 +34,15 @@ from flask import Blueprint, request, jsonify
 import os
 import json
 import threading
-import pytz
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 from modules.db_utils import find_project_root
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.config.logging_config import get_logger
+from modules.utils.timezone_manager import timezone_manager
 from .file_lister import run_file_scan, get_db_path
 from .batch_scheduler import BatchScheduler
 from .db_sync import frame_sampler_event, event_detector_event
-
-VIETNAM_TZ = pytz.timezone('Asia/Ho_Chi_Minh')
 
 program_bp = Blueprint('program', __name__)
 
@@ -75,8 +73,12 @@ def init_default_program():
     Checks if the first run has been completed and automatically starts
     the default mode if appropriate. This ensures the system continues
     processing after initial setup.
+    
+    Uses timezone-aware logging for better debugging across different timezones.
     """
-    logger.info("Initializing default program")
+    start_time = timezone_manager.now_local()
+    logger.info(f"Initializing default program at {start_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+    
     try:
         with db_rwlock:
             with safe_db_connection() as conn:
@@ -84,11 +86,14 @@ def init_default_program():
                 cursor.execute('SELECT value FROM program_status WHERE key = "first_run_completed"')
                 result = cursor.fetchone()
                 first_run_completed = result[0] == 'true' if result else False
+        
         logger.info(f"First run completed: {first_run_completed}, Scheduler running: {scheduler.running}")
+        
         if first_run_completed and not scheduler.running:
-            logger.info("Chuyển sang chế độ chạy mặc định (quét lặp)")
+            logger.info(f"Chuyển sang chế độ chạy mặc định (quét lặp) at {timezone_manager.now_local().strftime('%Y-%m-%d %H:%M:%S %Z')}")
             running_state["current_running"] = "Mặc định"
             scheduler.start()
+            
     except Exception as e:
         logger.error(f"Error initializing default program: {e}")
 
@@ -176,14 +181,23 @@ def program():
                 logger.error("Days required for Lần đầu")
                 return jsonify({"error": "Days required for Lần đầu"}), 400
             
-            # Update state for first run processing
+            # Update state for first run processing with timezone context
             running_state["days"] = days
             running_state["custom_path"] = None
+            
+            start_time = timezone_manager.now_local()
+            logger.info(f"Starting first run processing for {days} days at {start_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            
             try:
                 # Scan and queue files from the specified number of days
                 run_file_scan(scan_action="first", days=days)
+                
+                completion_time = timezone_manager.now_local()
+                logger.info(f"First run scan completed at {completion_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+                
             except Exception as e:
-                logger.error(f"Failed to run first scan: {str(e)}")
+                error_time = timezone_manager.now_local()
+                logger.error(f"Failed to run first scan at {error_time.strftime('%Y-%m-%d %H:%M:%S %Z')}: {str(e)}")
                 return jsonify({"error": f"Failed to run first scan: {str(e)}"}), 500
         # CUSTOM PROCESSING: Process specific file or directory
         elif card == "Chỉ định":
@@ -265,13 +279,28 @@ def program():
 
         if card == "Lần đầu":
             try:
+                completion_time = timezone_manager.now_local()
+                completion_utc = timezone_manager.now_utc()
+                
                 with db_rwlock:
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
                         cursor.execute("UPDATE program_status SET value = ? WHERE key = ?", ("true", "first_run_completed"))
-                logger.info("Chuyển sang chế độ chạy mặc định (quét lặp) sau khi hoàn thành Lần đầu")
+                        
+                        # Also store completion timestamp for audit purposes
+                        cursor.execute(
+                            "INSERT OR REPLACE INTO program_status (key, value) VALUES (?, ?)",
+                            ("first_run_completed_at", timezone_manager.format_for_db(completion_utc))
+                        )
+                        
+                logger.info(
+                    f"Chuyển sang chế độ chạy mặc định (quét lặp) sau khi hoàn thành Lần đầu at "
+                    f"{completion_time.strftime('%Y-%m-%d %H:%M:%S %Z')}"
+                )
+                
             except Exception as e:
-                logger.error(f"Error updating first_run_completed: {e}")
+                error_time = timezone_manager.now_local()
+                logger.error(f"Error updating first_run_completed at {error_time.strftime('%Y-%m-%d %H:%M:%S %Z')}: {e}")
 
     elif action == "stop":
         logger.info(f"Action stop called, current_state={running_state}, scheduler_running={scheduler.running}")

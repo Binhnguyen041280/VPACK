@@ -35,7 +35,7 @@ const Dashboard = ({ setActiveMenu, activeMenu, authState, onLogout }) => {
             setCustomPath={setCustomPath}
           />
         ) : activeMenu === "Cấu hình" ? (
-          <VtrackConfig />
+          <VtrackConfig authState={authState} />
         ) : activeMenu === "Truy vấn" ? (
           <QueryComponent />
         ) : activeMenu === "Tài khoản" ? (

@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify
+from flask_cors import cross_origin
 from datetime import datetime
 import json
 import os
@@ -9,6 +10,7 @@ from ..utils import detect_camera_folders, has_video_files, extract_cameras_from
 camera_routes_bp = Blueprint('camera_routes', __name__)
 
 @camera_routes_bp.route('/debug-cameras', methods=['GET'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def debug_cameras():
     """Debug endpoint to check camera sync status"""
     try:
@@ -45,6 +47,7 @@ def debug_cameras():
         return jsonify({"error": f"Debug failed: {str(e)}"}), 500
 
 @camera_routes_bp.route('/detect-cameras', methods=['POST'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def detect_cameras():
     """Detect camera folders in the specified path"""
     try:
@@ -85,6 +88,7 @@ def detect_cameras():
         return jsonify({"error": f"Failed to detect cameras: {str(e)}"}), 500
 
 @camera_routes_bp.route('/update-source-cameras', methods=['POST'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def update_source_cameras():
     """Update selected cameras for a source in processing_config (Simple Update)"""
     try:
@@ -114,6 +118,7 @@ def update_source_cameras():
         return jsonify({"error": f"Failed to update camera selection: {str(e)}"}), 500
 
 @camera_routes_bp.route('/get-cameras', methods=['GET'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def get_cameras():
     try:
         path_manager = PathManager()
@@ -163,6 +168,7 @@ def get_cameras():
         return jsonify({"error": f"Failed to retrieve cameras: {str(e)}"}), 500
 
 @camera_routes_bp.route('/get-processing-cameras', methods=['GET'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def get_processing_cameras():
     """Get selected cameras from processing_config"""
     try:
@@ -187,6 +193,7 @@ def get_processing_cameras():
         return jsonify({"error": f"Failed to get processing cameras: {str(e)}"}), 500
 
 @camera_routes_bp.route('/sync-cloud-cameras', methods=['POST'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def sync_cloud_cameras():
     """Manual sync cloud cameras from active cloud source"""
     try:
@@ -245,6 +252,7 @@ def sync_cloud_cameras():
         return jsonify({"error": f"Failed to sync cloud cameras: {str(e)}"}), 500
 
 @camera_routes_bp.route('/refresh-cameras', methods=['POST'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def refresh_cameras():
     """Refresh cameras based on active source type"""
     try:
@@ -322,6 +330,7 @@ def refresh_cameras():
         }), 500
 
 @camera_routes_bp.route('/camera-status', methods=['GET'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def get_camera_status():
     """Get comprehensive camera status for debugging"""
     try:

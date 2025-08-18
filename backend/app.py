@@ -225,9 +225,9 @@ Session(app)
 # Configure CORS
 CORS(app, resources={
     r"/*": {
-        "origins": ["http://localhost:3000", "http://127.0.0.1:3000"],
+        "origins": ["http://localhost:3000"],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+        "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin", "x-timezone-version", "x-timezone-detection", "x-client-offset", "x-client-timezone", "x-client-dst"],
         "supports_credentials": True,
     }
 })

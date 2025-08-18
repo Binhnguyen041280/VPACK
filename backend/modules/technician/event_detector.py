@@ -2,10 +2,12 @@ from flask import Blueprint, jsonify
 import os
 import sqlite3
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import db_rwlock
 from modules.config.logging_config import get_logger
+from modules.utils.timezone_manager import timezone_manager
+from modules.utils.video_timezone_detector import get_timezone_aware_creation_time
 
 
 # Định nghĩa BASE_DIR
@@ -49,14 +51,23 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
         start_time_str = header.split("Start_Time: ")[1].split(",")[0].strip()
         camera_name = header.split("Camera_Name: ")[1].split(",")[0].strip()
         video_path = header.split("Video_File: ")[1].split(",")[0].strip()
+        # Parse start_time with timezone awareness
         start_time_dt = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
-        logging.info(f"Parsed header - Start: {start_time}, End: {end_time}, Start_Time: {start_time_str}, Camera_Name: {camera_name}, Video_File: {video_path}")
+        # Assume start_time_str is in local timezone from video metadata
+        user_timezone = timezone_manager.get_user_timezone()
+        if hasattr(user_timezone, 'localize'):
+            start_time_dt = user_timezone.localize(start_time_dt)
+        else:
+            start_time_dt = start_time_dt.replace(tzinfo=user_timezone)
+        # Convert to UTC for consistent storage
+        start_time_dt_utc = start_time_dt.astimezone(timezone.utc)
+        logging.info(f"Parsed header - Start: {start_time}, End: {end_time}, Start_Time: {start_time_str} (UTC: {start_time_dt_utc}), Camera_Name: {camera_name}, Video_File: {video_path}")
 
         # Kiểm tra nếu file log rỗng
         first_data_line = f.readline().strip()
         if not first_data_line:
             logging.info(f"Log file {log_file_path} is empty, skipping")
-            cursor.execute("UPDATE processed_logs SET is_processed = 1, processed_at = ? WHERE log_file = ?", (datetime.now(), log_file_path))
+            cursor.execute("UPDATE processed_logs SET is_processed = 1, processed_at = ? WHERE log_file = ?", (datetime.now(timezone.utc), log_file_path))
             return
 
         # Nếu có dữ liệu, quay lại và xử lý
@@ -185,19 +196,27 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
         if te is not None and not tracking_codes:
             logging.info(f"Bỏ qua sự kiện hoàn chỉnh do tracking_codes rỗng: ts={ts}, te={te}")
             continue
-        packing_time_start = int((start_time_dt.timestamp() + ts) * 1000) if ts is not None else None
-        packing_time_end = int((start_time_dt.timestamp() + te) * 1000) if te is not None else None
+        # Calculate UTC timestamps for database storage
+        packing_time_start = int((start_time_dt_utc.timestamp() + ts) * 1000) if ts is not None else None
+        packing_time_end = int((start_time_dt_utc.timestamp() + te) * 1000) if te is not None else None
+        
+        # Store timezone metadata for reference
+        timezone_info = {
+            'video_timezone': str(start_time_dt.tzinfo),
+            'utc_offset_seconds': start_time_dt.utcoffset().total_seconds() if start_time_dt.utcoffset() else 0,
+            'stored_as_utc': True
+        }
         if segment_event_id is not None:
-            cursor.execute("UPDATE events SET te=?, duration=?, tracking_codes=?, packing_time_end=? WHERE event_id=?",
-                           (te, duration, str(tracking_codes), packing_time_end, segment_event_id))
+            cursor.execute("UPDATE events SET te=?, duration=?, tracking_codes=?, packing_time_end=?, timezone_info=? WHERE event_id=?",
+                           (te, duration, str(tracking_codes), packing_time_end, str(timezone_info), segment_event_id))
             logging.info(f"Updated event_id {segment_event_id}: ts={ts}, te={te}, duration={duration}")
         else:
-            cursor.execute('''INSERT INTO events (ts, te, duration, tracking_codes, video_file, buffer, camera_name, packing_time_start, packing_time_end)
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                           (ts, te, duration, str(tracking_codes), segment_video_path, 0, camera_name, packing_time_start, packing_time_end))
+            cursor.execute('''INSERT INTO events (ts, te, duration, tracking_codes, video_file, buffer, camera_name, packing_time_start, packing_time_end, timezone_info)
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                           (ts, te, duration, str(tracking_codes), segment_video_path, 0, camera_name, packing_time_start, packing_time_end, str(timezone_info)))
             logging.info(f"Inserted new event: ts={ts}, te={te}, duration={duration}")
 
-    cursor.execute("UPDATE processed_logs SET is_processed = 1, processed_at = ? WHERE log_file = ?", (datetime.now(), log_file_path))
+    cursor.execute("UPDATE processed_logs SET is_processed = 1, processed_at = ? WHERE log_file = ?", (datetime.now(timezone.utc), log_file_path))
     logging.info("Database changes committed")
 
 

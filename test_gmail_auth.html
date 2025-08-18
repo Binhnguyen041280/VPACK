@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Gmail Auth</title>
+</head>
+<body>
+    <h1>Test Gmail Authentication</h1>
+    <button onclick="testAuth()">Test Gmail Auth Endpoint</button>
+    <div id="result"></div>
+
+    <script>
+    async function testAuth() {
+        const resultDiv = document.getElementById('result');
+        resultDiv.innerHTML = 'Testing...';
+        
+        try {
+            console.log('🔐 Starting Gmail authentication test...');
+            
+            // Test backend connectivity first
+            console.log('📞 Testing backend connectivity...');
+            const healthResponse = await fetch('http://localhost:8080/health');
+            console.log('📡 Health check status:', healthResponse.status);
+            
+            if (!healthResponse.ok) {
+                throw new Error('Backend not reachable');
+            }
+            
+            const healthData = await healthResponse.json();
+            console.log('✅ Backend is healthy:', healthData);
+            
+            // Test Gmail auth endpoint
+            console.log('📞 Testing Gmail auth endpoint...');
+            const response = await fetch('http://localhost:8080/api/cloud/gmail-auth', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    action: 'initiate_auth'
+                })
+            });
+            
+            console.log('📡 Gmail auth response status:', response.status);
+            console.log('📡 Gmail auth response ok:', response.ok);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Gmail auth failed: ${response.status} - ${errorText}`);
+            }
+            
+            const authData = await response.json();
+            console.log('✅ Auth data received:', authData);
+            
+            resultDiv.innerHTML = `
+                <h2>✅ Success!</h2>
+                <p><strong>Auth URL:</strong> ${authData.auth_url}</p>
+                <p><strong>State:</strong> ${authData.state}</p>
+                <p><strong>Scopes:</strong> ${authData.scopes.join(', ')}</p>
+                <a href="${authData.auth_url}" target="_blank">Open Auth URL</a>
+            `;
+            
+        } catch (error) {
+            console.error('❌ Test failed:', error);
+            resultDiv.innerHTML = `
+                <h2>❌ Error</h2>
+                <p><strong>Message:</strong> ${error.message}</p>
+                <p><strong>Stack:</strong> <pre>${error.stack}</pre></p>
+            `;
+        }
+    }
+    </script>
+</body>
+</html>

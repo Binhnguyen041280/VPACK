@@ -33,9 +33,13 @@ Event Flow:
 from readerwriterlock import rwlock
 import threading
 from typing import Optional
-from modules.config.logging_config import get_logger
-
-logger = get_logger(__name__, {"module": "db_sync"})
+# Import logger conditionally to avoid circular imports during initialization
+try:
+    from modules.config.logging_config import get_logger
+    logger = get_logger(__name__, {"module": "db_sync"})
+except ImportError:
+    import logging
+    logger = logging.getLogger(__name__)
 
 # Reader-Writer Lock for database access synchronization
 # Uses RWLockFairD to prevent reader/writer starvation and avoid deadlocks

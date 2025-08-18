@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import GoogleDriveAuthButton from '../config/GoogleDriveAuthButton';
+import SimpleGmailLogin from './SimpleGmailLogin';
+import DebugGmailLogin from './DebugGmailLogin';
 
 const GoogleSignupScreen = ({ onAuthSuccess }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
 
-  const handleGoogleAuth = (authResult) => {
+  const handleGmailAuth = (authResult) => {
     if (authResult.success) {
-      console.log('✅ Google authentication successful:', authResult.user_email);
+      console.log('✅ Gmail authentication successful:', authResult.user_email);
       setAuthError(null);
       
       // Call parent callback to proceed to main app
@@ -15,8 +16,8 @@ const GoogleSignupScreen = ({ onAuthSuccess }) => {
         onAuthSuccess(authResult);
       }
     } else {
-      console.error('❌ Google authentication failed:', authResult.message);
-      setAuthError(authResult.message || 'Đăng nhập Google thất bại');
+      console.error('❌ Gmail authentication failed:', authResult.message);
+      setAuthError(authResult.message || 'Đăng nhập Gmail thất bại');
     }
     setIsLoading(false);
   };
@@ -36,17 +37,16 @@ const GoogleSignupScreen = ({ onAuthSuccess }) => {
             Chào mừng đến với V_Track!
           </h2>
           <p className="text-gray-300 text-sm text-center leading-relaxed">
-            Để bắt đầu sử dụng V_Track, bạn cần kết nối với tài khoản Google Drive 
-            để lưu trữ và xử lý video.
+            Để bắt đầu sử dụng V_Track, hãy đăng nhập với tài khoản Gmail của bạn.
+            <br />
+            <span className="text-blue-400">Chúng tôi chỉ truy cập thông tin cơ bản (email, tên).</span>
           </p>
         </div>
 
-        {/* Google Authentication Section */}
+        {/* Gmail Authentication Section */}
         <div className="mb-6">
-          <GoogleDriveAuthButton
-            onAuth={handleGoogleAuth}
-            isLoading={isLoading}
-            className="w-full"
+          <SimpleGmailLogin
+            onAuthSuccess={handleGmailAuth}
           />
         </div>
 
@@ -74,13 +74,21 @@ const GoogleSignupScreen = ({ onAuthSuccess }) => {
             </li>
             <li className="flex items-start">
               <span className="mr-2 text-yellow-400">•</span>
-              Đồng bộ với Google Drive cloud storage
+              Xử lý video từ nhiều nguồn khác nhau
             </li>
             <li className="flex items-start">
               <span className="mr-2 text-purple-400">•</span>
               Báo cáo và truy vấn dữ liệu chi tiết
             </li>
           </ul>
+          <div className="mt-3 pt-3 border-t border-gray-600">
+            <p className="text-gray-400 text-xs">
+              🔒 <strong>Chỉ yêu cầu quyền Gmail cơ bản</strong> - không truy cập Google Drive
+            </p>
+            <p className="text-gray-400 text-xs mt-1">
+              💡 Sau khi đăng nhập, bạn có thể kết nối Google Drive riêng biệt nếu cần cloud storage
+            </p>
+          </div>
         </div>
 
         {/* Footer Note */}
@@ -89,6 +97,18 @@ const GoogleSignupScreen = ({ onAuthSuccess }) => {
             🔒 Thông tin tài khoản được bảo mật và không được chia sẻ
           </p>
         </div>
+
+        {/* Debug Tool - Remove this in production */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-6 p-4 bg-gray-700 rounded-lg">
+            <details>
+              <summary className="cursor-pointer text-gray-300 text-sm">🔧 Debug Tools</summary>
+              <div className="mt-4">
+                <DebugGmailLogin />
+              </div>
+            </details>
+          </div>
+        )}
       </div>
     </div>
   );

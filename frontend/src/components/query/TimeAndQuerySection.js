@@ -1,5 +1,7 @@
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { useState, useEffect } from "react";
+import timezoneManager from "../../utils/TimezoneManager";
 
 const TimeAndQuerySection = ({
   startDate,
@@ -20,6 +22,13 @@ const TimeAndQuerySection = ({
   onQuery, // Prop để nhận hàm debounce từ QueryComponent
   isQuerying, // Prop để vô hiệu hóa nút
 }) => {
+  const [currentTimezone, setCurrentTimezone] = useState(null);
+
+  useEffect(() => {
+    // Load current timezone info
+    const tzInfo = timezoneManager.getTimezoneInfo();
+    setCurrentTimezone(tzInfo);
+  }, []);
   const handleStartDateChange = (date) => {
     setStartDate(date);
     if (endDate) {
@@ -61,7 +70,12 @@ const TimeAndQuerySection = ({
       </div>
       <div className="flex gap-4 mb-4">
         <div className="flex-1">
-          <label className="block mb-1">Từ:</label>
+          <label className="block mb-1">
+            Từ:
+            <span className="text-xs text-gray-400 ml-1">
+              ({currentTimezone?.currentOffset || 'UTC'})
+            </span>
+          </label>
           <DatePicker
             selected={startDate}
             onChange={handleStartDateChange}
@@ -69,10 +83,21 @@ const TimeAndQuerySection = ({
             timeIntervals={60}
             dateFormat="Pp"
             className="w-full p-2 rounded bg-gray-700 text-white"
+            placeholderText={`Thời gian bắt đầu (${currentTimezone?.currentOffset || 'UTC'})`}
           />
+          {startDate && (
+            <div className="mt-1 text-xs text-gray-400">
+              UTC: {timezoneManager.toUtcForBackend(startDate).replace('T', ' ').slice(0, 19)}
+            </div>
+          )}
         </div>
         <div className="flex-1">
-          <label className="block mb-1">Đến:</label>
+          <label className="block mb-1">
+            Đến:
+            <span className="text-xs text-gray-400 ml-1">
+              ({currentTimezone?.currentOffset || 'UTC'})
+            </span>
+          </label>
           <DatePicker
             selected={endDate}
             onChange={handleEndDateChange}
@@ -81,7 +106,13 @@ const TimeAndQuerySection = ({
             dateFormat="Pp"
             maxDate={new Date()}
             className="w-full p-2 rounded bg-gray-700 text-white"
+            placeholderText={`Thời gian kết thúc (${currentTimezone?.currentOffset || 'UTC'})`}
           />
+          {endDate && (
+            <div className="mt-1 text-xs text-gray-400">
+              UTC: {timezoneManager.toUtcForBackend(endDate).replace('T', ' ').slice(0, 19)}
+            </div>
+          )}
         </div>
       </div>
       <button

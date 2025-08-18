@@ -24,12 +24,12 @@ import os
 import threading
 import time
 import sqlite3
-import pytz
 import psutil
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Tuple, Optional
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.config.logging_config import get_logger
+from modules.utils.timezone_manager import timezone_manager
 from .db_sync import db_rwlock, frame_sampler_event, event_detector_event
 from .file_lister import run_file_scan
 from .program_runner import start_frame_sampler_thread, start_event_detector_thread
@@ -37,9 +37,6 @@ from .config.scheduler_config import SchedulerConfig
 
 logger = get_logger(__name__, {"module": "batch_scheduler"})
 logger.info("BatchScheduler logging initialized")
-
-# Cấu hình múi giờ Việt Nam
-VIETNAM_TZ = pytz.timezone('Asia/Ho_Chi_Minh')
 
 class SystemMonitor:
     """Monitors system resources and dynamically calculates optimal batch sizes.
@@ -268,18 +265,56 @@ class BatchScheduler:
             logger.error(f"Error updating file status for {file_path}: {e}")
 
     def check_timeout(self):
-        """Kiểm tra và cập nhật trạng thái timeout cho file quá 900s."""
+        """Kiểm tra và cập nhật trạng thái timeout cho file quá 900s với timezone-aware timestamps."""
         try:
             with db_rwlock.gen_wlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
                     cursor.execute("SELECT file_path, created_at FROM file_list WHERE status = 'đang frame sampler ...'")
+                    
+                    now_utc = timezone_manager.now_utc()
+                    
                     for row in cursor.fetchall():
-                        created_at = datetime.fromisoformat(row[1].replace('Z', '+00:00')) if row[1] else datetime.min.replace(tzinfo=VIETNAM_TZ)
-                        if (datetime.now(VIETNAM_TZ) - created_at).total_seconds() > self.timeout_seconds:
+                        file_path, created_at_str = row
+                        
+                        if not created_at_str:
+                            # Fallback for missing timestamps
+                            created_at_utc = datetime.min.replace(tzinfo=timezone.utc)
+                            logger.warning(f"Missing created_at timestamp for {file_path}, using minimum datetime")
+                        else:
+                            try:
+                                # Parse created_at timestamp
+                                if 'Z' in created_at_str or '+' in created_at_str:
+                                    # Already has timezone info
+                                    created_at_utc = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                                    # Convert to UTC if not already
+                                    if created_at_utc.tzinfo != timezone.utc:
+                                        created_at_utc = timezone_manager.to_utc(created_at_utc)
+                                else:
+                                    # Assume naive datetime is in user's local timezone
+                                    created_at_naive = datetime.fromisoformat(created_at_str)
+                                    created_at_utc = timezone_manager.to_utc(created_at_naive)
+                            except (ValueError, TypeError) as e:
+                                logger.warning(f"Failed to parse created_at '{created_at_str}' for {file_path}: {e}")
+                                created_at_utc = datetime.min.replace(tzinfo=timezone.utc)
+                        
+                        # Calculate timeout in UTC
+                        time_diff = (now_utc - created_at_utc).total_seconds()
+                        
+                        if time_diff > self.timeout_seconds:
                             cursor.execute("UPDATE file_list SET status = ?, is_processed = 1 WHERE file_path = ?", 
-                                         ('timeout', row[0]))
-                            logger.warning(f"Timeout processing {row[0]} after {self.timeout_seconds}s")
+                                         ('timeout', file_path))
+                            
+                            # Log timeout with timezone context
+                            local_now = timezone_manager.to_local(now_utc)
+                            local_created = timezone_manager.to_local(created_at_utc)
+                            
+                            logger.warning(
+                                f"Timeout processing {file_path} after {self.timeout_seconds}s "
+                                f"(started: {local_created.strftime('%Y-%m-%d %H:%M:%S %Z')}, "
+                                f"now: {local_now.strftime('%Y-%m-%d %H:%M:%S %Z')}, "
+                                f"elapsed: {time_diff:.1f}s)"
+                            )
         except Exception as e:
             logger.error(f"Error checking timeout: {e}")
 

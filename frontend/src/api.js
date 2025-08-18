@@ -1,8 +1,57 @@
 import axios from "axios";
+import apiTimezoneMiddleware from "./utils/ApiTimezoneMiddleware";
 
+// Create axios instance with timezone middleware
 const api = axios.create({
   baseURL: "http://localhost:8080",
 });
+
+// Add timezone headers to all requests
+api.interceptors.request.use(
+  (config) => {
+    // Add timezone headers
+    config.headers = apiTimezoneMiddleware.addTimezoneHeaders(config.headers);
+    
+    // Convert request data to UTC if it contains time fields
+    if (config.data && typeof config.data === 'object') {
+      config.data = apiTimezoneMiddleware.convertRequestToUtc(config.data);
+    }
+    
+    // Add timezone info to URL params if needed
+    if (config.params && typeof config.params === 'object') {
+      config.params = apiTimezoneMiddleware.convertRequestToUtc(config.params);
+    }
+    
+    return config;
+  },
+  (error) => {
+    return Promise.reject(apiTimezoneMiddleware.enhanceError(error, 'request-interceptor'));
+  }
+);
+
+// Add timezone conversion to all responses
+api.interceptors.response.use(
+  (response) => {
+    // Convert response data to local timezone
+    if (response.data && typeof response.data === 'object') {
+      response.data = apiTimezoneMiddleware.convertResponseToLocal(response.data);
+    }
+    
+    return response;
+  },
+  (error) => {
+    // Check if this is a timezone-related error that should trigger retry
+    if (error.response && apiTimezoneMiddleware.isTimezoneError(error.response)) {
+      console.warn('Timezone-related API error detected:', error.response.status);
+    }
+    
+    return Promise.reject(apiTimezoneMiddleware.enhanceError(
+      error, 
+      error.config?.url || 'unknown',
+      error.config
+    ));
+  }
+);
 
 export const getConfig = () => api.get("/config");
 export const updateConfig = (configData) => api.post("/config", configData);
