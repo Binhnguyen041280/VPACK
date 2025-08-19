@@ -2,13 +2,19 @@ import { useState, useEffect } from 'react';
 
 const useAuthState = () => {
   const [authState, setAuthState] = useState({
+    // Gmail authentication (required for basic app functionality)
     isAuthenticated: false,
     isFirstRun: true,
     isLoading: true,
     userEmail: null,
     sessionToken: null,
     authenticationMethod: null,
+    
+    // Google Drive authentication (optional, for video processing)
     googleDriveConnected: false,
+    driveSessionToken: null,
+    driveAuthRequired: false, // Set to true when user needs Drive access
+    
     error: null
   });
 
@@ -53,17 +59,11 @@ const useAuthState = () => {
         // Continue with default first_run: true
       }
       
-      // Check authentication status if session token exists
-      let authResult = { authenticated: false, user_email: null };
+      // Check Gmail authentication status
+      let gmailAuthResult = { authenticated: false, user_email: null };
       if (sessionToken) {
         try {
-          // Determine which endpoint to use based on token type
-          const isGmailToken = sessionStorage.getItem('gmail_session_token');
-          const authUrl = isGmailToken 
-            ? 'http://localhost:8080/api/cloud/gmail-auth-status'
-            : 'http://localhost:8080/api/cloud/auth-status';
-          
-          const authResponse = await fetch(authUrl, {
+          const gmailAuthResponse = await fetch('http://localhost:8080/api/cloud/gmail-auth-status', {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
@@ -72,23 +72,50 @@ const useAuthState = () => {
             credentials: 'include'
           });
           
-          if (authResponse.ok) {
-            authResult = await authResponse.json();
+          if (gmailAuthResponse.ok) {
+            gmailAuthResult = await gmailAuthResponse.json();
           }
         } catch (authError) {
-          console.log('Auth status check failed:', authError.message);
-          // Don't remove tokens immediately, might be temporary error
+          console.log('Gmail auth status check failed:', authError.message);
+        }
+      }
+
+      // Check Google Drive authentication status (only if Gmail is authenticated)
+      let driveAuthResult = { authenticated: false, drive_connected: false };
+      const driveSessionToken = sessionStorage.getItem('drive_session_token');
+      if (gmailAuthResult.authenticated && driveSessionToken) {
+        try {
+          const driveAuthResponse = await fetch('http://localhost:8080/api/cloud/drive-auth-status', {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${driveSessionToken}`
+            },
+            credentials: 'include'
+          });
+          
+          if (driveAuthResponse.ok) {
+            driveAuthResult = await driveAuthResponse.json();
+          }
+        } catch (driveAuthError) {
+          console.log('Drive auth status check failed:', driveAuthError.message);
         }
       }
 
       setAuthState({
-        isAuthenticated: authResult.authenticated || false,
-        isFirstRun: !authResult.authenticated, // If not authenticated, consider it first run
+        // Gmail authentication state
+        isAuthenticated: gmailAuthResult.authenticated || false,
+        isFirstRun: !gmailAuthResult.authenticated, // If not authenticated, consider it first run
         isLoading: false,
-        userEmail: authResult.user_email || null,
-        sessionToken: authResult.authenticated ? sessionToken : null,
-        authenticationMethod: authResult.authentication_method || null,
-        googleDriveConnected: authResult.google_drive_connected || false,
+        userEmail: gmailAuthResult.user_email || null,
+        sessionToken: gmailAuthResult.authenticated ? sessionToken : null,
+        authenticationMethod: gmailAuthResult.authentication_method || 'gmail_only',
+        
+        // Google Drive authentication state
+        googleDriveConnected: driveAuthResult.authenticated || false,
+        driveSessionToken: driveAuthResult.authenticated ? driveSessionToken : null,
+        driveAuthRequired: false, // Will be set by components that need Drive access
+        
         error: null
       });
 
@@ -131,6 +158,7 @@ const useAuthState = () => {
   const handleLogout = () => {
     sessionStorage.removeItem('session_token');
     sessionStorage.removeItem('gmail_session_token');
+    sessionStorage.removeItem('drive_session_token');
     setAuthState({
       isAuthenticated: false,
       isFirstRun: true,
@@ -139,8 +167,42 @@ const useAuthState = () => {
       sessionToken: null,
       authenticationMethod: null,
       googleDriveConnected: false,
+      driveSessionToken: null,
+      driveAuthRequired: false,
       error: null
     });
+  };
+
+  // New function to handle Drive authentication success
+  const handleDriveAuthSuccess = (driveAuthResult) => {
+    setAuthState(prev => ({
+      ...prev,
+      googleDriveConnected: true,
+      driveSessionToken: driveAuthResult.session_token,
+      driveAuthRequired: false,
+      error: null
+    }));
+
+    // Store Drive session token
+    if (driveAuthResult.session_token) {
+      sessionStorage.setItem('drive_session_token', driveAuthResult.session_token);
+    }
+  };
+
+  // New function to request Drive authentication when needed
+  const requestDriveAuth = () => {
+    setAuthState(prev => ({
+      ...prev,
+      driveAuthRequired: true
+    }));
+  };
+
+  // New function to cancel Drive authentication request
+  const cancelDriveAuth = () => {
+    setAuthState(prev => ({
+      ...prev,
+      driveAuthRequired: false
+    }));
   };
 
   const refreshAuthStatus = () => {
@@ -151,7 +213,11 @@ const useAuthState = () => {
     authState,
     handleAuthSuccess,
     handleLogout,
-    refreshAuthStatus
+    refreshAuthStatus,
+    // New Drive authentication functions
+    handleDriveAuthSuccess,
+    requestDriveAuth,
+    cancelDriveAuth
   };
 };
 

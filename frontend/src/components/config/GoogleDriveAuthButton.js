@@ -19,10 +19,10 @@ const GoogleDriveAuthButton = ({
   // 🔒 SECURITY: Session validation và auto-refresh
   useEffect(() => {
     const validateSession = async () => {
-      const token = sessionStorage.getItem('session_token');
+      const token = sessionStorage.getItem('drive_session_token');
       if (token) {
         try {
-          const response = await fetch('http://localhost:8080/api/cloud/auth-status', {
+          const response = await fetch('http://localhost:8080/api/cloud/drive-auth-status', {
             method: 'GET',
             headers: { 
               'Content-Type': 'application/json',
@@ -42,7 +42,7 @@ const GoogleDriveAuthButton = ({
               }));
             } else {
               // Session expired, clean up
-              sessionStorage.removeItem('session_token');
+              sessionStorage.removeItem('drive_session_token');
               setAuthState(prev => ({
                 ...prev,
                 authenticated: false,
@@ -195,7 +195,7 @@ const GoogleDriveAuthButton = ({
       console.log('🔐 Starting Google Drive authentication...');
 
       // 🔧 FIX: Enhanced request với better error handling
-      const response = await fetch('http://localhost:8080/api/cloud/authenticate', {
+      const response = await fetch('http://localhost:8080/api/cloud/drive-auth', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

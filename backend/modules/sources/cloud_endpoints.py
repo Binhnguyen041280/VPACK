@@ -182,11 +182,21 @@ CORS(cloud_bp,
      allow_headers=['Content-Type', 'Authorization', 'X-Requested-With', 'x-timezone-version', 'x-timezone-detection', 'x-client-offset', 'x-client-timezone', 'x-client-dst'],
      methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
 
-@cloud_bp.route('/authenticate', methods=['POST', 'OPTIONS'])
+@cloud_bp.route('/drive-auth', methods=['POST', 'OPTIONS'])
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
-def cloud_authenticate():
-    """Google OAuth2 authentication - FIXED for multiple environments"""
+def drive_authenticate():
+    """Google Drive OAuth2 authentication - Separate from Gmail authentication"""
     try:
+        # Prerequisite check: Require Gmail authentication first
+        gmail_authenticated = session.get('gmail_authenticated', False)
+        if not gmail_authenticated:
+            return jsonify({
+                'success': False,
+                'message': 'Gmail authentication required before Drive access',
+                'error_code': 'gmail_auth_required',
+                'action_required': 'complete_gmail_auth_first'
+            }), 401
+        
         data = request.get_json()
         provider = data.get('provider', 'google_drive')
         action = data.get('action', 'initiate_auth')
@@ -194,7 +204,7 @@ def cloud_authenticate():
         # 🆕 NEW: Get redirect URI from request or determine automatically
         custom_redirect = data.get('redirect_uri')
         
-        logger.info(f"🔐 Cloud authentication request: {provider}, action: {action}")
+        logger.info(f"🔐 Drive authentication request: {provider}, action: {action}")
         
         if action == 'initiate_auth':
             CLIENT_SECRETS_FILE = os.path.join(
@@ -342,10 +352,9 @@ def gmail_authenticate():
             # Generate secure state
             state = secrets.token_urlsafe(32)
             
-            # Generate authorization URL
+            # Generate authorization URL (Gmail-only, no granted scopes from other services)
             authorization_url, _ = flow.authorization_url(
                 access_type='offline',
-                include_granted_scopes='true',
                 prompt='consent',
                 state=state
             )
@@ -1220,11 +1229,11 @@ def _create_error_page(error_message, error_details=None):
     """, 400
 
 # 🆕 NEW: Auth status check with lazy loading support
-@cloud_bp.route('/auth-status', methods=['GET', 'OPTIONS'])
+@cloud_bp.route('/drive-auth-status', methods=['GET', 'OPTIONS'])
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 @rate_limit('auth_status')
-def auth_status():
-    """🔐 PHASE 1 SECURITY: Check authentication status using session tokens"""
+def drive_auth_status():
+    """🔐 PHASE 1 SECURITY: Check Google Drive authentication status using session tokens"""
     
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})

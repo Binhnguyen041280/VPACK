@@ -72,7 +72,7 @@ class CloudAuthManager:
         'gmail_only': {
             'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
             'token_uri': 'https://oauth2.googleapis.com/token',
-            'client_secrets_file': 'google_drive_credentials_web.json'  # Same client, different scopes
+            'client_secrets_file': 'gmail_credentials.json'  # Dedicated Gmail credentials
         }
     }
     

@@ -20,7 +20,7 @@ const OptionalGoogleDriveConfig = ({
       if (!userEmail) return;
 
       try {
-        const response = await fetch('http://localhost:8080/api/cloud/auth-status', {
+        const response = await fetch('http://localhost:8080/api/cloud/drive-auth-status', {
           method: 'GET',
           headers: { 
             'Content-Type': 'application/json'
