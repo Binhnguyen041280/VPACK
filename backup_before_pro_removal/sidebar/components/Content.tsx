@@ -1,10 +1,12 @@
 'use client';
 // chakra imports
 import {
+  Badge,
   Box,
   Button,
   Flex,
   Icon,
+  Link,
   Menu,
   MenuButton,
   MenuList,
@@ -141,6 +143,23 @@ function SidebarContent(props: SidebarContent) {
                 >
                   Profile Settings
                 </Text>
+                <Link
+                  ms="auto"
+                  isExternal
+                  href="https://horizon-ui.com/ai-template"
+                >
+                  <Badge
+                    display={{ base: 'flex', lg: 'none', xl: 'flex' }}
+                    colorScheme="brand"
+                    borderRadius="25px"
+                    color="brand.500"
+                    textTransform={'none'}
+                    letterSpacing="0px"
+                    px="8px"
+                  >
+                    PRO
+                  </Badge>
+                </Link>
               </Flex>
             </Box>
             <Box mb="30px">
@@ -156,6 +175,23 @@ function SidebarContent(props: SidebarContent) {
                 <Text color={gray} fontWeight="500" fontSize="sm" opacity="0.4">
                   History
                 </Text>
+                <Link
+                  ms="auto"
+                  isExternal
+                  href="https://horizon-ui.com/ai-template"
+                >
+                  <Badge
+                    display={{ base: 'flex', lg: 'none', xl: 'flex' }}
+                    colorScheme="brand"
+                    borderRadius="25px"
+                    color="brand.500"
+                    textTransform={'none'}
+                    letterSpacing="0px"
+                    px="8px"
+                  >
+                    PRO
+                  </Badge>
+                </Link>
               </Flex>
             </Box>
             <Box mb="30px">
@@ -171,6 +207,23 @@ function SidebarContent(props: SidebarContent) {
                 <Text color={gray} fontWeight="500" fontSize="sm" opacity="0.4">
                   Usage
                 </Text>
+                <Link
+                  ms="auto"
+                  isExternal
+                  href="https://horizon-ui.com/ai-template"
+                >
+                  <Badge
+                    display={{ base: 'flex', lg: 'none', xl: 'flex' }}
+                    colorScheme="brand"
+                    borderRadius="25px"
+                    color="brand.500"
+                    textTransform={'none'}
+                    letterSpacing="0px"
+                    px="8px"
+                  >
+                    PRO
+                  </Badge>
+                </Link>
               </Flex>
             </Box>
             <Box>
@@ -186,6 +239,23 @@ function SidebarContent(props: SidebarContent) {
                 <Text color={gray} fontWeight="500" fontSize="sm" opacity="0.4">
                   My Plan
                 </Text>
+                <Link
+                  ms="auto"
+                  isExternal
+                  href="https://horizon-ui.com/ai-template"
+                >
+                  <Badge
+                    display={{ base: 'flex', lg: 'none', xl: 'flex' }}
+                    colorScheme="brand"
+                    borderRadius="25px"
+                    color="brand.500"
+                    textTransform={'none'}
+                    letterSpacing="0px"
+                    px="8px"
+                  >
+                    PRO
+                  </Badge>
+                </Link>
               </Flex>
             </Box>
           </MenuList>

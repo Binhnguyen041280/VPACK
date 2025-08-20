@@ -8,6 +8,7 @@ import {
   AccordionIcon,
   AccordionItem,
   AccordionPanel,
+  Badge,
   Box,
   Flex,
   HStack,
@@ -16,6 +17,7 @@ import {
   Icon,
   ListItem,
   useColorModeValue,
+  Link,
 } from '@chakra-ui/react';
 import { FaCircle } from 'react-icons/fa';
 import { IoMdAdd } from 'react-icons/io';
@@ -161,6 +163,23 @@ export function SidebarLinks(props: SidebarLinksProps) {
                   </List>
                 </AccordionPanel>
               </AccordionItem>
+              <Link
+                isExternal
+                href="https://horizon-ui.com/ai-template"
+                mt="6px"
+              >
+                <Badge
+                  display={{ base: 'flex', lg: 'none', xl: 'flex' }}
+                  colorScheme="brand"
+                  borderRadius="25px"
+                  color="brand.500"
+                  textTransform={'none'}
+                  letterSpacing="0px"
+                  px="8px"
+                >
+                  PRO
+                </Badge>
+              </Link>
             </Flex>
           </Accordion>
         );
@@ -263,6 +282,22 @@ export function SidebarLinks(props: SidebarLinksProps) {
                       >
                         {route.name}
                       </Text>
+                      <Link
+                        isExternal
+                        href="https://horizon-ui.com/ai-template"
+                      >
+                        <Badge
+                          display={{ base: 'flex', lg: 'none', xl: 'flex' }}
+                          colorScheme="brand"
+                          borderRadius="25px"
+                          color="brand.500"
+                          textTransform={'none'}
+                          letterSpacing="0px"
+                          px="8px"
+                        >
+                          PRO
+                        </Badge>
+                      </Link>
                     </Flex>
                   )}
                 </HStack>

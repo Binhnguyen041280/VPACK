@@ -58,7 +58,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                     <Navbar
                       setApiKey={setApiKey}
                       onOpen={onOpen}
-                      logoText={'Horizon UI Dashboard PRO'}
+                      logoText={'V.PACK Dashboard'}
                       brandText={getActiveRoute(routes, pathname)}
                       secondary={getActiveNavbar(routes, pathname)}
                     />
