@@ -3,11 +3,7 @@
 // Chakra Imports
 import {
   Box,
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
   Flex,
-  Link,
   useColorModeValue,
 } from '@chakra-ui/react';
 import { useState, useEffect } from 'react';
@@ -19,7 +15,6 @@ export default function AdminNavbar(props: {
   brandText: string;
   logoText: string;
   onOpen: (...args: any[]) => any;
-  setApiKey: any;
 }) {
   const [scrolled, setScrolled] = useState(false);
 
@@ -31,7 +26,7 @@ export default function AdminNavbar(props: {
     };
   });
 
-  const { secondary, brandText, setApiKey } = props;
+  const { secondary, brandText } = props;
 
   // Here are all the props that may change depending on navbar's type or state.(secondary, variant, scrolled)
   let mainText = useColorModeValue('navy.700', 'white');
@@ -109,44 +104,8 @@ export default function AdminNavbar(props: {
         alignItems={{ xl: 'center' }}
         mb={gap}
       >
-        <Box mb={{ base: '8px', md: '0px' }}>
-          <Breadcrumb>
-            <BreadcrumbItem color={secondaryText} fontSize="sm" mb="5px">
-              <BreadcrumbLink href="#" color={secondaryText}>
-                Pages
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-
-            <BreadcrumbItem color={secondaryText} fontSize="sm">
-              <BreadcrumbLink href="#" color={secondaryText}>
-                {brandText}
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-          </Breadcrumb>
-          {/* Here we create navbar brand, based on route name */}
-          <Link
-            color={mainText}
-            href="#"
-            bg="inherit"
-            borderRadius="inherit"
-            fontWeight="bold"
-            fontSize="34px"
-            p="0px"
-            _hover={{ color: { mainText } }}
-            _active={{
-              bg: 'inherit',
-              transform: 'none',
-              borderColor: 'transparent',
-            }}
-            _focus={{
-              boxShadow: 'none',
-            }}
-          >
-            {brandText}
-          </Link>
-        </Box>
         <Box ms="auto" w={{ sm: '100%', md: 'unset' }}>
-          <AdminNavbarLinks setApiKey={setApiKey} secondary={props.secondary} />
+          <AdminNavbarLinks secondary={props.secondary} />
         </Box>
       </Flex>
     </Box>

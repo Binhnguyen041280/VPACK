@@ -5,22 +5,20 @@ import Link from '@/components/link/Link';
 import MessageBoxChat from '@/components/MessageBox';
 import { ChatBody, OpenAIModel } from '@/types/types';
 import {
-  Accordion,
-  AccordionButton,
-  AccordionIcon,
-  AccordionItem,
-  AccordionPanel,
-  Box,
   Button,
   Flex,
   Icon,
   Img,
   Input,
   Text,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
   useColorModeValue,
 } from '@chakra-ui/react';
 import { useEffect, useState } from 'react';
-import { MdAutoAwesome, MdBolt, MdEdit, MdPerson } from 'react-icons/md';
+import { MdAutoAwesome, MdEdit, MdPerson, MdAdd, MdAttachFile, MdImage, MdVideoFile } from 'react-icons/md';
 import Bg from '../public/img/chat/bg-image.png';
 
 export default function Chat(props: { apiKeyApp: string }) {
@@ -38,18 +36,8 @@ export default function Chat(props: { apiKeyApp: string }) {
   // const [apiKey, setApiKey] = useState<string>(apiKeyApp);
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
   const inputColor = useColorModeValue('navy.700', 'white');
-  const iconColor = useColorModeValue('brand.500', 'white');
-  const bgIcon = useColorModeValue(
-    'linear-gradient(180deg, #FBFBFF 0%, #CACAFF 100%)',
-    'whiteAlpha.200',
-  );
   const brandColor = useColorModeValue('brand.500', 'white');
-  const buttonBg = useColorModeValue('white', 'whiteAlpha.100');
   const gray = useColorModeValue('gray.500', 'white');
-  const buttonShadow = useColorModeValue(
-    '14px 27px 45px rgba(112, 144, 176, 0.2)',
-    'none',
-  );
   const textColor = useColorModeValue('navy.700', 'white');
   const placeholderColor = useColorModeValue(
     { color: 'gray.500' },
@@ -152,6 +140,49 @@ export default function Chat(props: { apiKeyApp: string }) {
     setInputCode(Event.target.value);
   };
 
+  // File upload handlers
+  const handleFileUpload = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.txt,.xlsx,.pptx';
+    input.onchange = (e: any) => {
+      const file = e.target.files[0];
+      if (file) {
+        console.log('File selected:', file.name);
+        // Handle file upload here
+      }
+    };
+    input.click();
+  };
+
+  const handleImageUpload = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e: any) => {
+      const file = e.target.files[0];
+      if (file) {
+        console.log('Image selected:', file.name);
+        // Handle image upload here
+      }
+    };
+    input.click();
+  };
+
+  const handleVideoUpload = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'video/*';
+    input.onchange = (e: any) => {
+      const file = e.target.files[0];
+      if (file) {
+        console.log('Video selected:', file.name);
+        // Handle video upload here
+      }
+    };
+    input.click();
+  };
+
   return (
     <Flex
       w="100%"
@@ -174,112 +205,6 @@ export default function Chat(props: { apiKeyApp: string }) {
         minH={{ base: '75vh', '2xl': '85vh' }}
         maxW="1000px"
       >
-        {/* Model Change */}
-        <Flex direction={'column'} w="100%" mb={outputCode ? '20px' : 'auto'}>
-          <Flex
-            mx="auto"
-            zIndex="2"
-            w="max-content"
-            mb="20px"
-            borderRadius="60px"
-          >
-            <Flex
-              cursor={'pointer'}
-              transition="0.3s"
-              justify={'center'}
-              align="center"
-              bg={model === 'gpt-4o' ? buttonBg : 'transparent'}
-              w="174px"
-              h="70px"
-              boxShadow={model === 'gpt-4o' ? buttonShadow : 'none'}
-              borderRadius="14px"
-              color={textColor}
-              fontSize="18px"
-              fontWeight={'700'}
-              onClick={() => setModel('gpt-4o')}
-            >
-              <Flex
-                borderRadius="full"
-                justify="center"
-                align="center"
-                bg={bgIcon}
-                me="10px"
-                h="39px"
-                w="39px"
-              >
-                <Icon
-                  as={MdAutoAwesome}
-                  width="20px"
-                  height="20px"
-                  color={iconColor}
-                />
-              </Flex>
-              GPT-4o
-            </Flex>
-            <Flex
-              cursor={'pointer'}
-              transition="0.3s"
-              justify={'center'}
-              align="center"
-              bg={model === 'gpt-3.5-turbo' ? buttonBg : 'transparent'}
-              w="164px"
-              h="70px"
-              boxShadow={model === 'gpt-3.5-turbo' ? buttonShadow : 'none'}
-              borderRadius="14px"
-              color={textColor}
-              fontSize="18px"
-              fontWeight={'700'}
-              onClick={() => setModel('gpt-3.5-turbo')}
-            >
-              <Flex
-                borderRadius="full"
-                justify="center"
-                align="center"
-                bg={bgIcon}
-                me="10px"
-                h="39px"
-                w="39px"
-              >
-                <Icon
-                  as={MdBolt}
-                  width="20px"
-                  height="20px"
-                  color={iconColor}
-                />
-              </Flex>
-              GPT-3.5
-            </Flex>
-          </Flex>
-
-          <Accordion color={gray} allowToggle w="100%" my="0px" mx="auto">
-            <AccordionItem border="none">
-              <AccordionButton
-                borderBottom="0px solid"
-                maxW="max-content"
-                mx="auto"
-                _hover={{ border: '0px solid', bg: 'none' }}
-                _focus={{ border: '0px solid', bg: 'none' }}
-              >
-                <Box flex="1" textAlign="left">
-                  <Text color={gray} fontWeight="500" fontSize="sm">
-                    No plugins added
-                  </Text>
-                </Box>
-                <AccordionIcon color={gray} />
-              </AccordionButton>
-              <AccordionPanel mx="auto" w="max-content" p="0px 0px 10px 0px">
-                <Text
-                  color={gray}
-                  fontWeight="500"
-                  fontSize="sm"
-                  textAlign={'center'}
-                >
-                  This is a cool text example.
-                </Text>
-              </AccordionPanel>
-            </AccordionItem>
-          </Accordion>
-        </Flex>
         {/* Main Box */}
         <Flex
           direction="column"
@@ -358,9 +283,69 @@ export default function Chat(props: { apiKeyApp: string }) {
         {/* Chat Input */}
         <Flex
           ms={{ base: '0px', xl: '60px' }}
-          mt="20px"
+          mt={{ base: '50vh', '2xl': '55vh' }}
           justifySelf={'flex-end'}
+          alignItems="center"
         >
+          {/* Add Button */}
+          <Menu>
+            <MenuButton
+              as={Button}
+              variant="transparent"
+              border="1px solid"
+              borderColor={borderColor}
+              borderRadius="full"
+              w="54px"
+              h="54px"
+              px="0px"
+              minW="54px"
+              me="10px"
+              justifyContent={'center'}
+              alignItems="center"
+              _hover={{ bg: useColorModeValue('gray.50', 'whiteAlpha.100') }}
+            >
+              <Icon as={MdAdd} width="20px" height="20px" color={textColor} />
+            </MenuButton>
+            <MenuList
+              boxShadow={useColorModeValue(
+                '14px 17px 40px 4px rgba(112, 144, 176, 0.18)',
+                '0px 41px 75px #081132',
+              )}
+              p="10px"
+              borderRadius="20px"
+              bg={useColorModeValue('white', 'navy.800')}
+              border="none"
+            >
+              <MenuItem
+                onClick={handleFileUpload}
+                _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                borderRadius="8px"
+                p="10px"
+              >
+                <Icon as={MdAttachFile} width="16px" height="16px" me="8px" />
+                <Text fontSize="sm">Add File</Text>
+              </MenuItem>
+              <MenuItem
+                onClick={handleImageUpload}
+                _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                borderRadius="8px"
+                p="10px"
+              >
+                <Icon as={MdImage} width="16px" height="16px" me="8px" />
+                <Text fontSize="sm">Add Image</Text>
+              </MenuItem>
+              <MenuItem
+                onClick={handleVideoUpload}
+                _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                borderRadius="8px"
+                p="10px"
+              >
+                <Icon as={MdVideoFile} width="16px" height="16px" me="8px" />
+                <Text fontSize="sm">Add Video</Text>
+              </MenuItem>
+            </MenuList>
+          </Menu>
+          
           <Input
             minH="54px"
             h="100%"
@@ -401,27 +386,6 @@ export default function Chat(props: { apiKeyApp: string }) {
           </Button>
         </Flex>
 
-        <Flex
-          justify="center"
-          mt="20px"
-          direction={{ base: 'column', md: 'row' }}
-          alignItems="center"
-        >
-          <Text fontSize="xs" textAlign="center" color={gray}>
-            Free Research Preview. ChatGPT may produce inaccurate information
-            about people, places, or facts.
-          </Text>
-          <Link href="https://help.openai.com/en/articles/6825453-chatgpt-release-notes">
-            <Text
-              fontSize="xs"
-              color={textColor}
-              fontWeight="500"
-              textDecoration="underline"
-            >
-              ChatGPT May 12 Version
-            </Text>
-          </Link>
-        </Flex>
       </Flex>
     </Flex>
   );

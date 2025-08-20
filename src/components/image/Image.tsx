@@ -1,6 +1,6 @@
 'use client'
 import { Box, BoxProps } from '@chakra-ui/react';
-import NextImage, { ImageProps } from 'next/legacy/image';
+import NextImage, { ImageProps } from 'next/image';
 import { ComponentProps } from 'react';
 
 type ChakraNextImageProps = Partial<ImageProps> &
@@ -27,8 +27,8 @@ export function Image(props: ChakraNextImageProps) {
     return (
         <Box overflow={'hidden'} position="relative" {...rest}>
             <NextImage
-                layout="fill"
-                objectFit="fill"
+                fill
+                style={{ objectFit: 'fill' }}
                 src={parseAssetPrefix(imageUrl)}
                 alt={alt}
                 {...nextProps}

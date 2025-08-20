@@ -16,7 +16,6 @@ import NavLink from '@/components/link/NavLink';
 //   Custom components
 import avatar4 from '/public/img/avatars/avatar4.png';
 import { NextAvatar } from '@/components/image/Avatar';
-import APIModal from '@/components/apiModal';
 import Brand from '@/components/sidebar/components/Brand';
 import Links from '@/components/sidebar/components/Links';
 import SidebarCard from '@/components/sidebar/components/SidebarCard';
@@ -36,7 +35,7 @@ interface SidebarContent extends PropsWithChildren {
 }
 
 function SidebarContent(props: SidebarContent) {
-  const { routes, setApiKey } = props;
+  const { routes } = props;
   const textColor = useColorModeValue('navy.700', 'white');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.300');
   const bgColor = useColorModeValue('white', 'navy.700');
@@ -71,7 +70,6 @@ function SidebarContent(props: SidebarContent) {
       <Box mt="60px" width={'100%'} display={'flex'} justifyContent={'center'}>
         <SidebarCard />
       </Box>
-      <APIModal setApiKey={setApiKey} sidebar={true} />
       <Flex
         mt="8px"
         justifyContent="center"

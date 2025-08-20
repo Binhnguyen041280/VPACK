@@ -8,11 +8,9 @@ type LinkProps = ButtonProps & NextLinkProps;
 
 function Link({ href, children, ...props }: LinkProps) {
   return (
-    <NextLink href={href} passHref legacyBehavior>
-      <Button as="a" variant="a" {...props}>
-        {children}
-      </Button>
-    </NextLink>
+    <Button as={NextLink} href={href} variant="a" {...props}>
+      {children}
+    </Button>
   );
 }
 
