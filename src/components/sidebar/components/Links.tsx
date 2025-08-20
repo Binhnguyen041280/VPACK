@@ -26,6 +26,7 @@ import { usePathname } from 'next/navigation';
 
 interface SidebarLinksProps extends PropsWithChildren {
   routes: IRoute[];
+  collapsed?: boolean;
 }
 
 export function SidebarLinks(props: SidebarLinksProps) {
@@ -38,7 +39,7 @@ export function SidebarLinks(props: SidebarLinksProps) {
   let iconColor = useColorModeValue('navy.700', 'white');
   let gray = useColorModeValue('gray.500', 'gray.500');
 
-  const { routes } = props;
+  const { routes, collapsed = false } = props;
 
   // verifies if routeName is the one active (in browser input)
   const activeRoute = useCallback(
@@ -170,31 +171,33 @@ export function SidebarLinks(props: SidebarLinksProps) {
             {route.icon ? (
               <Flex
                 align="center"
-                justifyContent="space-between"
+                justifyContent={collapsed ? "center" : "space-between"}
                 w="100%"
                 maxW="100%"
-                ps="17px"
+                ps={collapsed ? "0px" : "17px"}
                 mb="0px"
+                mx={collapsed ? "auto" : "0"}
               >
                 <HStack
                   w="100%"
                   mb="14px"
-                  spacing={
+                  spacing={collapsed ? "0px" : (
                     activeRoute(route.path.toLowerCase()) ? '22px' : '26px'
-                  }
+                  )}
+                  justifyContent={collapsed ? "center" : "flex-start"}
                 >
-                  {route.name === 'Chat UI' ? (
+                  {route.name === 'Alan_Go' ? (
                     <NavLink
                       href={
                         route.layout ? route.layout + route.path : route.path
                       }
                       key={key}
-                      styles={{ width: '100%' }}
+                      styles={{ width: collapsed ? 'auto' : '100%' }}
                     >
                       <Flex
-                        w="100%"
+                        w={collapsed ? "auto" : "100%"}
                         alignItems="center"
-                        justifyContent="center"
+                        justifyContent={collapsed ? "center" : "center"}
                       >
                         <Box
                           color={
@@ -204,12 +207,62 @@ export function SidebarLinks(props: SidebarLinksProps) {
                               ? activeIcon
                               : inactiveColor
                           }
-                          me="12px"
+                          me={collapsed ? "0px" : "12px"}
                           mt="6px"
+                          display="flex"
+                          alignItems="center"
+                          justifyContent="center"
+                          flexShrink={0}
                         >
                           {route.icon}
                         </Box>
+                        {!collapsed && (
+                          <Text
+                            me="auto"
+                            color={
+                              route.disabled
+                                ? gray
+                                : activeRoute(route.path.toLowerCase())
+                                ? activeColor
+                                : 'gray.500'
+                            }
+                            fontWeight="500"
+                            letterSpacing="0px"
+                            fontSize="sm"
+                          >
+                            {route.name}
+                          </Text>
+                        )}
+                      </Flex>
+                    </NavLink>
+                  ) : (
+                    <Flex
+                      w={collapsed ? "auto" : "100%"}
+                      alignItems="center"
+                      justifyContent={collapsed ? "center" : "center"}
+                      cursor="not-allowed"
+                    >
+                      <Box
+                        opacity="0.4"
+                        color={
+                          route.disabled
+                            ? gray
+                            : activeRoute(route.path.toLowerCase())
+                            ? activeIcon
+                            : inactiveColor
+                        }
+                        me={collapsed ? "0px" : "12px"}
+                        mt="6px"
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
+                        flexShrink={0}
+                      >
+                        {route.icon}
+                      </Box>
+                      {!collapsed && (
                         <Text
+                          opacity="0.4"
                           me="auto"
                           color={
                             route.disabled
@@ -224,45 +277,7 @@ export function SidebarLinks(props: SidebarLinksProps) {
                         >
                           {route.name}
                         </Text>
-                      </Flex>
-                    </NavLink>
-                  ) : (
-                    <Flex
-                      w="100%"
-                      alignItems="center"
-                      justifyContent="center"
-                      cursor="not-allowed"
-                    >
-                      <Box
-                        opacity="0.4"
-                        color={
-                          route.disabled
-                            ? gray
-                            : activeRoute(route.path.toLowerCase())
-                            ? activeIcon
-                            : inactiveColor
-                        }
-                        me="12px"
-                        mt="6px"
-                      >
-                        {route.icon}
-                      </Box>
-                      <Text
-                        opacity="0.4"
-                        me="auto"
-                        color={
-                          route.disabled
-                            ? gray
-                            : activeRoute(route.path.toLowerCase())
-                            ? activeColor
-                            : 'gray.500'
-                        }
-                        fontWeight="500"
-                        letterSpacing="0px"
-                        fontSize="sm"
-                      >
-                        {route.name}
-                      </Text>
+                      )}
                     </Flex>
                   )}
                 </HStack>

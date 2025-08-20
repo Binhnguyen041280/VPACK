@@ -1,0 +1,17 @@
+/* Custom cursor for sidebar expand */
+.cursor-expand-right {
+  cursor: url("data:image/svg+xml,%3csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M8 6l8 6-8 6V6z' fill='%23666'/%3e%3c/svg%3e") 12 12, e-resize;
+}
+
+.cursor-expand-right:hover {
+  cursor: url("data:image/svg+xml,%3csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M8 6l8 6-8 6V6z' fill='%234A25E1'/%3e%3c/svg%3e") 12 12, e-resize;
+}
+
+/* Dark theme variant */
+.dark .cursor-expand-right {
+  cursor: url("data:image/svg+xml,%3csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M8 6l8 6-8 6V6z' fill='%23888'/%3e%3c/svg%3e") 12 12, e-resize;
+}
+
+.dark .cursor-expand-right:hover {
+  cursor: url("data:image/svg+xml,%3csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M8 6l8 6-8 6V6z' fill='%237B5AFF'/%3e%3c/svg%3e") 12 12, e-resize;
+}

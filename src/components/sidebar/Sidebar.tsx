@@ -28,11 +28,13 @@ import { isWindowAvailable } from '@/utils/navigation';
 
 export interface SidebarProps extends PropsWithChildren {
   routes: IRoute[];
+  collapsed?: boolean;
+  onToggle?: () => void;
   [x: string]: any;
 }
 
 function Sidebar(props: SidebarProps) {
-  const { routes } = props;
+  const { routes, collapsed = false, onToggle } = props;
   // this is for the rest of the collapses
   let variantChange = '0.2s linear';
   let shadow = useColorModeValue(
@@ -49,7 +51,7 @@ function Sidebar(props: SidebarProps) {
       <Box
         bg={sidebarBg}
         transition={variantChange}
-        w="285px"
+        w={collapsed ? '63px' : '256px'}
         ms={{
           sm: '16px',
         }}
@@ -62,6 +64,11 @@ function Sidebar(props: SidebarProps) {
         minH="100%"
         overflowX="hidden"
         boxShadow={shadow}
+        className={collapsed ? 'cursor-expand-right' : ''}
+        onClick={collapsed && onToggle ? onToggle : undefined}
+        _hover={collapsed ? {
+          bg: useColorModeValue('gray.50', 'whiteAlpha.50')
+        } : {}}
       >
         <Scrollbars
           universal={true}
@@ -70,7 +77,7 @@ function Sidebar(props: SidebarProps) {
           renderThumbVertical={renderThumb}
           renderView={renderView}
         >
-          <Content routes={routes} />
+          <Content routes={routes} collapsed={collapsed} onToggle={onToggle} />
         </Scrollbars>
       </Box>
     </Box>
@@ -109,8 +116,8 @@ export function SidebarResponsive(props: { routes: IRoute[] }) {
       >
         <DrawerOverlay />
         <DrawerContent
-          w="285px"
-          maxW="285px"
+          w="256px"
+          maxW="256px"
           ms={{
             sm: '16px',
           }}
@@ -126,7 +133,7 @@ export function SidebarResponsive(props: { routes: IRoute[] }) {
             _focus={{ boxShadow: 'none' }}
             _hover={{ boxShadow: 'none' }}
           />
-          <DrawerBody maxW="285px" px="0rem" pb="0">
+          <DrawerBody maxW="256px" px="0rem" pb="0">
             <Scrollbars
               universal={true}
               autoHide
@@ -134,7 +141,7 @@ export function SidebarResponsive(props: { routes: IRoute[] }) {
               renderThumbVertical={renderThumb}
               renderView={renderView}
             >
-              <Content routes={routes} />
+              <Content routes={routes} collapsed={false} />
             </Scrollbars>
           </DrawerBody>
         </DrawerContent>
