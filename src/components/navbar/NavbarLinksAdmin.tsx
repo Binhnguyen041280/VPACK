@@ -9,13 +9,16 @@ import {
 } from '@chakra-ui/react';
 import { SidebarResponsive } from '@/components/sidebar/Sidebar';
 import { IoMdMoon, IoMdSunny } from 'react-icons/io';
+import { MdPalette } from 'react-icons/md';
 import routes from '@/routes';
+import { useColorTheme } from '@/contexts/ColorThemeContext';
 
 export default function HeaderLinks(props: {
   secondary: boolean;
 }) {
   const { secondary } = props;
   const { colorMode, toggleColorMode } = useColorMode();
+  const { colorTheme, toggleColorTheme, currentColors } = useColorTheme();
   // Chakra Color Mode
   const navbarIcon = useColorModeValue('gray.500', 'white');
   let menuBg = useColorModeValue('white', 'navy.800');
@@ -38,22 +41,44 @@ export default function HeaderLinks(props: {
     >
       <SidebarResponsive routes={routes} />
 
-
+      {/* Color Theme Toggle */}
       <Button
         variant="no-hover"
         bg="transparent"
-        p="8px"
+        p="4px"
         minW="unset"
         minH="unset"
-        h="40px"
-        w="40px"
+        h="20px"
+        w="20px"
+        borderRadius="full"
+        onClick={toggleColorTheme}
+        _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+        me="8px"
+      >
+        <Icon
+          h="10px"
+          w="10px"
+          color={currentColors.brand500}
+          as={MdPalette}
+        />
+      </Button>
+
+      {/* Dark/Light Mode Toggle */}
+      <Button
+        variant="no-hover"
+        bg="transparent"
+        p="4px"
+        minW="unset"
+        minH="unset"
+        h="20px"
+        w="20px"
         borderRadius="full"
         onClick={toggleColorMode}
         _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
       >
         <Icon
-          h="20px"
-          w="20px"
+          h="10px"
+          w="10px"
           color={navbarIcon}
           as={colorMode === 'light' ? IoMdMoon : IoMdSunny}
         />

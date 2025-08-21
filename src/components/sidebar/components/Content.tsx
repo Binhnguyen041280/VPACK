@@ -25,6 +25,7 @@ import { IRoute } from '@/types/navigation';
 import { IoMdPerson } from 'react-icons/io';
 import { FiLogOut, FiSidebar } from 'react-icons/fi';
 import { MdOutlineManageAccounts, MdOutlineSettings } from 'react-icons/md';
+import { useColorTheme } from '@/contexts/ColorThemeContext';
 
 // FUNCTIONS
 
@@ -37,6 +38,8 @@ interface SidebarContent extends PropsWithChildren {
 
 function SidebarContent(props: SidebarContent) {
   const { routes, collapsed = false, onToggle } = props;
+  const { currentColors } = useColorTheme();
+  
   const textColor = useColorModeValue('navy.700', 'white');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.300');
   const bgColor = useColorModeValue('white', 'navy.700');
@@ -152,13 +155,12 @@ function SidebarContent(props: SidebarContent) {
               </Flex>
             </MenuButton>
             <MenuList
-              ms="-20px"
               py="25px"
               ps="20px"
               pe="20px"
               w="246px"
               borderRadius="16px"
-              transform="translate(-19px, -62px)!important"
+              transform="translateY(-62px)"
               border="0px"
               boxShadow={shadow}
               bg={bgColor}

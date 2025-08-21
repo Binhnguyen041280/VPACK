@@ -25,6 +25,7 @@ import { Scrollbars } from 'react-custom-scrollbars-2';
 import { IoMenuOutline } from 'react-icons/io5';
 import { IRoute } from '@/types/navigation';
 import { isWindowAvailable } from '@/utils/navigation';
+import { useColorTheme } from '@/contexts/ColorThemeContext';
 
 export interface SidebarProps extends PropsWithChildren {
   routes: IRoute[];
@@ -35,6 +36,7 @@ export interface SidebarProps extends PropsWithChildren {
 
 function Sidebar(props: SidebarProps) {
   const { routes, collapsed = false, onToggle } = props;
+  const { colorTheme } = useColorTheme();
   // this is for the rest of the collapses
   let variantChange = '0.2s linear';
   let shadow = useColorModeValue(
@@ -65,6 +67,7 @@ function Sidebar(props: SidebarProps) {
         overflowX="hidden"
         boxShadow={shadow}
         className={collapsed ? 'cursor-expand-right' : ''}
+        data-color-theme={colorTheme}
         onClick={collapsed && onToggle ? onToggle : undefined}
         _hover={collapsed ? {
           bg: useColorModeValue('gray.50', 'whiteAlpha.50')

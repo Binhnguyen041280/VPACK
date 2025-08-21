@@ -23,6 +23,7 @@ import NavLink from '@/components/link/NavLink';
 import { IRoute } from '@/types/navigation';
 import { PropsWithChildren, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
+import { useColorTheme } from '@/contexts/ColorThemeContext';
 
 interface SidebarLinksProps extends PropsWithChildren {
   routes: IRoute[];
@@ -32,10 +33,12 @@ interface SidebarLinksProps extends PropsWithChildren {
 export function SidebarLinks(props: SidebarLinksProps) {
   //   Chakra color mode
   const pathname = usePathname();
+  const { currentColors } = useColorTheme();
+  
   let activeColor = useColorModeValue('navy.700', 'white');
   let inactiveColor = useColorModeValue('gray.500', 'gray.500');
   let borderColor = useColorModeValue('gray.200', 'whiteAlpha.300');
-  let activeIcon = useColorModeValue('brand.500', 'white');
+  let activeIcon = useColorModeValue(currentColors.brand500, 'white');
   let iconColor = useColorModeValue('navy.700', 'white');
   let gray = useColorModeValue('gray.500', 'gray.500');
 

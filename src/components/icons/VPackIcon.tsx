@@ -1,5 +1,6 @@
 'use client';
 import { Box, useColorModeValue } from '@chakra-ui/react';
+import { useColorTheme } from '@/contexts/ColorThemeContext';
 
 interface VPackIconProps {
   size?: string;
@@ -8,7 +9,8 @@ interface VPackIconProps {
 
 export const VPackIcon = ({ size = '40px', collapsed = false }: VPackIconProps) => {
   const borderColor = useColorModeValue('gray.300', 'whiteAlpha.400');
-  const circleColor = useColorModeValue('brand.500', 'white');
+  const { currentColors } = useColorTheme();
+  const circleColor = useColorModeValue(currentColors.brand500, 'white');
   
   return (
     <Box
@@ -38,7 +40,7 @@ export const VPackIcon = ({ size = '40px', collapsed = false }: VPackIconProps) 
         border={(size === '30px' || size === '27px') ? '1.5px dashed' : '2px dashed'}
         borderColor={circleColor}
         borderRadius="50%"
-        background={`linear-gradient(135deg, ${useColorModeValue('#4A25E1', '#7B5AFF')} 0%, ${useColorModeValue('rgba(74, 37, 225, 0.1)', 'rgba(123, 90, 255, 0.1)')} 100%)`}
+        background={`linear-gradient(135deg, ${useColorModeValue(currentColors.primary, currentColors.secondary)} 0%, ${useColorModeValue(currentColors.primary + '1A', currentColors.secondary + '1A')} 100%)`}
         position="relative"
         opacity={0.9}
       >

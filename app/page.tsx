@@ -20,6 +20,7 @@ import {
 import { useEffect, useState } from 'react';
 import { MdAutoAwesome, MdEdit, MdPerson, MdAdd, MdAttachFile, MdImage, MdVideoFile } from 'react-icons/md';
 import Bg from '../public/img/chat/bg-image.png';
+import { useColorTheme } from '@/contexts/ColorThemeContext';
 
 export default function Chat(props: { apiKeyApp: string }) {
   // Input States
@@ -34,9 +35,10 @@ export default function Chat(props: { apiKeyApp: string }) {
 
   // API Key
   // const [apiKey, setApiKey] = useState<string>(apiKeyApp);
+  const { currentColors } = useColorTheme();
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
   const inputColor = useColorModeValue('navy.700', 'white');
-  const brandColor = useColorModeValue('brand.500', 'white');
+  const brandColor = useColorModeValue(currentColors.brand500, 'white');
   const gray = useColorModeValue('gray.500', 'white');
   const textColor = useColorModeValue('navy.700', 'white');
   const placeholderColor = useColorModeValue(
@@ -264,7 +266,7 @@ export default function Chat(props: { apiKeyApp: string }) {
               borderRadius="full"
               justify="center"
               align="center"
-              bg={'linear-gradient(15.46deg, #4A25E1 26.3%, #7B5AFF 86.4%)'}
+              bg={currentColors.gradient}
               me="20px"
               h="40px"
               minH="40px"
@@ -295,16 +297,20 @@ export default function Chat(props: { apiKeyApp: string }) {
               border="1px solid"
               borderColor={borderColor}
               borderRadius="full"
-              w="54px"
-              h="54px"
+              w="34px"
+              h="34px"
               px="0px"
-              minW="54px"
+              minW="34px"
+              maxW="34px"
+              minH="34px"
+              maxH="34px"
               me="10px"
               justifyContent={'center'}
               alignItems="center"
+              flexShrink={0}
               _hover={{ bg: useColorModeValue('gray.50', 'whiteAlpha.100') }}
             >
-              <Icon as={MdAdd} width="20px" height="20px" color={textColor} />
+              <Icon as={MdAdd} width="16px" height="16px" color={textColor} />
             </MenuButton>
             <MenuList
               boxShadow={useColorModeValue(
@@ -363,7 +369,8 @@ export default function Chat(props: { apiKeyApp: string }) {
             onChange={handleChange}
           />
           <Button
-            variant="primary"
+            bg={currentColors.gradient}
+            color="white"
             py="20px"
             px="16px"
             fontSize="sm"
@@ -371,13 +378,19 @@ export default function Chat(props: { apiKeyApp: string }) {
             ms="auto"
             w={{ base: '160px', md: '210px' }}
             h="54px"
+            boxShadow="none"
             _hover={{
-              boxShadow:
-                '0px 21px 27px -10px rgba(96, 60, 255, 0.48) !important',
-              bg: 'linear-gradient(15.46deg, #4A25E1 26.3%, #7B5AFF 86.4%) !important',
+              boxShadow: `0px 21px 27px -10px ${currentColors.primary}48 !important`,
+              bg: `${currentColors.gradient} !important`,
               _disabled: {
-                bg: 'linear-gradient(15.46deg, #4A25E1 26.3%, #7B5AFF 86.4%)',
+                bg: currentColors.gradient,
               },
+            }}
+            _focus={{
+              bg: currentColors.gradient,
+            }}
+            _active={{
+              bg: currentColors.gradient,
             }}
             onClick={handleTranslate}
             isLoading={loading ? true : false}

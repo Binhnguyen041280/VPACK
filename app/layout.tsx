@@ -15,6 +15,7 @@ import '@/styles/Plugins.css';
 import '@/styles/MiniCalendar.css';
 import '@/styles/cursor.css';
 import AppWrappers from './AppWrappers';
+import { ColorThemeProvider } from '@/contexts/ColorThemeContext';
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -28,7 +29,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body id={'root'}>
-        <AppWrappers>
+        <ColorThemeProvider>
+          <AppWrappers>
           {/* <ChakraProvider theme={theme}> */}
           {pathname?.includes('register') || pathname?.includes('sign-in') ? (
             children
@@ -84,6 +86,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           )}
           {/* </ChakraProvider> */}
         </AppWrappers>
+        </ColorThemeProvider>
       </body>
     </html>
   );
