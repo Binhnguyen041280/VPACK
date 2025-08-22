@@ -7,8 +7,10 @@ import WelcomeMessage from '@/components/WelcomeMessage';
 import ChatMessage from '@/components/ChatMessage';
 import { ChatBody, OpenAIModel } from '@/types/types';
 import {
+  Box,
   Button,
   Flex,
+  HStack,
   Icon,
   Img,
   Input,
@@ -26,6 +28,7 @@ import { useColorTheme } from '@/contexts/ColorThemeContext';
 import { SidebarContext } from '@/contexts/SidebarContext';
 import { useUser } from '@/contexts/UserContext';
 import { useRoute } from '@/contexts/RouteContext';
+import StepNavigator from '@/components/navigation/StepNavigator';
 import CanvasMessage from '@/components/canvas/CanvasMessage';
 
 interface Message {
@@ -34,6 +37,25 @@ interface Message {
   type: 'user' | 'bot' | 'canvas';
   timestamp: Date;
 }
+
+// Step mapping constants
+const STEP_NUMBER_TO_KEY: { [key: string]: 'brandname' | 'location_time' | 'file_save' | 'video_source' | 'packing_area' | 'timing' } = {
+  '1': 'brandname',
+  '2': 'location_time', 
+  '3': 'file_save',
+  '4': 'video_source',
+  '5': 'packing_area',
+  '6': 'timing'
+};
+
+const STEP_KEY_TO_NUMBER: { [key: string]: number } = {
+  'brandname': 1,
+  'location_time': 2,
+  'file_save': 3,
+  'video_source': 4,
+  'packing_area': 5,
+  'timing': 6
+};
 
 export default function Chat(props: { apiKeyApp: string }) {
   // Input States
@@ -47,23 +69,54 @@ export default function Chat(props: { apiKeyApp: string }) {
   const [gmailError, setGmailError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [authenticatedUser, setAuthenticatedUser] = useState<string>('');
-  // Configuration state
-  const [configStep, setConfigStep] = useState<'company' | 'location' | 'video' | 'detection' | 'complete'>('company');
+  // Configuration state - Updated for 6-step workflow
+  const [configStep, setConfigStep] = useState<'brandname' | 'location_time' | 'file_save' | 'video_source' | 'packing_area' | 'timing'>('brandname');
   const [companyName, setCompanyName] = useState<string>('');
+  // Step completion tracking for 6 steps - All start as completed with defaults
+  const [stepCompleted, setStepCompleted] = useState<{[key: string]: boolean}>({
+    brandname: true,   // Default: "Alan_go"
+    location_time: true,   // Default: Auto-detected timezone/schedule
+    file_save: true,   // Default: Storage settings
+    video_source: true,   // Default: Camera settings
+    packing_area: true,   // Default: Detection zones
+    timing: true   // Default: Performance settings
+  });
+  // Track highest step reached for progress display
+  const [highestStepReached, setHighestStepReached] = useState<number>(1);
+  // UI Layout state
+  const [showConfigLayout, setShowConfigLayout] = useState<boolean>(false);
+
+  // Color mode values - ALL at top level to prevent hooks order violation
+  const borderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
+  const inputColor = useColorModeValue('navy.700', 'white');
+  const textColor = useColorModeValue('navy.700', 'white');
+  const loadingBubbleBg = useColorModeValue('gray.50', 'whiteAlpha.100');
+  const placeholderColor = useColorModeValue(
+    { color: 'gray.500' },
+    { color: 'whiteAlpha.600' },
+  );
+  const errorBg = useColorModeValue('red.50', 'red.900');
+  const errorColor = useColorModeValue('red.700', 'red.200');
+  const errorBorderColor = useColorModeValue('red.200', 'red.700');
+  const chatBg = useColorModeValue('white', 'navy.900');
+  const chatBorderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
+  const chatTextColor = useColorModeValue('navy.700', 'white');
+  const inputBorderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
+  const inputTextColor = useColorModeValue('navy.700', 'white');
+  const loadingBg = useColorModeValue('gray.50', 'whiteAlpha.100');
+  const loadingTextColor = useColorModeValue('navy.700', 'white');
+  const mainBg = useColorModeValue('white', 'navy.900');
   // Submit button text
   const getSubmitButtonText = (): string => {
     if (inputCode.trim() === '') {
-      // Empty input - show contextual action
-      switch (configStep) {
-        case 'company': return 'Continue';
-        case 'location': return 'Continue';
-        case 'video': return 'Continue';  
-        case 'detection': return 'Complete';
-        case 'complete': return 'Start';
-        default: return 'Continue';
+      // Empty input - check if current step is completed
+      if (stepCompleted[configStep]) {
+        return 'Continue';
+      } else {
+        return 'Submit';
       }
     } else {
-      // Has input - show regular submit
+      // Has input - always submit
       return 'Submit';
     }
   };
@@ -104,49 +157,134 @@ export default function Chat(props: { apiKeyApp: string }) {
       }
     };
   }, []);
-  const borderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
-  const inputColor = useColorModeValue('navy.700', 'white');
+
+  // Color values that depend on currentColors - after hooks initialization
   const brandColor = useColorModeValue(currentColors.brand500, 'white');
   const gray = useColorModeValue('gray.500', 'white');
-  const textColor = useColorModeValue('navy.700', 'white');
-  const loadingBubbleBg = useColorModeValue('gray.50', 'whiteAlpha.100');
-  const placeholderColor = useColorModeValue(
-    { color: 'gray.500' },
-    { color: 'whiteAlpha.600' },
-  );
-  // Error display colors - must be outside conditional rendering
-  const errorBg = useColorModeValue('red.50', 'red.900');
-  const errorColor = useColorModeValue('red.700', 'red.200');
-  const errorBorderColor = useColorModeValue('red.200', 'red.700');
 
-  // Handle Empty Submit - Universal Confirmation Pattern
-  const handleEmptySubmit = (): string => {
+  // Handle Back Command - Go to Previous Step
+  const handleBackCommand = (): string => {
+    const stepOrder = ['brandname', 'location_time', 'file_save', 'video_source', 'packing_area', 'timing'];
+    const currentIndex = stepOrder.indexOf(configStep);
+    
+    if (currentIndex <= 0) {
+      return '⚠️ Already at the first step (Brandname).';
+    }
+    
+    const previousStep = stepOrder[currentIndex - 1] as typeof configStep;
+    setConfigStep(previousStep);
+    
+    return `← Back to Step ${currentIndex}: ${previousStep.replace('_', ' ')}\n\nYou can now modify settings for this step.`;
+  };
+
+  // Handle Step Jump Command - Direct Navigation
+  const handleStepJump = (stepNumber: string): string => {
+    const targetStep = STEP_NUMBER_TO_KEY[stepNumber];
+    if (!targetStep) {
+      return '❌ Invalid step number. Use: step 1, step 2, step 3, step 4, step 5, or step 6';
+    }
+    
+    setConfigStep(targetStep);
+    // Update highest step reached if moving forward
+    const newStepNumber = STEP_KEY_TO_NUMBER[targetStep];
+    if (newStepNumber > highestStepReached) {
+      setHighestStepReached(newStepNumber);
+    }
+    return `→ Jumped to Step ${stepNumber}: ${targetStep.replace('_', ' ')}\n\nYou can now configure this step.`;
+  };
+
+  // Handle Continue Command - Save defaults and transition
+  const handleContinueCommand = (): string => {
+    // Only proceed if current step is completed
+    if (!stepCompleted[configStep]) {
+      return 'Please complete the current step first before continuing.';
+    }
+
+    // Save current defaults before transitioning
     switch (configStep) {
-      case 'company':
-        // Move to location step
-        setConfigStep('location');
-        return 'Moving to location setup...\n\nPlease enter your city/location and timezone.\n\nExample: "Ho Chi Minh City, UTC+7"';
+      case 'brandname':
+        // Save default company name if not set
+        if (!companyName.trim()) {
+          setCompanyName('Alan_go');
+          setRouteCompanyName('Alan_go');
+          stopAnimation();
+          localStorage.setItem('userConfigured', 'true');
+          setShowConfigLayout(true);
+        }
+        setConfigStep('location_time');
+        setHighestStepReached(prev => Math.max(prev, 2));
+        return '📍 Step 2: Location & Time Configuration\n\nNow we\'ll set up your timezone, work schedule, and language preferences.\n\nThe system will auto-detect your location and timezone. You can modify these settings if needed.\n\n⚡ Auto-detection is running...';
       
-      case 'location':
-        // Move to video sources
-        setConfigStep('video');
-        return 'Location saved! Moving to video sources setup...\n\nConfiguring video sources...';
+      case 'location_time':
+        // Save default location/time settings
+        setConfigStep('file_save');
+        setHighestStepReached(prev => Math.max(prev, 3));
+        return '💾 Step 3: File Storage Settings\n\nLet\'s configure where your videos will be stored and how long to keep them.\n\nSet up storage path, retention policies, and file organization preferences.\n\n📁 Default storage location and settings are ready for your review.';
       
-      case 'video':
-        // Move to detection settings
-        setConfigStep('detection');
-        return 'Video sources configured! Moving to detection settings...\n\nSetting up detection parameters...';
+      case 'file_save':
+        // Save default file storage settings
+        setConfigStep('video_source');
+        setHighestStepReached(prev => Math.max(prev, 4));
+        return '📹 Step 4: Video Source Configuration\n\nTime to set up your camera and video recording settings.\n\nChoose between local camera, IP camera, or cloud storage sources. Configure quality, frame rate, and recording options.\n\n🎥 Default camera settings are optimized for monitoring.';
       
-      case 'detection':
-        // Complete configuration
-        setConfigStep('complete');
-        return '✅ Configuration completed!\n\nReady to start processing. All systems configured and ready.';
+      case 'video_source':
+        // Save default video source settings
+        setConfigStep('packing_area');
+        setHighestStepReached(prev => Math.max(prev, 5));
+        return '📦 Step 5: Packing Area Detection\n\nDefine the detection zones and configure motion triggers.\n\nSet up areas to monitor, adjust sensitivity levels, and configure alert settings for when activity is detected.\n\n🎯 Detection zones and alert settings are ready for customization.';
       
-      case 'complete':
-        return 'Configuration is already complete. Ready to start processing!';
+      case 'packing_area':
+        // Save default packing area settings
+        setConfigStep('timing');
+        setHighestStepReached(prev => Math.max(prev, 6));
+        return '⏱️ Step 6: Timing & Performance\n\nFinal step! Configure processing speed and performance optimization.\n\nChoose between speed vs accuracy, set buffer times, and enable performance features like GPU acceleration.\n\n🚀 Performance settings are tuned for optimal monitoring efficiency.';
+      
+      case 'timing':
+        // Save default timing settings - Final step
+        return '✅ Step 6 completed. Timing settings saved.\n\n🎉 All configuration completed!\n\nAll 6 steps finished with your settings. Ready to start processing.';
       
       default:
-        return 'Continuing to next step...';
+        return 'Configuration step completed.';
+    }
+  };
+
+  // Handle Submit Command - Confirm changes and mark step completed
+  const handleSubmitCommand = (): string => {
+    // Mark current step as completed
+    setStepCompleted(prev => ({ ...prev, [configStep]: true }));
+    
+    switch (configStep) {
+      case 'brandname':
+        // If no company name set, use default
+        if (!companyName.trim()) {
+          setCompanyName('Alan_go');
+          setRouteCompanyName('Alan_go');
+          stopAnimation();
+          localStorage.setItem('userConfigured', 'true');
+          setShowConfigLayout(true);
+          return '✅ Changes confirmed. Using default: "Alan_go"\n\nType "continue" to proceed to next step.';
+        } else {
+          setShowConfigLayout(true);
+          return `✅ Changes confirmed: "${companyName}"\n\nType "continue" to proceed to next step.`;
+        }
+      
+      case 'location_time':
+        return '✅ Location & Time settings confirmed.\n\nType "continue" to proceed to next step.';
+      
+      case 'file_save':
+        return '✅ File storage settings confirmed.\n\nType "continue" to proceed to next step.';
+      
+      case 'video_source':
+        return '✅ Video source settings confirmed.\n\nType "continue" to proceed to next step.';
+      
+      case 'packing_area':
+        return '✅ Packing area settings confirmed.\n\nType "continue" to proceed to next step.';
+      
+      case 'timing':
+        return '✅ Timing settings confirmed.\n\nConfiguration completed!';
+      
+      default:
+        return '✅ Settings confirmed.\n\nType "continue" to proceed.';
     }
   };
 
@@ -158,7 +296,7 @@ export default function Chat(props: { apiKeyApp: string }) {
 
     switch (configStep) {
       case 'company':
-      case 'location':
+      case 'location_time':
         // Edit company name
         setCompanyName(newValue);
         setRouteCompanyName(newValue);
@@ -175,24 +313,61 @@ export default function Chat(props: { apiKeyApp: string }) {
 
   // Auto-response system
   const getAutoResponse = (userInput: string): string => {
-    // Handle Empty Submit (Universal Confirmation Pattern)
+    const input = userInput.toLowerCase().trim();
+    
+    // Handle Empty Submit
     if (userInput.trim() === '') {
-      return handleEmptySubmit();
+      // Empty submit should behave like "continue" if step is completed
+      if (stepCompleted[configStep]) {
+        return handleContinueCommand();
+      } else {
+        // Step is incomplete - this is a Submit to confirm changes
+        return handleSubmitCommand();
+      }
     }
     
-    const input = userInput.toLowerCase().trim();
+    // Handle "continue" command
+    if (input === 'continue') {
+      return handleContinueCommand();
+    }
+
+    // Handle "next" command
+    if (input === 'next') {
+      return handleContinueCommand(); // Same as continue
+    }
+
+    // Handle "back" command
+    if (input === 'back') {
+      return handleBackCommand();
+    }
+
+    // Handle "step X" command
+    if (input.startsWith('step ')) {
+      const stepNumber = input.substring(5).trim();
+      return handleStepJump(stepNumber);
+    }
     
     // Handle Edit Pattern
     if (input.startsWith('edit:')) {
       return handleEditCommand(userInput.substring(5).trim());
     }
+
+    // Handle "edit" command to reset current step
+    if (input === 'edit') {
+      // Mark current step as incomplete to allow editing
+      setStepCompleted(prev => ({ ...prev, [configStep]: false }));
+      
+      return `🔄 Returning to ${configStep.replace('_', ' ')} configuration...\n\nYou can now modify your settings.\n\nCommands: "continue", "edit", "help"`;
+    }
     
-    // Removed "ok" trigger - canvas now auto-appears after OAuth
+    // Handle help command
+    if (input === 'help') {
+      return 'Available commands:\n• "continue" or "next" - Proceed to next step\n• "back" - Go to previous step\n• "step X" - Jump to specific step (1-6)\n• "edit" - Modify current step settings\n• "help" - Show this help\n\nOr enter data to configure the current step.';
+    }
     
-    // Handle company name input when in company step
-    if (configStep === 'company' && userInput.trim().length > 0) {
+    // Handle company name input when in brandname step - Direct Submit (no intermediate step)
+    if (configStep === 'brandname' && userInput.trim().length > 0) {
       setCompanyName(userInput.trim());
-      setConfigStep('location');
       
       // Update sidebar route name (replaces "Alan_go")
       setRouteCompanyName(userInput.trim());
@@ -202,24 +377,19 @@ export default function Chat(props: { apiKeyApp: string }) {
       
       // Mark user as configured (allow future database operations)
       localStorage.setItem('userConfigured', 'true');
+      setShowConfigLayout(true);
       
-      return `✅ Company name saved: "${userInput.trim()}"\n\nNext step: Location and timezone setup...\n\nTo edit: type "edit: NEW COMPANY NAME"\nTo continue: just click Submit (empty)`;
+      // Mark step as completed immediately (direct submit pattern)
+      setStepCompleted(prev => ({ ...prev, brandname: true }));
+      
+      // Direct submit result - no intermediate confirmation
+      return `✅ Changes confirmed: "${userInput.trim()}"\n\nType "continue" to proceed to next step.`;
     }
     
-    if (input.includes('hello') || input.includes('xin chào') || input.includes('hi')) {
-      return 'Hello! I\'m your V.PACK assistant. How can I help you today?';
-    }
+    // Handle empty submit for brandname (use default) - this is covered by handleSubmitCommand now
     
-    if (input.includes('help') || input.includes('giúp đỡ')) {
-      return 'Available commands:\n• Empty Submit - Confirm/Continue current step\n• "edit: NEW VALUE" - Update current field\n• "hello" - Greeting\n• "help" - Show this help\n\nSign in with Gmail to start configuration!';
-    }
-    
-    if (input.includes('config') || input.includes('cấu hình')) {
-      return 'Configuration starts automatically after Gmail sign-in. Please sign in with Gmail first.';
-    }
-    
-    // Default response
-    return 'Thank you for your message! I\'m learning to respond better. Try typing "help" to see available commands.';
+    // Default response for unrecognized input
+    return 'Available commands:\n• "continue" or "next" - Proceed to next step\n• "back" - Go to previous step\n• "step X" - Jump to specific step (1-6)\n• "edit" - Modify current step settings\n• "help" - Show this help\n\nOr enter data to configure the current step.';
   };
 
   const handleTranslate = () => {
@@ -409,15 +579,11 @@ export default function Chat(props: { apiKeyApp: string }) {
             timestamp: new Date()
           };
           
-          // Auto-trigger canvas (no "ok" needed)
-          const canvasMessage: Message = {
-            id: (Date.now() + 2).toString(),
-            content: 'configuration-panel',
-            type: 'canvas',
-            timestamp: new Date()
-          };
+          // Add messages without canvas (canvas is now fixed in Configuration Area)
+          setMessages(prev => [...prev, successMessage, configMessage]);
           
-          setMessages(prev => [...prev, successMessage, configMessage, canvasMessage]);
+          // Trigger 3-panel layout immediately after OAuth
+          setShowConfigLayout(true);
           
           // Start company name blinking animation
           startAnimation();
@@ -509,14 +675,11 @@ export default function Chat(props: { apiKeyApp: string }) {
                       timestamp: new Date()
                     };
                     
-                    const canvasMessage: Message = {
-                      id: (Date.now() + 2).toString(),
-                      content: 'configuration-panel', 
-                      type: 'canvas',
-                      timestamp: new Date()
-                    };
+                    // Add messages without canvas (canvas is now fixed in Configuration Area)
+                    setMessages(prev => [...prev, successMessage, configMessage]);
                     
-                    setMessages(prev => [...prev, successMessage, configMessage, canvasMessage]);
+                    // Trigger 3-panel layout immediately after OAuth
+                    setShowConfigLayout(true);
                     
                     // Start company name blinking animation
                     startAnimation();
@@ -611,319 +774,616 @@ export default function Chat(props: { apiKeyApp: string }) {
     input.click();
   };
 
+  // Step Navigator click handler
+  const handleStepClick = (stepKey: string) => {
+    setConfigStep(stepKey as any);
+  };
+
+  // Handle canvas changes - mark step incomplete for submission
+  const handleStepChange = (stepName: string, data: any) => {
+    // Mark step as incomplete when modified - requires Submit
+    // No intermediate message - user will Submit directly
+    setStepCompleted(prev => ({ ...prev, [stepName]: false }));
+  };
+
   return (
     <Flex
       w="100%"
       pt={{ base: '70px', md: '0px' }}
       direction="column"
       position="relative"
+      overflow="hidden"
+      h="100vh"
     >
-      <Img
-        src={Bg.src}
-        position={'absolute'}
-        w="350px"
-        left="50%"
-        top="50%"
-        transform={'translate(-50%, -50%)'}
-      />
-      <Flex
-        direction="column"
-        mx="auto"
-        w={{ base: '100%', md: '100%', xl: '100%' }}
-        minH="100vh"
-        maxW="1000px"
-        position="relative"
-      >
-        {/* Content Area */}
-        <Flex direction="column" flex="1" pb="100px" pt="20px" overflowY="auto">
-          {/* Main Box */}
+      {/* Background Image - only show in single-panel mode */}
+      {!showConfigLayout && (
+        <Img
+          src={Bg.src}
+          position={'absolute'}
+          w="350px"
+          left="50%"
+          top="50%"
+          transform={'translate(-50%, -50%)'}
+        />
+      )}
+      
+      {/* Conditional Layout Rendering */}
+      {showConfigLayout ? (
+        // 3-Panel Configuration Layout  
+        <Flex
+          direction="column"
+          mx="auto"
+          w="100%"
+          maxW="1400px"
+          h="100vh"
+          p="20px"
+          gap="20px"
+        >
+          {/* Top Row - Content Area */}
           <Flex
-            direction="column"
-            w="100%"
-            mx="auto"
-            mb={'auto'}
+            flex="1"
+            direction="row"
+            gap="20px"
+            overflow="hidden"
           >
-            {/* Welcome Message */}
-            <WelcomeMessage />
-            
-            
-            {/* Gmail Sign Up Button - Only show if not authenticated */}
-            {!isAuthenticated && (
-            <Flex w="100%" mb="24px" align="flex-start">
+            {/* Left: Chat History Panel - 35% */}
+            <Box
+              w="35%"
+              minW="300px"
+            >
+              {/* Chat History - Scrollable */}
               <Flex
-                borderRadius="full"
-                justify="center"
-                align="center"
-                bg={currentColors.gradient}
-                me="12px"
-                h="32px"
-                minH="32px"
-                minW="32px"
-                flexShrink={0}
+                direction="column"
+                bg={chatBg}
+                borderRadius="20px"
+                border="1px solid"
+                borderColor={chatBorderColor}
+                p="20px"
+                h="100%"
               >
-                <Icon
-                  as={MdAutoAwesome}
-                  width="16px"
-                  height="16px"
-                  color="white"
-                />
-              </Flex>
-              <Button
-                bg={currentColors.gradient}
-                color="white"
-                py="12px"
-                px="16px"
-                fontSize="sm"
-                borderRadius="16px"
-                boxShadow="none"
-                leftIcon={<Icon as={MdPerson} width="18px" height="18px" />}
-                isLoading={gmailLoading}
-                loadingText="Authenticating..."
-                _hover={{
-                  boxShadow: `0px 21px 27px -10px ${currentColors.primary}48 !important`,
-                  bg: `${currentColors.gradient} !important`,
-                  _disabled: {
-                    bg: currentColors.gradient,
-                  },
-                }}
-                _focus={{
-                  bg: currentColors.gradient,
-                }}
-                _active={{
-                  bg: currentColors.gradient,
-                }}
-                onClick={handleGmailAuth}
-                disabled={gmailLoading}
-              >
-                {gmailLoading ? 'Authenticating...' : 'Sign up with Gmail'}
-              </Button>
-            </Flex>
-            )}
-            
-            {/* Gmail OAuth Error Display */}
-            {gmailError && (
-              <Flex w="100%" mb="24px" align="flex-start">
-                <Flex
-                  borderRadius="full"
-                  justify="center"
-                  align="center"
-                  bg="red.500"
-                  me="12px"
-                  h="32px"
-                  minH="32px"
-                  minW="32px"
+                {/* Chat Header */}
+                <Text
+                  fontSize="lg"
+                  fontWeight="700"
+                  color={chatTextColor}
+                  mb="20px"
+                  textAlign="center"
                   flexShrink={0}
                 >
-                  <Text color="white" fontSize="16px">❌</Text>
-                </Flex>
-                <Flex
-                  bg={errorBg}
-                  borderRadius="16px"
-                  px="16px"
-                  py="12px"
-                  maxW="75%"
-                  color={errorColor}
-                  fontSize={{ base: 'sm', md: 'md' }}
-                  lineHeight={{ base: '20px', md: '22px' }}
-                  fontWeight="400"
-                  border="1px solid"
-                  borderColor={errorBorderColor}
-                  direction="column"
+                  💬 Chat Control
+                </Text>
+                
+                {/* Chat Messages - Scrollable */}
+                <Box
+                  flex="1"
+                  overflow="auto"
+                  mb="20px"
                 >
-                  <Text fontWeight="600" mb="8px">Authentication Error</Text>
-                  <Text fontSize="sm" mb="12px">{gmailError}</Text>
-                  <Button
-                    size="sm"
-                    colorScheme="red"
-                    variant="outline"
-                    onClick={() => setGmailError(null)}
+                  {/* Chat Messages History */}
+                  {messages.map((message) => (
+                    message.type !== 'canvas' && (
+                      <ChatMessage
+                        key={message.id}
+                        content={message.content}
+                        type={message.type}
+                        timestamp={message.timestamp}
+                      />
+                    )
+                  ))}
+                  
+                  {/* Loading indicator */}
+                  {loading && (
+                    <Flex w="100%" mb="16px" align="flex-start">
+                      <Flex
+                        borderRadius="full"
+                        justify="center"
+                        align="center"
+                        bg={currentColors.gradient}
+                        me="12px"
+                        h="32px"
+                        minH="32px"
+                        minW="32px"
+                        flexShrink={0}
+                      >
+                        <Icon
+                          as={MdAutoAwesome}
+                          width="16px"
+                          height="16px"
+                          color="white"
+                        />
+                      </Flex>
+                      <Flex
+                        bg={loadingBg}
+                        borderRadius="16px"
+                        px="16px"
+                        py="12px"
+                        align="center"
+                      >
+                        <Text fontSize="sm" color={chatTextColor}>
+                          Typing...
+                        </Text>
+                      </Flex>
+                    </Flex>
+                  )}
+                </Box>
+              </Flex>
+            </Box>
+            
+            {/* Right: Navigator and Canvas - 65% */}
+            <Flex
+              w="65%"
+              direction="row"
+              gap="20px"
+              align="end"
+            >
+              {/* Step Navigator Panel - 30% of right side */}
+              <Box
+                w="30%"
+                minW="200px"
+                alignSelf="end"
+              >
+                <StepNavigator
+                  currentStep={configStep}
+                  completedSteps={stepCompleted}
+                  highestStepReached={highestStepReached}
+                  onStepClick={handleStepClick}
+                />
+              </Box>
+              
+              {/* Configuration Area Panel - 70% of right side */}
+              <Box
+                w="70%"
+                minW="400px"
+                alignSelf="end"
+              >
+                <Box
+                  bg={chatBg}
+                  borderRadius="20px"
+                  border="1px solid"
+                  borderColor={chatBorderColor}
+                  p="20px"
+                  h="fit-content"
+                  sx={{
+                    '& > div': {
+                      marginBottom: 0
+                    },
+                    '& > div > div:first-of-type': {
+                      display: 'none' // Hide bot avatar
+                    }
+                  }}
+                >
+                  <CanvasMessage 
+                    configStep={configStep} 
+                    onStepChange={handleStepChange}
+                  />
+                </Box>
+              </Box>
+            </Flex>
+          </Flex>
+          
+          {/* Bottom Row - Chat Input Only */}
+          <Box
+            flexShrink={0}
+            w="35%"
+            minW="300px"
+          >
+            <Box
+              bg={chatBg}
+              borderRadius="20px"
+              border="1px solid"
+              borderColor={chatBorderColor}
+              p="20px"
+            >
+              <HStack spacing="10px">
+                <Box position="relative" flex="1">
+                  <Input
+                    h="54px"
+                    border="1px solid"
+                    borderColor={chatBorderColor}
+                    borderRadius="45px"
+                    p="15px 50px 15px 20px"
+                    fontSize="sm"
+                    fontWeight="500"
+                    _focus={{ borderColor: 'none' }}
+                    color={chatTextColor}
+                    _placeholder={placeholderColor}
+                    placeholder="Type command here..."
+                    value={inputCode}
+                    onChange={handleChange}
+                  />
+                  {/* Add Button Menu - Inside Input */}
+                  <Menu>
+                    <MenuButton
+                      as={Button}
+                      position="absolute"
+                      right="10px"
+                      top="50%"
+                      transform="translateY(-50%)"
+                      variant="transparent"
+                      borderRadius="full"
+                      w="34px"
+                      h="34px"
+                      px="0px"
+                      minW="34px"
+                      maxW="34px"
+                      minH="34px"
+                      maxH="34px"
+                      justifyContent={'center'}
+                      alignItems="center"
+                      flexShrink={0}
+                      _hover={{ bg: useColorModeValue('gray.50', 'whiteAlpha.100') }}
+                    >
+                      <Icon as={MdAdd} width="16px" height="16px" color={chatTextColor} />
+                    </MenuButton>
+                    <MenuList
+                      boxShadow={useColorModeValue(
+                        '14px 17px 40px 4px rgba(112, 144, 176, 0.18)',
+                        '0px 41px 75px #081132',
+                      )}
+                      p="10px"
+                      borderRadius="20px"
+                      bg={useColorModeValue('white', 'navy.800')}
+                      border="none"
+                    >
+                      <MenuItem
+                        onClick={handleFileUpload}
+                        _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                        borderRadius="8px"
+                        p="10px"
+                      >
+                        <Icon as={MdAttachFile} width="16px" height="16px" me="8px" />
+                        <Text fontSize="sm">Add File</Text>
+                      </MenuItem>
+                      <MenuItem
+                        onClick={handleImageUpload}
+                        _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                        borderRadius="8px"
+                        p="10px"
+                      >
+                        <Icon as={MdImage} width="16px" height="16px" me="8px" />
+                        <Text fontSize="sm">Add Image</Text>
+                      </MenuItem>
+                      <MenuItem
+                        onClick={handleVideoUpload}
+                        _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                        borderRadius="8px"
+                        p="10px"
+                      >
+                        <Icon as={MdVideoFile} width="16px" height="16px" me="8px" />
+                        <Text fontSize="sm">Add Video</Text>
+                      </MenuItem>
+                    </MenuList>
+                  </Menu>
+                </Box>
+                <Button
+                  bg={currentColors.gradient}
+                  color="white"
+                  py="20px"
+                  px="16px"
+                  fontSize="sm"
+                  borderRadius="45px"
+                  w="120px"
+                  h="54px"
+                  boxShadow="none"
+                  _hover={{
+                    boxShadow: `0px 21px 27px -10px ${currentColors.primary}48 !important`,
+                    bg: `${currentColors.gradient} !important`,
+                    _disabled: {
+                      bg: currentColors.gradient,
+                    },
+                  }}
+                  _focus={{
+                    bg: currentColors.gradient,
+                  }}
+                  _active={{
+                    bg: currentColors.gradient,
+                  }}
+                  onClick={handleTranslate}
+                  isLoading={loading ? true : false}
+                >
+                  {getSubmitButtonText()}
+                </Button>
+              </HStack>
+            </Box>
+          </Box>
+        </Flex>
+      ) : (
+        // Original Single-Panel Layout
+        <Flex
+          direction="column"
+          mx="auto"
+          w={{ base: '100%', md: '100%', xl: '100%' }}
+          minH="100vh"
+          maxW="1000px"
+          position="relative"
+        >
+          {/* Content Area */}
+          <Flex direction="column" flex="1" pb="100px" pt="20px" overflowY="auto">
+            {/* Main Box */}
+            <Flex
+              direction="column"
+              w="100%"
+              mx="auto"
+              mb={'auto'}
+            >
+              {/* Welcome Message */}
+              <WelcomeMessage />
+              
+              {/* Gmail Sign Up Button - Only show if not authenticated */}
+              {!isAuthenticated && (
+                <Flex w="100%" mb="24px" align="flex-start">
+                  <Flex
+                    borderRadius="full"
+                    justify="center"
+                    align="center"
+                    bg={currentColors.gradient}
+                    me="12px"
+                    h="32px"
+                    minH="32px"
+                    minW="32px"
+                    flexShrink={0}
                   >
-                    Dismiss
+                    <Icon
+                      as={MdAutoAwesome}
+                      width="16px"
+                      height="16px"
+                      color="white"
+                    />
+                  </Flex>
+                  <Button
+                    bg={currentColors.gradient}
+                    color="white"
+                    py="12px"
+                    px="16px"
+                    fontSize="sm"
+                    borderRadius="16px"
+                    boxShadow="none"
+                    leftIcon={<Icon as={MdPerson} width="18px" height="18px" />}
+                    isLoading={gmailLoading}
+                    loadingText="Authenticating..."
+                    _hover={{
+                      boxShadow: `0px 21px 27px -10px ${currentColors.primary}48 !important`,
+                      bg: `${currentColors.gradient} !important`,
+                      _disabled: {
+                        bg: currentColors.gradient,
+                      },
+                    }}
+                    _focus={{
+                      bg: currentColors.gradient,
+                    }}
+                    _active={{
+                      bg: currentColors.gradient,
+                    }}
+                    onClick={handleGmailAuth}
+                    disabled={gmailLoading}
+                  >
+                    {gmailLoading ? 'Authenticating...' : 'Sign up with Gmail'}
                   </Button>
                 </Flex>
-              </Flex>
-            )}
-            
-            {/* Chat Messages History */}
-            {messages.map((message) => (
-              message.type === 'canvas' ? (
-                <CanvasMessage key={message.id} />
-              ) : (
-                <ChatMessage
-                  key={message.id}
-                  content={message.content}
-                  type={message.type}
-                  timestamp={message.timestamp}
-                />
-              )
-            ))}
-            
-            {/* Loading indicator */}
-            {loading && (
-              <Flex w="100%" mb="16px" align="flex-start">
-                <Flex
-                  borderRadius="full"
-                  justify="center"
-                  align="center"
-                  bg={currentColors.gradient}
-                  me="12px"
-                  h="32px"
-                  minH="32px"
-                  minW="32px"
-                  flexShrink={0}
-                >
-                  <Icon
-                    as={MdAutoAwesome}
-                    width="16px"
-                    height="16px"
-                    color="white"
-                  />
-                </Flex>
-                <Flex
-                  bg={loadingBubbleBg}
-                  borderRadius="16px"
-                  px="16px"
-                  py="12px"
-                  align="center"
-                >
-                  <Text fontSize="sm" color={textColor}>
-                    Typing...
-                  </Text>
-                </Flex>
-              </Flex>
-            )}
-            
-            {/* Scroll anchor */}
-            <div ref={messagesEndRef} />
-        </Flex>
-        </Flex>
-        
-        {/* Chat Input */}
-        <Flex
-          position="fixed"
-          bottom="0"
-          left={toggleSidebar ? 'calc(95px + (100vw - 95px - 800px) / 2)' : 'calc(288px + (100vw - 288px - 800px) / 2)'}
-          w="800px"
-          pt="20px"
-          pb="20px"
-          bg={useColorModeValue('white', 'navy.900')}
-          alignItems="center"
-          zIndex={10}
-          transition="left 0.2s linear"
-        >
-          {/* Add Button */}
-          <Menu>
-            <MenuButton
-              as={Button}
-              variant="transparent"
-              border="1px solid"
-              borderColor={borderColor}
-              borderRadius="full"
-              w="34px"
-              h="34px"
-              px="0px"
-              minW="34px"
-              maxW="34px"
-              minH="34px"
-              maxH="34px"
-              me="10px"
-              justifyContent={'center'}
-              alignItems="center"
-              flexShrink={0}
-              _hover={{ bg: useColorModeValue('gray.50', 'whiteAlpha.100') }}
-            >
-              <Icon as={MdAdd} width="16px" height="16px" color={textColor} />
-            </MenuButton>
-            <MenuList
-              boxShadow={useColorModeValue(
-                '14px 17px 40px 4px rgba(112, 144, 176, 0.18)',
-                '0px 41px 75px #081132',
               )}
-              p="10px"
-              borderRadius="20px"
-              bg={useColorModeValue('white', 'navy.800')}
-              border="none"
-            >
-              <MenuItem
-                onClick={handleFileUpload}
-                _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
-                borderRadius="8px"
-                p="10px"
-              >
-                <Icon as={MdAttachFile} width="16px" height="16px" me="8px" />
-                <Text fontSize="sm">Add File</Text>
-              </MenuItem>
-              <MenuItem
-                onClick={handleImageUpload}
-                _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
-                borderRadius="8px"
-                p="10px"
-              >
-                <Icon as={MdImage} width="16px" height="16px" me="8px" />
-                <Text fontSize="sm">Add Image</Text>
-              </MenuItem>
-              <MenuItem
-                onClick={handleVideoUpload}
-                _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
-                borderRadius="8px"
-                p="10px"
-              >
-                <Icon as={MdVideoFile} width="16px" height="16px" me="8px" />
-                <Text fontSize="sm">Add Video</Text>
-              </MenuItem>
-            </MenuList>
-          </Menu>
+              
+              {/* Gmail OAuth Error Display */}
+              {gmailError && (
+                <Flex w="100%" mb="24px" align="flex-start">
+                  <Flex
+                    borderRadius="full"
+                    justify="center"
+                    align="center"
+                    bg="red.500"
+                    me="12px"
+                    h="32px"
+                    minH="32px"
+                    minW="32px"
+                    flexShrink={0}
+                  >
+                    <Text color="white" fontSize="16px">❌</Text>
+                  </Flex>
+                  <Flex
+                    bg={errorBg}
+                    borderRadius="16px"
+                    px="16px"
+                    py="12px"
+                    maxW="75%"
+                    color={errorColor}
+                    fontSize={{ base: 'sm', md: 'md' }}
+                    lineHeight={{ base: '20px', md: '22px' }}
+                    fontWeight="400"
+                    border="1px solid"
+                    borderColor={errorBorderColor}
+                    direction="column"
+                  >
+                    <Text fontWeight="600" mb="8px">Authentication Error</Text>
+                    <Text fontSize="sm" mb="12px">{gmailError}</Text>
+                    <Button
+                      size="sm"
+                      colorScheme="red"
+                      variant="outline"
+                      onClick={() => setGmailError(null)}
+                    >
+                      Dismiss
+                    </Button>
+                  </Flex>
+                </Flex>
+              )}
+              
+              {/* Chat Messages History - No canvas messages */}
+              {messages.map((message) => (
+                message.type !== 'canvas' && (
+                  <ChatMessage
+                    key={message.id}
+                    content={message.content}
+                    type={message.type}
+                    timestamp={message.timestamp}
+                  />
+                )
+              ))}
+              
+              {/* Loading indicator */}
+              {loading && (
+                <Flex w="100%" mb="16px" align="flex-start">
+                  <Flex
+                    borderRadius="full"
+                    justify="center"
+                    align="center"
+                    bg={currentColors.gradient}
+                    me="12px"
+                    h="32px"
+                    minH="32px"
+                    minW="32px"
+                    flexShrink={0}
+                  >
+                    <Icon
+                      as={MdAutoAwesome}
+                      width="16px"
+                      height="16px"
+                      color="white"
+                    />
+                  </Flex>
+                  <Flex
+                    bg={loadingBg}
+                    borderRadius="16px"
+                    px="16px"
+                    py="12px"
+                    align="center"
+                  >
+                    <Text fontSize="sm" color={chatTextColor}>
+                      Typing...
+                    </Text>
+                  </Flex>
+                </Flex>
+              )}
+              
+              {/* Scroll anchor */}
+              <div ref={messagesEndRef} />
+            </Flex>
+          </Flex>
           
-          <Input
-            minH="54px"
-            h="100%"
-            border="1px solid"
-            borderColor={borderColor}
-            borderRadius="45px"
-            p="15px 20px"
-            me="10px"
-            fontSize="sm"
-            fontWeight="500"
-            _focus={{ borderColor: 'none' }}
-            color={inputColor}
-            _placeholder={placeholderColor}
-            placeholder="Type your message here..."
-            value={inputCode}
-            onChange={handleChange}
-          />
-          <Button
-            bg={currentColors.gradient}
-            color="white"
-            py="20px"
-            px="16px"
-            fontSize="sm"
-            borderRadius="45px"
-            ms="auto"
-            w={{ base: '160px', md: '210px' }}
-            h="54px"
-            boxShadow="none"
-            _hover={{
-              boxShadow: `0px 21px 27px -10px ${currentColors.primary}48 !important`,
-              bg: `${currentColors.gradient} !important`,
-              _disabled: {
-                bg: currentColors.gradient,
-              },
-            }}
-            _focus={{
-              bg: currentColors.gradient,
-            }}
-            _active={{
-              bg: currentColors.gradient,
-            }}
-            onClick={handleTranslate}
-            isLoading={loading ? true : false}
+          {/* Chat Input */}
+          <Flex
+            position="fixed"
+            bottom="0"
+            left={toggleSidebar ? 'calc(95px + (100vw - 95px - 800px) / 2)' : 'calc(288px + (100vw - 288px - 800px) / 2)'}
+            w="800px"
+            pt="20px"
+            pb="20px"
+            bg={mainBg}
+            alignItems="center"
+            zIndex={10}
+            transition="left 0.2s linear"
           >
-            {getSubmitButtonText()}
-          </Button>
+            <Box position="relative" flex="1" me="10px">
+              <Input
+                minH="54px"
+                h="100%"
+                border="1px solid"
+                borderColor={chatBorderColor}
+                borderRadius="45px"
+                p="15px 50px 15px 20px"
+                fontSize="sm"
+                fontWeight="500"
+                _focus={{ borderColor: 'none' }}
+                color={chatTextColor}
+                _placeholder={placeholderColor}
+                placeholder="Type your message here..."
+                value={inputCode}
+                onChange={handleChange}
+              />
+              {/* Add Button Menu - Inside Input */}
+              <Menu>
+                <MenuButton
+                  as={Button}
+                  position="absolute"
+                  right="10px"
+                  top="50%"
+                  transform="translateY(-50%)"
+                  variant="transparent"
+                  borderRadius="full"
+                  w="34px"
+                  h="34px"
+                  px="0px"
+                  minW="34px"
+                  maxW="34px"
+                  minH="34px"
+                  maxH="34px"
+                  justifyContent={'center'}
+                  alignItems="center"
+                  flexShrink={0}
+                  _hover={{ bg: useColorModeValue('gray.50', 'whiteAlpha.100') }}
+                >
+                  <Icon as={MdAdd} width="16px" height="16px" color={chatTextColor} />
+                </MenuButton>
+                <MenuList
+                  boxShadow={useColorModeValue(
+                    '14px 17px 40px 4px rgba(112, 144, 176, 0.18)',
+                    '0px 41px 75px #081132',
+                  )}
+                  p="10px"
+                  borderRadius="20px"
+                  bg={useColorModeValue('white', 'navy.800')}
+                  border="none"
+                >
+                  <MenuItem
+                    onClick={handleFileUpload}
+                    _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                    borderRadius="8px"
+                    p="10px"
+                  >
+                    <Icon as={MdAttachFile} width="16px" height="16px" me="8px" />
+                    <Text fontSize="sm">Add File</Text>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={handleImageUpload}
+                    _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                    borderRadius="8px"
+                    p="10px"
+                  >
+                    <Icon as={MdImage} width="16px" height="16px" me="8px" />
+                    <Text fontSize="sm">Add Image</Text>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={handleVideoUpload}
+                    _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                    borderRadius="8px"
+                    p="10px"
+                  >
+                    <Icon as={MdVideoFile} width="16px" height="16px" me="8px" />
+                    <Text fontSize="sm">Add Video</Text>
+                  </MenuItem>
+                </MenuList>
+              </Menu>
+            </Box>
+            <Button
+              bg={currentColors.gradient}
+              color="white"
+              py="20px"
+              px="16px"
+              fontSize="sm"
+              borderRadius="45px"
+              ms="auto"
+              w={{ base: '160px', md: '210px' }}
+              h="54px"
+              boxShadow="none"
+              _hover={{
+                boxShadow: `0px 21px 27px -10px ${currentColors.primary}48 !important`,
+                bg: `${currentColors.gradient} !important`,
+                _disabled: {
+                  bg: currentColors.gradient,
+                },
+              }}
+              _focus={{
+                bg: currentColors.gradient,
+              }}
+              _active={{
+                bg: currentColors.gradient,
+              }}
+              onClick={handleTranslate}
+              isLoading={loading ? true : false}
+            >
+              {getSubmitButtonText()}
+            </Button>
+          </Flex>
         </Flex>
-
-
-      </Flex>
+      )}
     </Flex>
   );
 }
