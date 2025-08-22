@@ -564,7 +564,7 @@ def _create_gmail_success_page(data):
                     authentication_method: 'gmail_only',
                     google_drive_connected: false,
                     backend_port: 8080
-                }}, 'http://localhost:3000');
+                }}, '*');  // Allow both 3000 and 5001 ports
                 
                 // Close popup immediately after sending message
                 window.close();
@@ -615,7 +615,7 @@ def _create_gmail_error_page(error, details=None):
                     type: 'GMAIL_AUTH_ERROR',
                     message: '{error}',
                     details: '{details or ''}'
-                }}, 'http://localhost:3000');
+                }}, '*');  // Allow both 3000 and 5001 ports
                 
                 // Close popup
                 setTimeout(() => {{ window.close(); }}, 3000);
@@ -1112,7 +1112,7 @@ def _create_success_page_with_postmessage(session_result):
                             window.opener.postMessage({{
                                 type: 'OAUTH_SUCCESS',
                                 ...authData
-                            }}, 'http://localhost:3000');
+                            }}, '*');  // Allow both 3000 and 5001 ports
                             
                             statusEl.textContent = 'VTrack notified successfully! (Secure mode)';
                             statusEl.style.color = '#28a745';
@@ -1219,7 +1219,7 @@ def _create_error_page(error_message, error_details=None):
                         error: '{error_message}',
                         details: '{error_details or ""}',
                         backend_port: 8080
-                    }}, 'http://localhost:3000');
+                    }}, '*');  // Allow both 3000 and 5001 ports
                 }}
                 
                 setTimeout(() => window.close(), 10000);

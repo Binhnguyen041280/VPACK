@@ -313,6 +313,70 @@ def analytics_page():
     """Analytics dashboard page"""
     return render_template('analytics.html')
 
+# Quick API endpoint for latest user (development)
+@app.route('/api/user/latest', methods=['GET', 'OPTIONS'])
+def get_latest_user_wrapper():
+    from flask_cors import cross_origin
+    
+    def get_latest_user():
+        """Get latest user from database with simple avatar download"""
+        try:
+            from modules.db_utils import get_db_connection
+            from modules.utils.simple_avatar import avatar_downloader
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT gmail_address, display_name, photo_url, last_login 
+                FROM user_profiles 
+                ORDER BY last_login DESC 
+                LIMIT 1
+            """)
+            
+            row = cursor.fetchone()
+            conn.close()
+            
+            if row:
+                gmail_address, display_name, photo_url, last_login = row
+                
+                # Download avatar to frontend public folder
+                local_avatar_path = avatar_downloader.download_avatar(gmail_address, photo_url)
+                
+                return {
+                    'success': True,
+                    'user': {
+                        'gmail_address': gmail_address,
+                        'display_name': display_name, 
+                        'photo_url': local_avatar_path,
+                        'original_photo_url': photo_url,  # Keep original for reference
+                        'last_login': last_login
+                    }
+                }
+            else:
+                return {'success': False, 'message': 'No users found'}
+                
+        except Exception as e:
+            logger.error(f"Error fetching latest user: {e}")
+            return {'success': False, 'message': str(e)}
+    
+    return cross_origin(origins=['http://localhost:3000'], supports_credentials=True)(get_latest_user)()
+
+# Static file serving for cached avatars
+@app.route('/static/avatars/<filename>')
+def serve_cached_avatar(filename):
+    """Serve cached avatar files"""
+    from flask import send_from_directory
+    import os
+    
+    avatar_dir = os.path.join(os.path.dirname(__file__), 'static', 'avatars')
+    
+    # Security: prevent directory traversal
+    if '..' in filename or '/' in filename:
+        return 'Invalid filename', 400
+        
+    return send_from_directory(avatar_dir, filename)
+
 # ==================== PAYMENT REDIRECT ROUTES ====================
 # FIXED: Unified payment redirect handling for both success and cancel scenarios
 
