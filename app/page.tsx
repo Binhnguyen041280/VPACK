@@ -3,10 +3,14 @@
 
 import Link from '@/components/link/Link';
 import MessageBoxChat from '@/components/MessageBox';
+import WelcomeMessage from '@/components/WelcomeMessage';
+import ChatMessage from '@/components/ChatMessage';
 import { ChatBody, OpenAIModel } from '@/types/types';
 import {
+  Box,
   Button,
   Flex,
+  HStack,
   Icon,
   Img,
   Input,
@@ -17,107 +21,415 @@ import {
   MenuItem,
   useColorModeValue,
 } from '@chakra-ui/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useContext, useRef } from 'react';
 import { MdAutoAwesome, MdEdit, MdPerson, MdAdd, MdAttachFile, MdImage, MdVideoFile } from 'react-icons/md';
 import Bg from '../public/img/chat/bg-image.png';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
+import { SidebarContext } from '@/contexts/SidebarContext';
+import { useUser } from '@/contexts/UserContext';
+import { useRoute } from '@/contexts/RouteContext';
+import StepNavigator from '@/components/navigation/StepNavigator';
+import CanvasMessage from '@/components/canvas/CanvasMessage';
+
+interface Message {
+  id: string;
+  content: string;
+  type: 'user' | 'bot' | 'canvas';
+  timestamp: Date;
+}
+
+// Step mapping constants
+const STEP_NUMBER_TO_KEY: { [key: string]: 'brandname' | 'location_time' | 'file_save' | 'video_source' | 'packing_area' | 'timing' } = {
+  '1': 'brandname',
+  '2': 'location_time', 
+  '3': 'file_save',
+  '4': 'video_source',
+  '5': 'packing_area',
+  '6': 'timing'
+};
+
+const STEP_KEY_TO_NUMBER: { [key: string]: number } = {
+  'brandname': 1,
+  'location_time': 2,
+  'file_save': 3,
+  'video_source': 4,
+  'packing_area': 5,
+  'timing': 6
+};
 
 export default function Chat(props: { apiKeyApp: string }) {
   // Input States
-  const [inputOnSubmit, setInputOnSubmit] = useState<string>('');
   const [inputCode, setInputCode] = useState<string>('');
-  // Response message
-  const [outputCode, setOutputCode] = useState<string>('');
-  // ChatGPT model
-  const [model, setModel] = useState<OpenAIModel>('gpt-4o');
+  // Messages history
+  const [messages, setMessages] = useState<Message[]>([]);
   // Loading state
   const [loading, setLoading] = useState<boolean>(false);
+  // Gmail OAuth state
+  const [gmailLoading, setGmailLoading] = useState<boolean>(false);
+  const [gmailError, setGmailError] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [authenticatedUser, setAuthenticatedUser] = useState<string>('');
+  // Configuration state - Updated for 6-step workflow
+  const [configStep, setConfigStep] = useState<'brandname' | 'location_time' | 'file_save' | 'video_source' | 'packing_area' | 'timing'>('brandname');
+  const [companyName, setCompanyName] = useState<string>('');
+  // Step completion tracking for 6 steps - All start as completed with defaults
+  const [stepCompleted, setStepCompleted] = useState<{[key: string]: boolean}>({
+    brandname: true,   // Default: "Alan_go"
+    location_time: true,   // Default: Auto-detected timezone/schedule
+    file_save: true,   // Default: Storage settings
+    video_source: true,   // Default: Camera settings
+    packing_area: true,   // Default: Detection zones
+    timing: true   // Default: Performance settings
+  });
+  // Track highest step reached for progress display
+  const [highestStepReached, setHighestStepReached] = useState<number>(1);
+  // UI Layout state
+  const [showConfigLayout, setShowConfigLayout] = useState<boolean>(false);
 
-  // API Key
-  // const [apiKey, setApiKey] = useState<string>(apiKeyApp);
-  const { currentColors } = useColorTheme();
+  // Color mode values - ALL at top level to prevent hooks order violation
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
   const inputColor = useColorModeValue('navy.700', 'white');
-  const brandColor = useColorModeValue(currentColors.brand500, 'white');
-  const gray = useColorModeValue('gray.500', 'white');
   const textColor = useColorModeValue('navy.700', 'white');
+  const loadingBubbleBg = useColorModeValue('gray.50', 'whiteAlpha.100');
   const placeholderColor = useColorModeValue(
     { color: 'gray.500' },
     { color: 'whiteAlpha.600' },
   );
-  const handleTranslate = async () => {
-    let apiKey = localStorage.getItem('apiKey');
-    setInputOnSubmit(inputCode);
-
-    // Chat post conditions(maximum number of characters, valid message etc.)
-    const maxCodeLength = model === 'gpt-4o' ? 700 : 700;
-
-    if (!apiKey?.includes('sk-')) {
-      alert('Please enter an API key.');
-      return;
-    }
-
-    if (!inputCode) {
-      alert('Please enter your message.');
-      return;
-    }
-
-    if (inputCode.length > maxCodeLength) {
-      alert(
-        `Please enter code less than ${maxCodeLength} characters. You are currently at ${inputCode.length} characters.`,
-      );
-      return;
-    }
-    setOutputCode(' ');
-    setLoading(true);
-    const controller = new AbortController();
-    const body: ChatBody = {
-      inputCode,
-      model,
-      apiKey,
-    };
-
-    // -------------- Fetch --------------
-    const response = await fetch('./api/chatAPI', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      signal: controller.signal,
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      setLoading(false);
-      if (response) {
-        alert(
-          'Something went wrong went fetching from the API. Make sure to use a valid API key.',
-        );
+  const errorBg = useColorModeValue('red.50', 'red.900');
+  const errorColor = useColorModeValue('red.700', 'red.200');
+  const errorBorderColor = useColorModeValue('red.200', 'red.700');
+  const chatBg = useColorModeValue('white', 'navy.900');
+  const chatBorderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
+  const chatTextColor = useColorModeValue('navy.700', 'white');
+  const inputBorderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
+  const inputTextColor = useColorModeValue('navy.700', 'white');
+  const loadingBg = useColorModeValue('gray.50', 'whiteAlpha.100');
+  const loadingTextColor = useColorModeValue('navy.700', 'white');
+  const mainBg = useColorModeValue('white', 'navy.900');
+  // Submit button text
+  const getSubmitButtonText = (): string => {
+    if (inputCode.trim() === '') {
+      // Empty input - check if current step is completed
+      if (stepCompleted[configStep]) {
+        return 'Continue';
+      } else {
+        return 'Submit';
       }
+    } else {
+      // Has input - always submit
+      return 'Submit';
+    }
+  };
+  // Scroll ref for auto-scroll
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  // OAuth refs
+  const popupRef = useRef<Window | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const messageHandlerRef = useRef<((event: MessageEvent) => void) | null>(null);
+
+  // API Key
+  // const [apiKey, setApiKey] = useState<string>(apiKeyApp);
+  const { currentColors } = useColorTheme();
+  const { toggleSidebar } = useContext(SidebarContext);
+  const { userInfo, updateUserInfo, refreshUserInfo } = useUser();
+  const { setCompanyName: setRouteCompanyName, startAnimation, stopAnimation } = useRoute();
+
+  // Auto-scroll to bottom when new message
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, loading]);
+
+  // Remove auto-authentication check for clean first-time experience
+
+  // Cleanup OAuth on component unmount
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+      if (messageHandlerRef.current) {
+        window.removeEventListener('message', messageHandlerRef.current);
+      }
+      if (popupRef.current && !popupRef.current.closed) {
+        popupRef.current.close();
+      }
+    };
+  }, []);
+
+  // Color values that depend on currentColors - after hooks initialization
+  const brandColor = useColorModeValue(currentColors.brand500, 'white');
+  const gray = useColorModeValue('gray.500', 'white');
+
+  // Handle Back Command - Go to Previous Step
+  const handleBackCommand = (): string => {
+    const stepOrder = ['brandname', 'location_time', 'file_save', 'video_source', 'packing_area', 'timing'];
+    const currentIndex = stepOrder.indexOf(configStep);
+    
+    if (currentIndex <= 0) {
+      return '⚠️ Already at the first step (Brandname).';
+    }
+    
+    const previousStep = stepOrder[currentIndex - 1] as typeof configStep;
+    setConfigStep(previousStep);
+    
+    return `← Back to Step ${currentIndex}: ${previousStep.replace('_', ' ')}\n\nYou can now modify settings for this step.`;
+  };
+
+  // Handle Step Jump Command - Direct Navigation
+  const handleStepJump = (stepNumber: string): string => {
+    const targetStep = STEP_NUMBER_TO_KEY[stepNumber];
+    if (!targetStep) {
+      return '❌ Invalid step number. Use: step 1, step 2, step 3, step 4, step 5, or step 6';
+    }
+    
+    setConfigStep(targetStep);
+    // Update highest step reached if moving forward
+    const newStepNumber = STEP_KEY_TO_NUMBER[targetStep];
+    if (newStepNumber > highestStepReached) {
+      setHighestStepReached(newStepNumber);
+    }
+    return `→ Jumped to Step ${stepNumber}: ${targetStep.replace('_', ' ')}\n\nYou can now configure this step.`;
+  };
+
+  // Handle Continue Command - Save defaults and transition
+  const handleContinueCommand = (): string => {
+    // Only proceed if current step is completed
+    if (!stepCompleted[configStep]) {
+      return 'Please complete the current step first before continuing.';
+    }
+
+    // Save current defaults before transitioning
+    switch (configStep) {
+      case 'brandname':
+        // Save default company name if not set
+        if (!companyName.trim()) {
+          setCompanyName('Alan_go');
+          setRouteCompanyName('Alan_go');
+          stopAnimation();
+          localStorage.setItem('userConfigured', 'true');
+          setShowConfigLayout(true);
+        }
+        setConfigStep('location_time');
+        setHighestStepReached(prev => Math.max(prev, 2));
+        return '📍 Step 2: Location & Time Configuration\n\nNow we\'ll set up your timezone, work schedule, and language preferences.\n\nThe system will auto-detect your location and timezone. You can modify these settings if needed.\n\n⚡ Auto-detection is running...';
+      
+      case 'location_time':
+        // Save default location/time settings
+        setConfigStep('file_save');
+        setHighestStepReached(prev => Math.max(prev, 3));
+        return '💾 Step 3: File Storage Settings\n\nLet\'s configure where your videos will be stored and how long to keep them.\n\nSet up storage path, retention policies, and file organization preferences.\n\n📁 Default storage location and settings are ready for your review.';
+      
+      case 'file_save':
+        // Save default file storage settings
+        setConfigStep('video_source');
+        setHighestStepReached(prev => Math.max(prev, 4));
+        return '📹 Step 4: Video Source Configuration\n\nTime to set up your camera and video recording settings.\n\nChoose between local camera, IP camera, or cloud storage sources. Configure quality, frame rate, and recording options.\n\n🎥 Default camera settings are optimized for monitoring.';
+      
+      case 'video_source':
+        // Save default video source settings
+        setConfigStep('packing_area');
+        setHighestStepReached(prev => Math.max(prev, 5));
+        return '📦 Step 5: Packing Area Detection\n\nDefine the detection zones and configure motion triggers.\n\nSet up areas to monitor, adjust sensitivity levels, and configure alert settings for when activity is detected.\n\n🎯 Detection zones and alert settings are ready for customization.';
+      
+      case 'packing_area':
+        // Save default packing area settings
+        setConfigStep('timing');
+        setHighestStepReached(prev => Math.max(prev, 6));
+        return '⏱️ Step 6: Timing & Performance\n\nFinal step! Configure processing speed and performance optimization.\n\nChoose between speed vs accuracy, set buffer times, and enable performance features like GPU acceleration.\n\n🚀 Performance settings are tuned for optimal monitoring efficiency.';
+      
+      case 'timing':
+        // Save default timing settings - Final step
+        return '✅ Step 6 completed. Timing settings saved.\n\n🎉 All configuration completed!\n\nAll 6 steps finished with your settings. Ready to start processing.';
+      
+      default:
+        return 'Configuration step completed.';
+    }
+  };
+
+  // Handle Submit Command - Confirm changes and mark step completed
+  const handleSubmitCommand = (): string => {
+    // Mark current step as completed
+    setStepCompleted(prev => ({ ...prev, [configStep]: true }));
+    
+    switch (configStep) {
+      case 'brandname':
+        // If no company name set, use default
+        if (!companyName.trim()) {
+          setCompanyName('Alan_go');
+          setRouteCompanyName('Alan_go');
+          stopAnimation();
+          localStorage.setItem('userConfigured', 'true');
+          setShowConfigLayout(true);
+          return '✅ Changes confirmed. Using default: "Alan_go"\n\nType "continue" to proceed to next step.';
+        } else {
+          setShowConfigLayout(true);
+          return `✅ Changes confirmed: "${companyName}"\n\nType "continue" to proceed to next step.`;
+        }
+      
+      case 'location_time':
+        return '✅ Location & Time settings confirmed.\n\nType "continue" to proceed to next step.';
+      
+      case 'file_save':
+        return '✅ File storage settings confirmed.\n\nType "continue" to proceed to next step.';
+      
+      case 'video_source':
+        return '✅ Video source settings confirmed.\n\nType "continue" to proceed to next step.';
+      
+      case 'packing_area':
+        return '✅ Packing area settings confirmed.\n\nType "continue" to proceed to next step.';
+      
+      case 'timing':
+        return '✅ Timing settings confirmed.\n\nConfiguration completed!';
+      
+      default:
+        return '✅ Settings confirmed.\n\nType "continue" to proceed.';
+    }
+  };
+
+  // Handle Edit Commands
+  const handleEditCommand = (newValue: string): string => {
+    if (!newValue.trim()) {
+      return 'Please provide a new value after "edit:"\n\nExample: edit: New Company Name';
+    }
+
+    switch (configStep) {
+      case 'company':
+      case 'location_time':
+        // Edit company name
+        setCompanyName(newValue);
+        setRouteCompanyName(newValue);
+        
+        // Stop company name blinking animation since user has set a name
+        stopAnimation();
+        
+        return `✅ Company name updated: "${newValue}"\n\nSidebar updated ✓\n\nTo continue: just click Submit (empty)`;
+      
+      default:
+        return `Edit not available for current step. Current value updated to: "${newValue}"`;
+    }
+  };
+
+  // Auto-response system
+  const getAutoResponse = (userInput: string): string => {
+    const input = userInput.toLowerCase().trim();
+    
+    // Handle Empty Submit
+    if (userInput.trim() === '') {
+      // Empty submit should behave like "continue" if step is completed
+      if (stepCompleted[configStep]) {
+        return handleContinueCommand();
+      } else {
+        // Step is incomplete - this is a Submit to confirm changes
+        return handleSubmitCommand();
+      }
+    }
+    
+    // Handle "continue" command
+    if (input === 'continue') {
+      return handleContinueCommand();
+    }
+
+    // Handle "next" command
+    if (input === 'next') {
+      return handleContinueCommand(); // Same as continue
+    }
+
+    // Handle "back" command
+    if (input === 'back') {
+      return handleBackCommand();
+    }
+
+    // Handle "step X" command
+    if (input.startsWith('step ')) {
+      const stepNumber = input.substring(5).trim();
+      return handleStepJump(stepNumber);
+    }
+    
+    // Handle Edit Pattern
+    if (input.startsWith('edit:')) {
+      return handleEditCommand(userInput.substring(5).trim());
+    }
+
+    // Handle "edit" command to reset current step
+    if (input === 'edit') {
+      // Mark current step as incomplete to allow editing
+      setStepCompleted(prev => ({ ...prev, [configStep]: false }));
+      
+      return `🔄 Returning to ${configStep.replace('_', ' ')} configuration...\n\nYou can now modify your settings.\n\nCommands: "continue", "edit", "help"`;
+    }
+    
+    // Handle help command
+    if (input === 'help') {
+      return 'Available commands:\n• "continue" or "next" - Proceed to next step\n• "back" - Go to previous step\n• "step X" - Jump to specific step (1-6)\n• "edit" - Modify current step settings\n• "help" - Show this help\n\nOr enter data to configure the current step.';
+    }
+    
+    // Handle company name input when in brandname step - Direct Submit (no intermediate step)
+    if (configStep === 'brandname' && userInput.trim().length > 0) {
+      setCompanyName(userInput.trim());
+      
+      // Update sidebar route name (replaces "Alan_go")
+      setRouteCompanyName(userInput.trim());
+      
+      // Stop company name blinking animation
+      stopAnimation();
+      
+      // Mark user as configured (allow future database operations)
+      localStorage.setItem('userConfigured', 'true');
+      setShowConfigLayout(true);
+      
+      // Mark step as completed immediately (direct submit pattern)
+      setStepCompleted(prev => ({ ...prev, brandname: true }));
+      
+      // Direct submit result - no intermediate confirmation
+      return `✅ Changes confirmed: "${userInput.trim()}"\n\nType "continue" to proceed to next step.`;
+    }
+    
+    // Handle empty submit for brandname (use default) - this is covered by handleSubmitCommand now
+    
+    // Default response for unrecognized input
+    return 'Available commands:\n• "continue" or "next" - Proceed to next step\n• "back" - Go to previous step\n• "step X" - Jump to specific step (1-6)\n• "edit" - Modify current step settings\n• "help" - Show this help\n\nOr enter data to configure the current step.';
+  };
+
+  const handleTranslate = () => {
+    // Validation - Allow empty input for Universal Confirmation Pattern
+    if (inputCode.length > 500) {
+      alert('Message too long. Please enter less than 500 characters.');
       return;
     }
 
-    const data = response.body;
+    // Add user message (only if not empty)
+    if (inputCode.trim()) {
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        content: inputCode.trim(),
+        type: 'user',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, userMessage]);
+    }
+    setLoading(true);
 
-    if (!data) {
+    // Simulate processing time
+    setTimeout(() => {
+      // Get auto response - pass original input to detect empty vs content
+      const botResponse = getAutoResponse(inputCode);
+      
+      // Add bot message
+      const botMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: botResponse,
+        type: 'bot',
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, botMessage]);
       setLoading(false);
-      alert('Something went wrong');
-      return;
-    }
+    }, 800); // Small delay for realistic feel
 
-    const reader = data.getReader();
-    const decoder = new TextDecoder();
-    let done = false;
-
-    while (!done) {
-      setLoading(true);
-      const { value, done: doneReading } = await reader.read();
-      done = doneReading;
-      const chunkValue = decoder.decode(value);
-      setOutputCode((prevCode) => prevCode + chunkValue);
-    }
-
-    setLoading(false);
+    // Clear input
+    setInputCode('');
   };
   // -------------- Copy Response --------------
   // const copyToClipboard = (text: string) => {
@@ -140,6 +452,283 @@ export default function Chat(props: { apiKeyApp: string }) {
 
   const handleChange = (Event: any) => {
     setInputCode(Event.target.value);
+  };
+
+  // Gmail OAuth handler
+  const handleGmailAuth = async () => {
+    if (gmailLoading) {
+      console.log('⚠️ Authentication already in progress, skipping...');
+      return;
+    }
+
+    try {
+      setGmailLoading(true);
+      setGmailError(null);
+      
+      console.log('🔐 Starting Gmail authentication...');
+
+      const response = await fetch('http://localhost:8080/api/cloud/gmail-auth', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          action: 'initiate_auth'
+        })
+      });
+
+      console.log('📡 Response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Authentication failed: ${response.status} - ${errorText}`);
+      }
+
+      const authData = await response.json();
+      console.log('✅ Auth data received:', authData);
+
+      if (!authData.success || !authData.auth_url) {
+        throw new Error(authData.message || 'Failed to get authorization URL');
+      }
+
+      console.log('🌐 Opening OAuth popup...');
+      
+      // Close any existing popup
+      if (popupRef.current && !popupRef.current.closed) {
+        popupRef.current.close();
+      }
+      
+      // Clear any existing intervals/listeners
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+      if (messageHandlerRef.current) {
+        window.removeEventListener('message', messageHandlerRef.current);
+      }
+      
+      // Open popup window
+      const popup = window.open(
+        authData.auth_url,
+        'gmail_auth',
+        'width=600,height=700,scrollbars=yes,resizable=yes'
+      );
+
+      if (!popup) {
+        throw new Error('Popup blocked. Please allow popups for this site.');
+      }
+      
+      popupRef.current = popup;
+
+      // Listen for popup completion using message passing
+      const handleMessage = async (event: MessageEvent) => {
+        // Only accept messages from our OAuth callback
+        if (event.origin !== 'http://localhost:8080') {
+          return;
+        }
+
+        console.log('📨 Received OAuth message:', event.data);
+
+        if (event.data.type === 'GMAIL_AUTH_SUCCESS') {
+          // Cleanup listeners and intervals
+          if (messageHandlerRef.current) {
+            window.removeEventListener('message', messageHandlerRef.current);
+            messageHandlerRef.current = null;
+          }
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          
+          // Close popup
+          if (popupRef.current && !popupRef.current.closed) {
+            popupRef.current.close();
+          }
+          popupRef.current = null;
+          
+          setGmailLoading(false);
+          
+          console.log('✅ Authentication successful:', event.data.user_email);
+          
+          // Update authentication state AND sidebar with user info
+          setIsAuthenticated(true);
+          setAuthenticatedUser(event.data.user_email);
+          
+          // Update sidebar with authenticated user info immediately
+          updateUserInfo({
+            name: event.data.user_info?.name || event.data.user_email.split('@')[0],
+            email: event.data.user_email,
+            avatar: event.data.user_info?.photo_url || '/img/avatars/avatar4.png',
+            authenticated: true
+          });
+          
+          // Add success message to chat
+          const successMessage: Message = {
+            id: Date.now().toString(),
+            content: `🎉 Welcome ${event.data.user_email}! You're now signed in with Gmail.`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          
+          // Add configuration message
+          const configMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `⚙️ Initial configuration is starting...\nLet's start with your company information.`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          
+          // Add messages without canvas (canvas is now fixed in Configuration Area)
+          setMessages(prev => [...prev, successMessage, configMessage]);
+          
+          // Trigger 3-panel layout immediately after OAuth
+          setShowConfigLayout(true);
+          
+          // Start company name blinking animation
+          startAnimation();
+          
+        } else if (event.data.type === 'GMAIL_AUTH_ERROR') {
+          // Cleanup listeners and intervals
+          if (messageHandlerRef.current) {
+            window.removeEventListener('message', messageHandlerRef.current);
+            messageHandlerRef.current = null;
+          }
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          
+          // Close popup
+          if (popupRef.current && !popupRef.current.closed) {
+            popupRef.current.close();
+          }
+          popupRef.current = null;
+          
+          setGmailLoading(false);
+          setGmailError(event.data.message || 'Authentication failed');
+        }
+      };
+
+      // Store reference and listen for messages from popup
+      messageHandlerRef.current = handleMessage;
+      window.addEventListener('message', handleMessage);
+
+      // Fallback: Check popup status
+      const checkPopup = setInterval(() => {
+        // Skip if popup ref is null (already cleaned up)
+        if (!popupRef.current) {
+          clearInterval(checkPopup);
+          return;
+        }
+        
+        try {
+          if (popupRef.current.closed) {
+            // Cleanup
+            clearInterval(checkPopup);
+            intervalRef.current = null;
+            
+            if (messageHandlerRef.current) {
+              window.removeEventListener('message', messageHandlerRef.current);
+              messageHandlerRef.current = null;
+            }
+            
+            popupRef.current = null;
+            setGmailLoading(false);
+            
+            // Check if authentication was successful (fallback)
+            const checkAuthStatus = async () => {
+              try {
+                const statusResponse = await fetch('http://localhost:8080/api/cloud/gmail-auth-status', {
+                  credentials: 'include'
+                });
+                
+                if (statusResponse.ok) {
+                  const result = await statusResponse.json();
+                  if (result.success && result.authenticated) {
+                    console.log('✅ Authentication successful (fallback check):', result.user_email);
+                    
+                    // Update authentication state AND sidebar with user info
+                    setIsAuthenticated(true);
+                    setAuthenticatedUser(result.user_email);
+                    
+                    // Update sidebar with authenticated user info immediately  
+                    updateUserInfo({
+                      name: result.user_info?.name || result.user_email.split('@')[0],
+                      email: result.user_email,
+                      avatar: result.user_info?.photo_url || '/img/avatars/avatar4.png',
+                      authenticated: true
+                    });
+                    
+                    // Add success message and auto-trigger canvas
+                    const successMessage: Message = {
+                      id: Date.now().toString(),
+                      content: `🎉 Welcome ${result.user_email}! You're now signed in with Gmail.`,
+                      type: 'bot',
+                      timestamp: new Date()
+                    };
+                    
+                    const configMessage: Message = {
+                      id: (Date.now() + 1).toString(),
+                      content: `⚙️ Initial configuration is starting...\nLet's start with your company information.`,
+                      type: 'bot',
+                      timestamp: new Date()
+                    };
+                    
+                    // Add messages without canvas (canvas is now fixed in Configuration Area)
+                    setMessages(prev => [...prev, successMessage, configMessage]);
+                    
+                    // Trigger 3-panel layout immediately after OAuth
+                    setShowConfigLayout(true);
+                    
+                    // Start company name blinking animation
+                    startAnimation();
+                  } else {
+                    setGmailError('Authentication was not completed successfully');
+                  }
+                } else {
+                  setGmailError('Failed to verify authentication status');
+                }
+              } catch (error) {
+                console.error('Error checking auth status:', error);
+                setGmailError('Failed to verify authentication');
+              }
+            };
+            
+            setTimeout(checkAuthStatus, 1000);
+          }
+        } catch (coopError) {
+          // Silently ignore COOP errors - this is expected with OAuth providers
+        }
+      }, 2000);  // Check every 2 seconds
+      
+      intervalRef.current = checkPopup;
+
+      // Timeout after 5 minutes
+      setTimeout(() => {
+        if (popupRef.current && !popupRef.current.closed) {
+          // Cleanup
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          if (messageHandlerRef.current) {
+            window.removeEventListener('message', messageHandlerRef.current);
+            messageHandlerRef.current = null;
+          }
+          
+          popupRef.current.close();
+          popupRef.current = null;
+          setGmailLoading(false);
+          setGmailError('Authentication timeout - please try again');
+        }
+      }, 300000);
+
+    } catch (error: any) {
+      console.error('❌ Gmail authentication error:', error);
+      setGmailLoading(false);
+      setGmailError(error.message);
+    }
   };
 
   // File upload handlers
@@ -185,221 +774,487 @@ export default function Chat(props: { apiKeyApp: string }) {
     input.click();
   };
 
+  // Step Navigator click handler
+  const handleStepClick = (stepKey: string) => {
+    setConfigStep(stepKey as any);
+  };
+
+  // Handle canvas changes - mark step incomplete for submission
+  const handleStepChange = (stepName: string, data: any) => {
+    // Mark step as incomplete when modified - requires Submit
+    // No intermediate message - user will Submit directly
+    setStepCompleted(prev => ({ ...prev, [stepName]: false }));
+  };
+
   return (
     <Flex
       w="100%"
       pt={{ base: '70px', md: '0px' }}
       direction="column"
       position="relative"
+      overflow="hidden"
+      h="100vh"
     >
-      <Img
-        src={Bg.src}
-        position={'absolute'}
-        w="350px"
-        left="50%"
-        top="50%"
-        transform={'translate(-50%, -50%)'}
-      />
-      <Flex
-        direction="column"
-        mx="auto"
-        w={{ base: '100%', md: '100%', xl: '100%' }}
-        minH={{ base: '75vh', '2xl': '85vh' }}
-        maxW="1000px"
-      >
-        {/* Main Box */}
+      {/* Background Image - only show in single-panel mode */}
+      {!showConfigLayout && (
+        <Img
+          src={Bg.src}
+          position={'absolute'}
+          w="350px"
+          left="50%"
+          top="50%"
+          transform={'translate(-50%, -50%)'}
+        />
+      )}
+      
+      {/* Conditional Layout Rendering */}
+      {showConfigLayout ? (
+        // 3-Panel Configuration Layout  
         <Flex
           direction="column"
-          w="100%"
           mx="auto"
-          display={outputCode ? 'flex' : 'none'}
-          mb={'auto'}
+          w="100%"
+          maxW="1400px"
+          h="100vh"
+          p="20px"
+          gap="20px"
         >
-          <Flex w="100%" align={'center'} mb="10px">
-            <Flex
-              borderRadius="full"
-              justify="center"
-              align="center"
-              bg={'transparent'}
-              border="1px solid"
-              borderColor={borderColor}
-              me="20px"
-              h="40px"
-              minH="40px"
-              minW="40px"
-            >
-              <Icon
-                as={MdPerson}
-                width="20px"
-                height="20px"
-                color={brandColor}
-              />
-            </Flex>
-            <Flex
-              p="22px"
-              border="1px solid"
-              borderColor={borderColor}
-              borderRadius="14px"
-              w="100%"
-              zIndex={'2'}
-            >
-              <Text
-                color={textColor}
-                fontWeight="600"
-                fontSize={{ base: 'sm', md: 'md' }}
-                lineHeight={{ base: '24px', md: '26px' }}
-              >
-                {inputOnSubmit}
-              </Text>
-              <Icon
-                cursor="pointer"
-                as={MdEdit}
-                ms="auto"
-                width="20px"
-                height="20px"
-                color={gray}
-              />
-            </Flex>
-          </Flex>
-          <Flex w="100%">
-            <Flex
-              borderRadius="full"
-              justify="center"
-              align="center"
-              bg={currentColors.gradient}
-              me="20px"
-              h="40px"
-              minH="40px"
-              minW="40px"
-            >
-              <Icon
-                as={MdAutoAwesome}
-                width="20px"
-                height="20px"
-                color="white"
-              />
-            </Flex>
-            <MessageBoxChat output={outputCode} />
-          </Flex>
-        </Flex>
-        {/* Chat Input */}
-        <Flex
-          ms={{ base: '0px', xl: '60px' }}
-          mt={{ base: '50vh', '2xl': '55vh' }}
-          justifySelf={'flex-end'}
-          alignItems="center"
-        >
-          {/* Add Button */}
-          <Menu>
-            <MenuButton
-              as={Button}
-              variant="transparent"
-              border="1px solid"
-              borderColor={borderColor}
-              borderRadius="full"
-              w="34px"
-              h="34px"
-              px="0px"
-              minW="34px"
-              maxW="34px"
-              minH="34px"
-              maxH="34px"
-              me="10px"
-              justifyContent={'center'}
-              alignItems="center"
-              flexShrink={0}
-              _hover={{ bg: useColorModeValue('gray.50', 'whiteAlpha.100') }}
-            >
-              <Icon as={MdAdd} width="16px" height="16px" color={textColor} />
-            </MenuButton>
-            <MenuList
-              boxShadow={useColorModeValue(
-                '14px 17px 40px 4px rgba(112, 144, 176, 0.18)',
-                '0px 41px 75px #081132',
-              )}
-              p="10px"
-              borderRadius="20px"
-              bg={useColorModeValue('white', 'navy.800')}
-              border="none"
-            >
-              <MenuItem
-                onClick={handleFileUpload}
-                _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
-                borderRadius="8px"
-                p="10px"
-              >
-                <Icon as={MdAttachFile} width="16px" height="16px" me="8px" />
-                <Text fontSize="sm">Add File</Text>
-              </MenuItem>
-              <MenuItem
-                onClick={handleImageUpload}
-                _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
-                borderRadius="8px"
-                p="10px"
-              >
-                <Icon as={MdImage} width="16px" height="16px" me="8px" />
-                <Text fontSize="sm">Add Image</Text>
-              </MenuItem>
-              <MenuItem
-                onClick={handleVideoUpload}
-                _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
-                borderRadius="8px"
-                p="10px"
-              >
-                <Icon as={MdVideoFile} width="16px" height="16px" me="8px" />
-                <Text fontSize="sm">Add Video</Text>
-              </MenuItem>
-            </MenuList>
-          </Menu>
-          
-          <Input
-            minH="54px"
-            h="100%"
-            border="1px solid"
-            borderColor={borderColor}
-            borderRadius="45px"
-            p="15px 20px"
-            me="10px"
-            fontSize="sm"
-            fontWeight="500"
-            _focus={{ borderColor: 'none' }}
-            color={inputColor}
-            _placeholder={placeholderColor}
-            placeholder="Type your message here..."
-            onChange={handleChange}
-          />
-          <Button
-            bg={currentColors.gradient}
-            color="white"
-            py="20px"
-            px="16px"
-            fontSize="sm"
-            borderRadius="45px"
-            ms="auto"
-            w={{ base: '160px', md: '210px' }}
-            h="54px"
-            boxShadow="none"
-            _hover={{
-              boxShadow: `0px 21px 27px -10px ${currentColors.primary}48 !important`,
-              bg: `${currentColors.gradient} !important`,
-              _disabled: {
-                bg: currentColors.gradient,
-              },
-            }}
-            _focus={{
-              bg: currentColors.gradient,
-            }}
-            _active={{
-              bg: currentColors.gradient,
-            }}
-            onClick={handleTranslate}
-            isLoading={loading ? true : false}
+          {/* Top Row - Content Area */}
+          <Flex
+            flex="1"
+            direction="row"
+            gap="20px"
+            overflow="hidden"
           >
-            Submit
-          </Button>
+            {/* Left: Chat History Panel - 35% */}
+            <Box
+              w="35%"
+              minW="300px"
+            >
+              {/* Chat History - Scrollable */}
+              <Flex
+                direction="column"
+                bg={chatBg}
+                borderRadius="20px"
+                border="1px solid"
+                borderColor={chatBorderColor}
+                p="20px"
+                h="100%"
+              >
+                {/* Chat Header */}
+                <Text
+                  fontSize="lg"
+                  fontWeight="700"
+                  color={chatTextColor}
+                  mb="20px"
+                  textAlign="center"
+                  flexShrink={0}
+                >
+                  💬 Chat Control
+                </Text>
+                
+                {/* Chat Messages - Scrollable */}
+                <Box
+                  flex="1"
+                  overflow="auto"
+                  mb="20px"
+                >
+                  {/* Chat Messages History */}
+                  {messages.map((message) => (
+                    message.type !== 'canvas' && (
+                      <ChatMessage
+                        key={message.id}
+                        content={message.content}
+                        type={message.type}
+                        timestamp={message.timestamp}
+                      />
+                    )
+                  ))}
+                  
+                  {/* Loading indicator */}
+                  {loading && (
+                    <Flex w="100%" mb="16px" align="flex-start">
+                      <Flex
+                        borderRadius="full"
+                        justify="center"
+                        align="center"
+                        bg={currentColors.gradient}
+                        me="12px"
+                        h="32px"
+                        minH="32px"
+                        minW="32px"
+                        flexShrink={0}
+                      >
+                        <Icon
+                          as={MdAutoAwesome}
+                          width="16px"
+                          height="16px"
+                          color="white"
+                        />
+                      </Flex>
+                      <Flex
+                        bg={loadingBg}
+                        borderRadius="16px"
+                        px="16px"
+                        py="12px"
+                        align="center"
+                      >
+                        <Text fontSize="sm" color={chatTextColor}>
+                          Typing...
+                        </Text>
+                      </Flex>
+                    </Flex>
+                  )}
+                </Box>
+              </Flex>
+            </Box>
+            
+            {/* Right: Navigator and Canvas - 65% */}
+            <Flex
+              w="65%"
+              direction="row"
+              gap="20px"
+              align="end"
+            >
+              {/* Step Navigator Panel - 30% of right side */}
+              <Box
+                w="30%"
+                minW="200px"
+                alignSelf="end"
+              >
+                <StepNavigator
+                  currentStep={configStep}
+                  completedSteps={stepCompleted}
+                  highestStepReached={highestStepReached}
+                  onStepClick={handleStepClick}
+                />
+              </Box>
+              
+              {/* Configuration Area Panel - 70% of right side */}
+              <Box
+                w="70%"
+                minW="400px"
+                alignSelf="end"
+              >
+                <Box
+                  bg={chatBg}
+                  borderRadius="20px"
+                  border="1px solid"
+                  borderColor={chatBorderColor}
+                  p="20px"
+                  h="fit-content"
+                  sx={{
+                    '& > div': {
+                      marginBottom: 0
+                    },
+                    '& > div > div:first-of-type': {
+                      display: 'none' // Hide bot avatar
+                    }
+                  }}
+                >
+                  <CanvasMessage 
+                    configStep={configStep} 
+                    onStepChange={handleStepChange}
+                  />
+                </Box>
+              </Box>
+            </Flex>
+          </Flex>
+          
+          {/* Bottom Row - Chat Input Only */}
+          <Box
+            flexShrink={0}
+            w="35%"
+            minW="300px"
+          >
+            <Box
+              bg={chatBg}
+              borderRadius="20px"
+              border="1px solid"
+              borderColor={chatBorderColor}
+              p="20px"
+            >
+              <HStack spacing="10px">
+                <Input
+                  h="54px"
+                  border="1px solid"
+                  borderColor={chatBorderColor}
+                  borderRadius="45px"
+                  p="15px 20px"
+                  fontSize="sm"
+                  fontWeight="500"
+                  _focus={{ borderColor: 'none' }}
+                  color={chatTextColor}
+                  _placeholder={placeholderColor}
+                  placeholder="Type command here..."
+                  value={inputCode}
+                  onChange={handleChange}
+                />
+                <Button
+                  bg={currentColors.gradient}
+                  color="white"
+                  py="20px"
+                  px="16px"
+                  fontSize="sm"
+                  borderRadius="45px"
+                  w="120px"
+                  h="54px"
+                  boxShadow="none"
+                  _hover={{
+                    boxShadow: `0px 21px 27px -10px ${currentColors.primary}48 !important`,
+                    bg: `${currentColors.gradient} !important`,
+                    _disabled: {
+                      bg: currentColors.gradient,
+                    },
+                  }}
+                  _focus={{
+                    bg: currentColors.gradient,
+                  }}
+                  _active={{
+                    bg: currentColors.gradient,
+                  }}
+                  onClick={handleTranslate}
+                  isLoading={loading ? true : false}
+                >
+                  {getSubmitButtonText()}
+                </Button>
+              </HStack>
+            </Box>
+          </Box>
         </Flex>
-
-      </Flex>
+      ) : (
+        // Original Single-Panel Layout
+        <Flex
+          direction="column"
+          mx="auto"
+          w={{ base: '100%', md: '100%', xl: '100%' }}
+          minH="100vh"
+          maxW="1000px"
+          position="relative"
+        >
+          {/* Content Area */}
+          <Flex direction="column" flex="1" pb="100px" pt="20px" overflowY="auto">
+            {/* Main Box */}
+            <Flex
+              direction="column"
+              w="100%"
+              mx="auto"
+              mb={'auto'}
+            >
+              {/* Welcome Message */}
+              <WelcomeMessage />
+              
+              {/* Gmail Sign Up Button - Only show if not authenticated */}
+              {!isAuthenticated && (
+                <Flex w="100%" mb="24px" align="flex-start">
+                  <Flex
+                    borderRadius="full"
+                    justify="center"
+                    align="center"
+                    bg={currentColors.gradient}
+                    me="12px"
+                    h="32px"
+                    minH="32px"
+                    minW="32px"
+                    flexShrink={0}
+                  >
+                    <Icon
+                      as={MdAutoAwesome}
+                      width="16px"
+                      height="16px"
+                      color="white"
+                    />
+                  </Flex>
+                  <Button
+                    bg={currentColors.gradient}
+                    color="white"
+                    py="12px"
+                    px="16px"
+                    fontSize="sm"
+                    borderRadius="16px"
+                    boxShadow="none"
+                    leftIcon={<Icon as={MdPerson} width="18px" height="18px" />}
+                    isLoading={gmailLoading}
+                    loadingText="Authenticating..."
+                    _hover={{
+                      boxShadow: `0px 21px 27px -10px ${currentColors.primary}48 !important`,
+                      bg: `${currentColors.gradient} !important`,
+                      _disabled: {
+                        bg: currentColors.gradient,
+                      },
+                    }}
+                    _focus={{
+                      bg: currentColors.gradient,
+                    }}
+                    _active={{
+                      bg: currentColors.gradient,
+                    }}
+                    onClick={handleGmailAuth}
+                    disabled={gmailLoading}
+                  >
+                    {gmailLoading ? 'Authenticating...' : 'Sign up with Gmail'}
+                  </Button>
+                </Flex>
+              )}
+              
+              {/* Gmail OAuth Error Display */}
+              {gmailError && (
+                <Flex w="100%" mb="24px" align="flex-start">
+                  <Flex
+                    borderRadius="full"
+                    justify="center"
+                    align="center"
+                    bg="red.500"
+                    me="12px"
+                    h="32px"
+                    minH="32px"
+                    minW="32px"
+                    flexShrink={0}
+                  >
+                    <Text color="white" fontSize="16px">❌</Text>
+                  </Flex>
+                  <Flex
+                    bg={errorBg}
+                    borderRadius="16px"
+                    px="16px"
+                    py="12px"
+                    maxW="75%"
+                    color={errorColor}
+                    fontSize={{ base: 'sm', md: 'md' }}
+                    lineHeight={{ base: '20px', md: '22px' }}
+                    fontWeight="400"
+                    border="1px solid"
+                    borderColor={errorBorderColor}
+                    direction="column"
+                  >
+                    <Text fontWeight="600" mb="8px">Authentication Error</Text>
+                    <Text fontSize="sm" mb="12px">{gmailError}</Text>
+                    <Button
+                      size="sm"
+                      colorScheme="red"
+                      variant="outline"
+                      onClick={() => setGmailError(null)}
+                    >
+                      Dismiss
+                    </Button>
+                  </Flex>
+                </Flex>
+              )}
+              
+              {/* Chat Messages History - No canvas messages */}
+              {messages.map((message) => (
+                message.type !== 'canvas' && (
+                  <ChatMessage
+                    key={message.id}
+                    content={message.content}
+                    type={message.type}
+                    timestamp={message.timestamp}
+                  />
+                )
+              ))}
+              
+              {/* Loading indicator */}
+              {loading && (
+                <Flex w="100%" mb="16px" align="flex-start">
+                  <Flex
+                    borderRadius="full"
+                    justify="center"
+                    align="center"
+                    bg={currentColors.gradient}
+                    me="12px"
+                    h="32px"
+                    minH="32px"
+                    minW="32px"
+                    flexShrink={0}
+                  >
+                    <Icon
+                      as={MdAutoAwesome}
+                      width="16px"
+                      height="16px"
+                      color="white"
+                    />
+                  </Flex>
+                  <Flex
+                    bg={loadingBg}
+                    borderRadius="16px"
+                    px="16px"
+                    py="12px"
+                    align="center"
+                  >
+                    <Text fontSize="sm" color={chatTextColor}>
+                      Typing...
+                    </Text>
+                  </Flex>
+                </Flex>
+              )}
+              
+              {/* Scroll anchor */}
+              <div ref={messagesEndRef} />
+            </Flex>
+          </Flex>
+          
+          {/* Chat Input */}
+          <Flex
+            position="fixed"
+            bottom="0"
+            left={toggleSidebar ? 'calc(95px + (100vw - 95px - 800px) / 2)' : 'calc(288px + (100vw - 288px - 800px) / 2)'}
+            w="800px"
+            pt="20px"
+            pb="20px"
+            bg={mainBg}
+            alignItems="center"
+            zIndex={10}
+            transition="left 0.2s linear"
+          >
+            <Input
+              minH="54px"
+              h="100%"
+              border="1px solid"
+              borderColor={chatBorderColor}
+              borderRadius="45px"
+              p="15px 20px"
+              me="10px"
+              fontSize="sm"
+              fontWeight="500"
+              _focus={{ borderColor: 'none' }}
+              color={chatTextColor}
+              _placeholder={placeholderColor}
+              placeholder="Type your message here..."
+              value={inputCode}
+              onChange={handleChange}
+            />
+            <Button
+              bg={currentColors.gradient}
+              color="white"
+              py="20px"
+              px="16px"
+              fontSize="sm"
+              borderRadius="45px"
+              ms="auto"
+              w={{ base: '160px', md: '210px' }}
+              h="54px"
+              boxShadow="none"
+              _hover={{
+                boxShadow: `0px 21px 27px -10px ${currentColors.primary}48 !important`,
+                bg: `${currentColors.gradient} !important`,
+                _disabled: {
+                  bg: currentColors.gradient,
+                },
+              }}
+              _focus={{
+                bg: currentColors.gradient,
+              }}
+              _active={{
+                bg: currentColors.gradient,
+              }}
+              onClick={handleTranslate}
+              isLoading={loading ? true : false}
+            >
+              {getSubmitButtonText()}
+            </Button>
+          </Flex>
+        </Flex>
+      )}
     </Flex>
   );
 }

@@ -1,13 +1,12 @@
 'use client';
 import React, { ReactNode, useState } from 'react';
 import type { AppProps } from 'next/app';
-import { ChakraProvider, Box, Portal, useDisclosure } from '@chakra-ui/react';
+import { ChakraProvider, Box, useDisclosure } from '@chakra-ui/react';
 import theme from '@/theme/theme';
 import routes from '@/routes';
 import Sidebar from '@/components/sidebar/Sidebar';
-import Footer from '@/components/footer/FooterAdmin';
-import Navbar from '@/components/navbar/NavbarAdmin';
-import { getActiveRoute, getActiveNavbar } from '@/utils/navigation';
+import ToggleButtons from '@/components/ToggleButtons';
+import { SidebarContext } from '@/contexts/SidebarContext';
 import { usePathname } from 'next/navigation';
 import '@/styles/App.css';
 import '@/styles/Contact.css';
@@ -16,6 +15,8 @@ import '@/styles/MiniCalendar.css';
 import '@/styles/cursor.css';
 import AppWrappers from './AppWrappers';
 import { ColorThemeProvider } from '@/contexts/ColorThemeContext';
+import { UserProvider } from '@/contexts/UserContext';
+import { RouteProvider } from '@/contexts/RouteContext';
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -30,21 +31,28 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <body id={'root'}>
         <ColorThemeProvider>
-          <AppWrappers>
+          <UserProvider>
+            <RouteProvider>
+              <AppWrappers>
           {/* <ChakraProvider theme={theme}> */}
           {pathname?.includes('register') || pathname?.includes('sign-in') ? (
             children
           ) : (
+            <SidebarContext.Provider value={{ 
+              toggleSidebar: sidebarCollapsed, 
+              setToggleSidebar: setSidebarCollapsed 
+            }}>
             <Box>
               <Sidebar routes={routes} collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
+              <ToggleButtons />
               <Box
                 pt={{ base: '60px', md: '100px' }}
                 float="right"
                 minHeight="100vh"
-                height="100%"
+                height="100vh"
                 overflow="auto"
                 position="relative"
-                maxHeight="100%"
+                maxHeight="100vh"
                 w={{ 
                   base: '100%', 
                   xl: sidebarCollapsed ? 'calc( 100% - 79px )' : 'calc( 100% - 272px )' 
@@ -58,34 +66,24 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 transitionProperty="top, bottom, width"
                 transitionTimingFunction="linear, linear, ease"
               >
-                <Portal>
-                  <Box>
-                    <Navbar
-                      onOpen={onOpen}
-                      logoText={'V.PACK Dashboard'}
-                      brandText={getActiveRoute(routes, pathname)}
-                      secondary={getActiveNavbar(routes, pathname)}
-                    />
-                  </Box>
-                </Portal>
                 <Box
                   mx="auto"
                   p={{ base: '20px', md: '30px' }}
                   pe="20px"
-                  minH="100vh"
-                  pt="50px"
+                  h="100%"
+                  overflow="hidden"
                 >
                   {children}
                   {/* <Component apiKeyApp={apiKey} {...pageProps} /> */}
                 </Box>
-                <Box>
-                  <Footer />
-                </Box>
               </Box>
             </Box>
+            </SidebarContext.Provider>
           )}
           {/* </ChakraProvider> */}
-        </AppWrappers>
+              </AppWrappers>
+            </RouteProvider>
+          </UserProvider>
         </ColorThemeProvider>
       </body>
     </html>
