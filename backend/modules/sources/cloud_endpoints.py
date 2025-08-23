@@ -854,11 +854,21 @@ def cloud_oauth_callback():
             'message': f'Google Drive authentication completed for {user_info["email"]}',
             'backend_port': 8080,
             'timestamp': datetime.now().isoformat(),
-            'security_mode': 'encrypted_storage'  # Indicate security enhancement
-            # ❌ REMOVED: 'credentials' field - no longer exposed to frontend
+            'security_mode': 'encrypted_storage',  # Indicate security enhancement
+            # ✅ ADDED BACK: 'credentials' field for list_subfolders endpoint
+            'credentials': {
+                'token': credentials.token,
+                'refresh_token': credentials.refresh_token,
+                'token_uri': credentials.token_uri,
+                'client_id': credentials.client_id,
+                'client_secret': credentials.client_secret,
+                'scopes': credentials.scopes
+            }
         }    
             # Store in session with longer lifetime
         session['auth_result'] = session_result
+        session['session_token'] = session_credentials['session_token']  # Store session token for backend access
+        session['user_email'] = user_info['email']  # Store user email for fallback
         session.permanent = True
         
         # 🔧 FIX: Clear Google Drive OAuth session data

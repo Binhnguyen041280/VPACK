@@ -18,6 +18,7 @@ import {
 import { MdAutoAwesome, MdVideoLibrary, MdCamera } from 'react-icons/md';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
 import LocationTimeCanvas from './LocationTimeCanvas';
+import GoogleDriveFolderTree from './GoogleDriveFolderTree';
 import { useState, useEffect, useRef } from 'react';
 import React from 'react';
 
@@ -399,6 +400,12 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   const [selectedFolder, setSelectedFolder] = useState<any>(null);
   const [folderTreeLoading, setFolderTreeLoading] = useState(false);
   
+  // NEW: Tree-based folder selection
+  const [selectedTreeFolders, setSelectedTreeFolders] = useState<any[]>([]);
+  
+  // Session token stored in ref to avoid hooks order issues
+  const driveSessionTokenRef = React.useRef<string>('');
+  
   // Check Google Drive connection status on component mount
   React.useEffect(() => {
     checkDriveConnectionStatus();
@@ -427,23 +434,66 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   const loadInitialFolders = async () => {
     try {
       setFolderTreeLoading(true);
+      console.log('🔄 Loading Google Drive folders...');
+      console.log('🔑 Using session token:', driveSessionTokenRef.current ? 'Available' : 'None');
+      console.log('🔑 Session token value:', driveSessionTokenRef.current ? `${driveSessionTokenRef.current.substring(0, 20)}...` : 'Empty');
       
-      const response = await fetch('http://localhost:8080/api/cloud/folders/initialize', {
+      // Prepare headers with session token if available
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(driveSessionTokenRef.current && { 'Authorization': `Bearer ${driveSessionTokenRef.current}` })
+      };
+      
+      // Use the new lazy folder endpoint with session token authentication
+      const response = await fetch('http://localhost:8080/api/cloud/list_subfolders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include',
-        body: JSON.stringify({ max_folders: 30 })
+        body: JSON.stringify({ 
+          parent_id: 'root',
+          max_results: 50 
+        })
       });
       
+      console.log('📡 Folder API response status:', response.status);
       const data = await response.json();
+      console.log('📊 Folder API response data:', data);
       
       if (data.success && data.folders) {
+        console.log(`✅ Found ${data.folders.length} real Google Drive folders`);
         setDriveFolders(data.folders);
+      } else {
+        console.error('⚠️ Google Drive API error:', data.message);
+        setDriveFolders([]);
+        
+        // Show detailed error information for debugging
+        if (data.requires_auth) {
+          console.error('🔐 Authentication required - please reconnect Google Drive');
+        } else if (data.error_type) {
+          console.error(`🔧 API Error Type: ${data.error_type}`);
+        }
       }
+      
     } catch (error) {
-      console.error('Failed to load initial folders:', error);
+      console.error('❌ Failed to load folders:', error);
+      setDriveFolders([]);
     } finally {
       setFolderTreeLoading(false);
+    }
+  };
+
+  // NEW: Handle tree folder selection
+  const handleTreeFolderSelection = (folders: any[]) => {
+    console.log('📁 Tree folder selection updated:', folders);
+    setSelectedTreeFolders(folders);
+    
+    // Update step data with tree selection
+    if (onStepChange) {
+      onStepChange('video_source', { 
+        sourceType: 'cloud_storage',
+        selectedTreeFolders: folders,
+        folderCount: folders.length
+      });
     }
   };
 
@@ -561,7 +611,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 </Text>
                 
                 {/* Connection Status */}
-                <Box borderRadius="8px" bg={useColorModeValue('blue.50', 'blue.900')} p="12px">
+                <Box borderRadius="8px" bg={cardBg} p="12px">
                   <VStack align="stretch" spacing="8px">
                     <HStack justify="space-between" align="center">
                       <VStack align="start" spacing="2px">
@@ -627,19 +677,24 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                               // Listen for OAuth completion
                               const handleMessage = async (event) => {
                                 console.log('📬 Received message:', event.data);
+                                console.log('📬 Message keys:', Object.keys(event.data));
+                                console.log('📬 Has session_token:', 'session_token' in event.data);
                                 
                                 // Allow messages from any origin during OAuth flow
                                 if (event.data.type === 'OAUTH_SUCCESS') {
                                   console.log('Google Drive connected successfully!');
+                                  console.log('🔑 Session token received:', event.data.session_token ? 'Yes' : 'No');
+                                  console.log('🔑 Session token length:', event.data.session_token ? event.data.session_token.length : 'N/A');
                                   popup?.close();
                                   window.removeEventListener('message', handleMessage);
                                   
                                   // Update UI state to show connected status
                                   setDriveConnected(true);
                                   setDriveUserEmail(event.data.user_email || '');
+                                  driveSessionTokenRef.current = event.data.session_token || '';
                                   setDriveConnecting(false);
                                   
-                                  // Load initial folder tree
+                                  // Load initial folder tree with session token
                                   loadInitialFolders();
                                   
                                 } else if (event.data.type === 'OAUTH_ERROR') {
@@ -647,20 +702,28 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                                   popup?.close();
                                   window.removeEventListener('message', handleMessage);
                                   setDriveConnecting(false);
+                                  
+                                  // Show detailed error to user
+                                  const errorMessage = event.data.error || 'Unknown authentication error';
+                                  alert(`❌ Google Drive connection failed!\n\nError: ${errorMessage}\n\nPlease try:\n1. Clear browser cookies\n2. Disable ad blockers\n3. Try in incognito mode\n4. Check internet connection`);
                                 }
                               };
                               
                               window.addEventListener('message', handleMessage);
                               
-                              // Check if popup was closed manually
+                              // Enhanced popup closed handling with retry
                               const checkClosed = setInterval(async () => {
                                 if (popup?.closed) {
                                   clearInterval(checkClosed);
                                   window.removeEventListener('message', handleMessage);
                                   
-                                  // Fallback: Check connection status after popup closes
+                                  // Enhanced fallback: Check connection status multiple times
                                   console.log('🔄 Popup closed, checking connection status...');
-                                  setTimeout(async () => {
+                                  
+                                  let retryCount = 0;
+                                  const maxRetries = 3;
+                                  const checkStatus = async () => {
+                                    retryCount++;
                                     try {
                                       const statusResponse = await fetch('http://localhost:8080/api/cloud/drive-auth-status', {
                                         method: 'GET',
@@ -670,20 +733,29 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                                       const statusData = await statusResponse.json();
                                       
                                       if (statusData.success && statusData.authenticated) {
-                                        console.log('✅ Connection confirmed via status check');
+                                        console.log(`✅ Connection confirmed via status check (attempt ${retryCount})`);
                                         setDriveConnected(true);
                                         setDriveUserEmail(statusData.user_email || '');
                                         setDriveConnecting(false);
                                         loadInitialFolders();
+                                      } else if (retryCount < maxRetries) {
+                                        console.log(`⏳ Connection not found, retrying... (${retryCount}/${maxRetries})`);
+                                        setTimeout(checkStatus, 2000); // Wait 2 seconds before retry
                                       } else {
-                                        console.log('❌ Connection not found via status check');
+                                        console.log('❌ Connection not found after all retries');
                                         setDriveConnecting(false);
                                       }
                                     } catch (error) {
-                                      console.error('Error checking connection status:', error);
-                                      setDriveConnecting(false);
+                                      console.error(`Error checking connection status (attempt ${retryCount}):`, error);
+                                      if (retryCount < maxRetries) {
+                                        setTimeout(checkStatus, 2000);
+                                      } else {
+                                        setDriveConnecting(false);
+                                      }
                                     }
-                                  }, 1000); // Wait 1 second for backend to process
+                                  };
+                                  
+                                  setTimeout(checkStatus, 1000); // Initial delay
                                 }
                               }, 1000);
                               
@@ -722,6 +794,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                               
                               setDriveConnected(false);
                               setDriveUserEmail('');
+                              driveSessionTokenRef.current = '';
                               setDriveFolders([]);
                               setSelectedFolder(null);
                             } catch (error) {
@@ -736,8 +809,8 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                     
                     {/* Requirements Info or Manual Refresh */}
                     {!driveConnected ? (
-                      <Box bg={useColorModeValue('yellow.50', 'yellow.900')} p="8px" borderRadius="6px">
-                        <Text fontSize="11px" color={useColorModeValue('yellow.800', 'yellow.200')}>
+                      <Box bg={cardBg} p="8px" borderRadius="6px" border="1px solid" borderColor="yellow.400">
+                        <Text fontSize="11px" color="yellow.600">
                           ℹ️ <strong>Requirement:</strong> Gmail authentication must be completed first before connecting Google Drive
                         </Text>
                       </Box>
@@ -758,9 +831,9 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                     
                     {/* Debug: Manual check button when stuck in connecting state */}
                     {driveConnecting && (
-                      <Box bg={useColorModeValue('orange.50', 'orange.900')} p="8px" borderRadius="6px">
+                      <Box bg={cardBg} p="8px" borderRadius="6px" border="1px solid" borderColor="orange.400">
                         <HStack justify="space-between" align="center">
-                          <Text fontSize="11px" color={useColorModeValue('orange.800', 'orange.200')}>
+                          <Text fontSize="11px" color="orange.600">
                             Stuck connecting? Try manual check:
                           </Text>
                           <Button 
@@ -780,65 +853,89 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                   </VStack>
                 </Box>
 
-                {/* Folder Selection */}
-                <Box borderRadius="8px" bg={useColorModeValue('gray.50', 'gray.800')} p="12px">
+                {/* Enhanced Folder Selection with Tree Navigation */}
+                <Box borderRadius="8px" bg={cardBg} p="12px">
                   <Text fontSize={adaptiveConfig.fontSize.small} fontWeight="600" color={textColor} mb="8px">
-                    📁 Folder Selection
+                    📁 Advanced Folder Selection
                   </Text>
                   
                   {!driveConnected ? (
                     <Text fontSize="12px" color={secondaryText}>
-                      After connecting, you'll be able to browse and select specific Google Drive folders containing your videos.
+                      After connecting, you'll be able to browse and select specific Google Drive folders using an advanced tree navigator.
                     </Text>
-                  ) : folderTreeLoading ? (
-                    <HStack spacing="8px">
-                      <Text fontSize="12px" color={secondaryText}>Loading folders...</Text>
-                      <Box w="16px" h="16px" borderRadius="50%" border="2px solid" borderColor="gray.300" borderTopColor={currentColors.brand500} animation="spin 1s linear infinite" />
-                    </HStack>
-                  ) : driveFolders.length > 0 ? (
-                    <VStack align="stretch" spacing="6px" maxH="200px" overflowY="auto">
-                      {driveFolders.slice(0, 10).map((folder) => (
-                        <HStack 
-                          key={folder.id} 
-                          p="6px" 
-                          bg={selectedFolder?.id === folder.id ? currentColors.brand500 + '20' : 'transparent'}
-                          borderRadius="6px" 
-                          cursor="pointer"
-                          _hover={{ bg: currentColors.brand500 + '10' }}
-                          onClick={() => setSelectedFolder(folder)}
-                        >
-                          <Text fontSize="14px">📂</Text>
-                          <Text fontSize="12px" color={textColor} flex="1" noOfLines={1}>
-                            {folder.name}
-                          </Text>
-                          {selectedFolder?.id === folder.id && (
-                            <Text fontSize="12px" color="green.500">✓</Text>
-                          )}
-                        </HStack>
-                      ))}
-                      {driveFolders.length > 10 && (
-                        <Text fontSize="11px" color="gray.500" textAlign="center">
-                          ... and {driveFolders.length - 10} more folders
-                        </Text>
-                      )}
+                  ) : (
+                    <>
+                      <Text fontSize="11px" color={secondaryText} mb="12px">
+                        📋 Navigate your Google Drive folders using the tree view below. You can select multiple folders at the same depth level for monitoring.
+                      </Text>
                       
-                      {selectedFolder && (
-                        <Box mt="8px" p="8px" bg={useColorModeValue('green.50', 'green.900')} borderRadius="6px">
-                          <Text fontSize="11px" color="green.600" fontWeight="600">
-                            Selected: 📂 {selectedFolder.name}
+                      {/* Google Drive Folder Tree */}
+                      <Box 
+                        border="1px solid" 
+                        borderColor={borderColor} 
+                        borderRadius="8px" 
+                        overflow="hidden"
+                        maxH={{ base: "250px", md: "350px" }}
+                      >
+                        <GoogleDriveFolderTree
+                          session_token={driveSessionTokenRef.current}
+                          onFoldersSelected={handleTreeFolderSelection}
+                          maxDepth={3}
+                        />
+                      </Box>
+                      
+                      {/* Selection Summary */}
+                      {selectedTreeFolders.length > 0 && (
+                        <Box mt="12px" p="8px" bg={cardBg} border="1px solid" borderColor="green.400" borderRadius="6px">
+                          <Text fontSize="11px" color="green.600" fontWeight="600" mb="4px">
+                            ✅ Selected {selectedTreeFolders.length} folder(s) for monitoring:
                           </Text>
+                          <VStack align="start" spacing="2px">
+                            {selectedTreeFolders.slice(0, 3).map((folder, idx) => (
+                              <Text key={folder.id} fontSize="10px" color="green.500">
+                                {idx + 1}. {folder.name} (Depth {folder.depth})
+                              </Text>
+                            ))}
+                            {selectedTreeFolders.length > 3 && (
+                              <Text fontSize="10px" color="green.400">
+                                ... and {selectedTreeFolders.length - 3} more folders
+                              </Text>
+                            )}
+                          </VStack>
                         </Box>
                       )}
-                    </VStack>
-                  ) : (
-                    <Text fontSize="12px" color="orange.500">
-                      No folders found in your Google Drive root directory.
-                    </Text>
+                      
+                      {/* Quick Actions */}
+                      <HStack mt="8px" spacing="8px">
+                        <Button 
+                          size="xs" 
+                          variant="outline" 
+                          colorScheme="blue"
+                          onClick={() => {
+                            console.log('🔄 Manual folder refresh triggered');
+                            loadInitialFolders();
+                          }}
+                        >
+                          🔄 Refresh
+                        </Button>
+                        <Button 
+                          size="xs" 
+                          variant="outline" 
+                          colorScheme="gray"
+                          onClick={() => {
+                            setSelectedTreeFolders([]);
+                            console.log('🗑️ Cleared tree selection');
+                          }}
+                        >
+                          🗑️ Clear Selection
+                        </Button>
+                      </HStack>
+                    </>
                   )}
                 </Box>
 
                 {/* Sync Options */}
-                <Box borderRadius="8px" bg={useColorModeValue('green.50', 'green.900')} p="12px">
+                <Box borderRadius="8px" bg={cardBg} border="1px solid" borderColor="green.400" p="12px">
                   <Text fontSize={adaptiveConfig.fontSize.small} fontWeight="600" color={textColor} mb="8px">
                     🔄 Sync Options
                   </Text>
@@ -1032,11 +1129,11 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
 
         {/* Detection Stats */}
         <Box
-          bg={useColorModeValue('purple.50', 'purple.900')}
+          bg={cardBg}
           borderRadius="12px"
           p="16px"
           border="1px solid"
-          borderColor={useColorModeValue('purple.200', 'purple.700')}
+          borderColor="purple.400"
         >
           <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor} mb="8px">
             📈 Detection Statistics:
@@ -1132,7 +1229,7 @@ function TimingCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
               <Text fontSize={adaptiveConfig.fontSize.header} mb="8px">🏃</Text>
               <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor}>Fast</Text>
               <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>Real-time</Text>
-              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>{'< 1 second'}</Text>
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>&lt; 1 second</Text>
             </Box>
           </SimpleGrid>
         </Box>
@@ -1202,11 +1299,11 @@ function TimingCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
 
         {/* Performance Stats */}
         <Box
-          bg={useColorModeValue('orange.50', 'orange.900')}
+          bg={cardBg}
           borderRadius="12px"
           p="16px"
           border="1px solid"
-          borderColor={useColorModeValue('orange.200', 'orange.700')}
+          borderColor="orange.400"
         >
           <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor} mb="8px">
             📊 Current Performance:

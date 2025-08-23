@@ -35,6 +35,7 @@ from blueprints.hand_detection_bp import hand_detection_bp
 from blueprints.qr_detection_bp import qr_detection_bp
 from blueprints.roi_bp import roi_bp
 from modules.sources.cloud_endpoints import cloud_bp
+from modules.sources.cloud_lazy_folder_routes import lazy_folder_bp
 from modules.sources.sync_endpoints import sync_bp
 from modules.sources.pydrive_downloader import pydrive_downloader
 
@@ -255,6 +256,12 @@ try:
     logger.info("✅ Cloud endpoints registered")
 except ValueError as e:
     logger.warning(f"⚠️ Cloud blueprint already registered: {e}")
+
+try:
+    app.register_blueprint(lazy_folder_bp, url_prefix='/api/cloud')
+    logger.info("✅ Lazy folder endpoints registered")
+except ValueError as e:
+    logger.warning(f"⚠️ Lazy folder blueprint already registered: {e}")
 
 try:
     app.register_blueprint(sync_bp, url_prefix='/api/sync')
