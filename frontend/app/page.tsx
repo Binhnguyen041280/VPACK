@@ -225,7 +225,7 @@ export default function Chat(props: { apiKeyApp: string }) {
         // Save default file storage settings
         setConfigStep('video_source');
         setHighestStepReached(prev => Math.max(prev, 4));
-        return '📹 Step 4: Video Source Configuration\n\nTime to set up your camera and video recording settings.\n\nChoose between local camera, IP camera, or cloud storage sources. Configure quality, frame rate, and recording options.\n\n🎥 Default camera settings are optimized for monitoring.';
+        return '📹 Step 4: Video Source Configuration\n\nChoose where your video files are located for processing.\n\nSelect between local storage (PC, external drive, network mount) or cloud storage (Google Drive). Configure video quality and frame rate settings.\n\n📁 Choose the source that best fits your video storage setup.';
       
       case 'video_source':
         // Save default video source settings

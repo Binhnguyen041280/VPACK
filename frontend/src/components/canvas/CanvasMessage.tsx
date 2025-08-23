@@ -265,6 +265,20 @@ function FileSaveCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) 
   const textColor = useColorModeValue('navy.700', 'white');
   const secondaryText = useColorModeValue('gray.600', 'gray.400');
   const cardBg = useColorModeValue('gray.50', 'navy.700');
+  
+  // Local state for storage path - Default based on OS
+  const getDefaultPath = () => {
+    const platform = navigator.platform.toLowerCase();
+    if (platform.includes('win')) {
+      return 'C:\\Users\\%USERNAME%\\Videos\\VTrack';
+    } else if (platform.includes('mac')) {
+      return '/Users/%USER%/Movies/VTrack';
+    } else {
+      return '/home/%USER%/Videos/VTrack';
+    }
+  };
+  
+  const [storagePath, setStoragePath] = useState(getDefaultPath());
 
   return (
     <Box
@@ -280,29 +294,32 @@ function FileSaveCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) 
         {/* Storage Path Section */}
         <Box>
           <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
-            📁 Storage Path
+            💾 Video Output Directory
           </Text>
           <Box bg={cardBg} p="16px" borderRadius="12px">
-            <HStack spacing="12px" mb="8px">
-              <Input
-                placeholder="/home/user/vtrack/videos"
-                size="sm"
-                borderColor={borderColor}
-                _focus={{ borderColor: currentColors.brand500 }}
-                bg={bgColor}
-                onChange={(e) => onStepChange?.('file_save', { storagePath: e.target.value })}
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                borderColor={borderColor}
-                _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
-              >
-                Browse
-              </Button>
-            </HStack>
+            <VStack spacing="8px" align="stretch" mb="12px">
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                📝 Choose where to save processed videos and detection results
+              </Text>
+              <Text fontSize={adaptiveConfig.fontSize.small} color="orange.500" fontStyle="italic">
+                💡 Tip: Open folder in explorer, copy path from address bar and paste here
+              </Text>
+            </VStack>
+            <Input
+              value={storagePath}
+              placeholder="Copy and paste folder path here..."
+              size="sm"
+              borderColor={borderColor}
+              _focus={{ borderColor: currentColors.brand500 }}
+              bg={bgColor}
+              mb="12px"
+              onChange={(e) => {
+                setStoragePath(e.target.value);
+                onStepChange?.('file_save', { storagePath: e.target.value });
+              }}
+            />
             <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              📋 Current: /Users/vtrack/Documents/Videos
+              📋 Output folder: {storagePath}
             </Text>
           </Box>
         </Box>
@@ -312,94 +329,29 @@ function FileSaveCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) 
           <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
             🗓️ File Retention
           </Text>
-          <SimpleGrid columns={2} spacing="12px">
-            <Box bg={cardBg} p="16px" borderRadius="12px">
-              <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} mb="8px">
-                Auto-delete after:
-              </Text>
-              <HStack spacing="8px">
-                <Input
-                  placeholder="30"
-                  size="sm"
-                  w="60px"
-                  borderColor={borderColor}
-                  _focus={{ borderColor: currentColors.brand500 }}
-                  onChange={() => onStepChange?.('file_save', { retention: '30' })}
-                />
-                <Select size="sm" borderColor={borderColor}>
-                  <option value="days">Days</option>
-                  <option value="weeks">Weeks</option>
-                  <option value="months">Months</option>
-                </Select>
-              </HStack>
-            </Box>
-            
-            <Box bg={cardBg} p="16px" borderRadius="12px">
-              <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} mb="8px">
-                Max Storage:
-              </Text>
-              <HStack spacing="8px">
-                <Input
-                  placeholder="100"
-                  size="sm"
-                  w="60px"
-                  borderColor={borderColor}
-                  _focus={{ borderColor: currentColors.brand500 }}
-                  onChange={(e) => onStepChange?.('file_save', { maxStorage: e.target.value })}
-                />
-                <Select size="sm" borderColor={borderColor} onChange={(e) => onStepChange?.('file_save', { storageUnit: e.target.value })}>
-                  <option value="GB">GB</option>
-                  <option value="TB">TB</option>
-                </Select>
-              </HStack>
-            </Box>
-          </SimpleGrid>
+          <Box bg={cardBg} p="16px" borderRadius="12px">
+            <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} mb="8px">
+              Auto-delete after:
+            </Text>
+            <HStack spacing="8px">
+              <Input
+                placeholder="30"
+                size="sm"
+                w="60px"
+                borderColor={borderColor}
+                _focus={{ borderColor: currentColors.brand500 }}
+                onChange={() => onStepChange?.('file_save', { retention: '30' })}
+              />
+              <Select size="sm" borderColor={borderColor}>
+                <option value="days">Days</option>
+                <option value="weeks">Weeks</option>
+                <option value="months">Months</option>
+              </Select>
+            </HStack>
+          </Box>
         </Box>
 
-        {/* File Organization */}
-        <Box>
-          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
-            📋 File Organization
-          </Text>
-          <VStack spacing="8px" align="stretch">
-            <Checkbox defaultChecked colorScheme="brand" onChange={(e) => onStepChange?.('file_save', { organizeByDate: e.target.checked })}>
-              <Text fontSize={adaptiveConfig.fontSize.body}>Organize by date (YYYY/MM/DD)</Text>
-            </Checkbox>
-            <Checkbox defaultChecked colorScheme="brand" onChange={(e) => onStepChange?.('file_save', { separateFolders: e.target.checked })}>
-              <Text fontSize={adaptiveConfig.fontSize.body}>Separate folders for each camera</Text>
-            </Checkbox>
-            <Checkbox colorScheme="brand" onChange={(e) => onStepChange?.('file_save', { compressOld: e.target.checked })}>
-              <Text fontSize={adaptiveConfig.fontSize.body}>Compress videos older than 7 days</Text>
-            </Checkbox>
-            <Checkbox defaultChecked colorScheme="brand" onChange={(e) => onStepChange?.('file_save', { generateThumbnails: e.target.checked })}>
-              <Text fontSize={adaptiveConfig.fontSize.body}>Generate thumbnails</Text>
-            </Checkbox>
-          </VStack>
-        </Box>
 
-        {/* Current Status */}
-        <Box
-          bg={useColorModeValue('blue.50', 'blue.900')}
-          borderRadius="12px"
-          p="16px"
-          border="1px solid"
-          borderColor={useColorModeValue('blue.200', 'blue.700')}
-        >
-          <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor} mb="8px">
-            💽 Current Storage Status:
-          </Text>
-          <VStack align="stretch" spacing="4px">
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              <strong>Used:</strong> 45.2 GB / 100 GB (45%)
-            </Text>
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              <strong>Files:</strong> 1,247 videos, 3,891 thumbnails
-            </Text>
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              <strong>Oldest:</strong> 28 days ago
-            </Text>
-          </VStack>
-        </Box>
       </VStack>
     </Box>
   );
@@ -414,6 +366,23 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   const secondaryText = useColorModeValue('gray.600', 'gray.400');
   const cardBg = useColorModeValue('gray.50', 'navy.700');
 
+  // State for selected source type and input path
+  const [selectedSourceType, setSelectedSourceType] = useState<'local_storage' | 'cloud_storage'>('local_storage');
+  
+  // Default input path based on OS
+  const getDefaultInputPath = () => {
+    const platform = navigator.platform.toLowerCase();
+    if (platform.includes('win')) {
+      return 'C:\\Users\\%USERNAME%\\Videos\\Input';
+    } else if (platform.includes('mac')) {
+      return '/Users/%USER%/Movies/Input';
+    } else {
+      return '/home/%USER%/Videos/Input';
+    }
+  };
+  
+  const [inputPath, setInputPath] = useState(getDefaultInputPath());
+
   return (
     <Box
       w="100%"
@@ -427,46 +396,41 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
       <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
         {/* Source Type Selection */}
         <Box>
-          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
+          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="8px">
             🎥 Video Source Type
           </Text>
-          <SimpleGrid columns={3} spacing="12px">
+          <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} mb="12px">
+            📁 Choose where your video files are located for processing
+          </Text>
+          <SimpleGrid columns={2} spacing="12px">
             <Box 
               bg={cardBg} 
               p="16px" 
               borderRadius="12px" 
               border="2px solid" 
-              borderColor={currentColors.brand500}
+              borderColor={selectedSourceType === 'local_storage' ? currentColors.brand500 : borderColor}
               cursor="pointer"
-              onClick={() => onStepChange?.('video_source', { sourceType: 'local_camera' })}
+              onClick={() => {
+                setSelectedSourceType('local_storage');
+                onStepChange?.('video_source', { sourceType: 'local_storage' });
+              }}
             >
-              <Icon as={MdCamera} w="24px" h="24px" color={currentColors.brand500} mb="8px" />
-              <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor}>Local Camera</Text>
-              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>USB/Built-in</Text>
+              <Icon as={MdVideoLibrary} w="24px" h="24px" color={currentColors.brand500} mb="8px" />
+              <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor}>Local Storage</Text>
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>PC, External Drive, Network Mount</Text>
             </Box>
             
             <Box 
               bg={cardBg} 
               p="16px" 
               borderRadius="12px" 
-              border="1px solid" 
-              borderColor={borderColor}
+              border="2px solid" 
+              borderColor={selectedSourceType === 'cloud_storage' ? currentColors.brand500 : borderColor}
               cursor="pointer"
-              onClick={() => onStepChange?.('video_source', { sourceType: 'ip_camera' })}
-            >
-              <Text fontSize={adaptiveConfig.fontSize.header} mb="8px">🌐</Text>
-              <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor}>IP Camera</Text>
-              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>ONVIF/RTSP</Text>
-            </Box>
-            
-            <Box 
-              bg={cardBg} 
-              p="16px" 
-              borderRadius="12px" 
-              border="1px solid" 
-              borderColor={borderColor}
-              cursor="pointer"
-              onClick={() => onStepChange?.('video_source', { sourceType: 'cloud_storage' })}
+              onClick={() => {
+                setSelectedSourceType('cloud_storage');
+                onStepChange?.('video_source', { sourceType: 'cloud_storage' });
+              }}
             >
               <Text fontSize={adaptiveConfig.fontSize.header} mb="8px">☁️</Text>
               <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor}>Cloud Storage</Text>
@@ -474,6 +438,41 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
             </Box>
           </SimpleGrid>
         </Box>
+
+        {/* Video Input Directory - Show only when Local Storage is selected */}
+        {selectedSourceType === 'local_storage' && (
+          <Box>
+            <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="8px">
+              📂 Video Input Directory
+            </Text>
+            <Box bg={cardBg} p="16px" borderRadius="12px">
+              <VStack spacing="8px" align="stretch" mb="12px">
+                <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                  📝 Choose where your input videos are stored for processing
+                </Text>
+                <Text fontSize={adaptiveConfig.fontSize.small} color="orange.500" fontStyle="italic">
+                  💡 Tip: Open folder in explorer, copy path from address bar and paste here
+                </Text>
+              </VStack>
+              <Input
+                value={inputPath}
+                placeholder="Copy and paste input video folder path here..."
+                size="sm"
+                borderColor={borderColor}
+                _focus={{ borderColor: currentColors.brand500 }}
+                bg={bgColor}
+                mb="12px"
+                onChange={(e) => {
+                  setInputPath(e.target.value);
+                  onStepChange?.('video_source', { inputPath: e.target.value });
+                }}
+              />
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                📋 Input folder: {inputPath}
+              </Text>
+            </Box>
+          </Box>
+        )}
 
         {/* Camera Settings */}
         <Box>
@@ -507,53 +506,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
           </SimpleGrid>
         </Box>
 
-        {/* Recording Options */}
-        <Box>
-          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
-            🔴 Recording Options
-          </Text>
-          <VStack spacing="8px" align="stretch">
-            <Checkbox defaultChecked colorScheme="brand" onChange={(e) => onStepChange?.('video_source', { continuousRecording: e.target.checked })}>
-              <Text fontSize={adaptiveConfig.fontSize.body}>Continuous recording</Text>
-            </Checkbox>
-            <Checkbox colorScheme="brand" onChange={(e) => onStepChange?.('video_source', { motionTriggered: e.target.checked })}>
-              <Text fontSize={adaptiveConfig.fontSize.body}>Motion-triggered recording</Text>
-            </Checkbox>
-            <Checkbox defaultChecked colorScheme="brand" onChange={(e) => onStepChange?.('video_source', { audioRecording: e.target.checked })}>
-              <Text fontSize={adaptiveConfig.fontSize.body}>Audio recording</Text>
-            </Checkbox>
-            <Checkbox colorScheme="brand" onChange={(e) => onStepChange?.('video_source', { nightVision: e.target.checked })}>
-              <Text fontSize={adaptiveConfig.fontSize.body}>Night vision mode</Text>
-            </Checkbox>
-          </VStack>
-        </Box>
 
-        {/* Camera Status */}
-        <Box
-          bg={useColorModeValue('green.50', 'green.900')}
-          borderRadius="12px"
-          p="16px"
-          border="1px solid"
-          borderColor={useColorModeValue('green.200', 'green.700')}
-        >
-          <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor} mb="8px">
-            📊 Camera Status:
-          </Text>
-          <VStack align="stretch" spacing="4px">
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              <strong>Device:</strong> USB Camera (HD WebCam C270)
-            </Text>
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              <strong>Status:</strong> 🟢 Connected and Recording
-            </Text>
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              <strong>Quality:</strong> 1920x1080 @ 30fps
-            </Text>
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              <strong>Storage:</strong> 2.3 GB used today
-            </Text>
-          </VStack>
-        </Box>
       </VStack>
     </Box>
   );
