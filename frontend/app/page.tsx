@@ -811,168 +811,124 @@ export default function Chat(props: { apiKeyApp: string }) {
       {showConfigLayout ? (
         // 3-Panel Configuration Layout  
         <Flex
-          direction="column"
-          mx="auto"
-          w="100%"
-          maxW="1400px"
+          direction="row"
           h="100vh"
           p="20px"
           gap="20px"
+          position="fixed"
+          top="0"
+          left={toggleSidebar ? "95px" : "288px"}
+          right="0"
+          transition="left 0.2s linear"
         >
-          {/* Top Row - Content Area */}
+          {/* Column 1: Chat History + Chat Input - 50% */}
           <Flex
             flex="1"
-            direction="row"
+            direction="column"
             gap="20px"
-            overflow="hidden"
           >
-            {/* Left: Chat History Panel - 35% */}
-            <Box
-              w="35%"
-              minW="300px"
-            >
-              {/* Chat History - Scrollable */}
-              <Flex
-                direction="column"
-                bg={chatBg}
-                borderRadius="20px"
-                border="1px solid"
-                borderColor={chatBorderColor}
-                p="20px"
-                h="100%"
-              >
-                {/* Chat Header */}
-                <Text
-                  fontSize="lg"
-                  fontWeight="700"
-                  color={chatTextColor}
-                  mb="20px"
-                  textAlign="center"
-                  flexShrink={0}
-                >
-                  💬 Chat Control
-                </Text>
-                
-                {/* Chat Messages - Scrollable */}
-                <Box
-                  flex="1"
-                  overflow="auto"
-                  mb="20px"
-                >
-                  {/* Chat Messages History */}
-                  {messages.map((message) => (
-                    message.type !== 'canvas' && (
-                      <ChatMessage
-                        key={message.id}
-                        content={message.content}
-                        type={message.type}
-                        timestamp={message.timestamp}
-                      />
-                    )
-                  ))}
-                  
-                  {/* Loading indicator */}
-                  {loading && (
-                    <Flex w="100%" mb="16px" align="flex-start">
-                      <Flex
-                        borderRadius="full"
-                        justify="center"
-                        align="center"
-                        bg={currentColors.gradient}
-                        me="12px"
-                        h="32px"
-                        minH="32px"
-                        minW="32px"
-                        flexShrink={0}
-                      >
-                        <Icon
-                          as={MdAutoAwesome}
-                          width="16px"
-                          height="16px"
-                          color="white"
-                        />
-                      </Flex>
-                      <Flex
-                        bg={loadingBg}
-                        borderRadius="16px"
-                        px="16px"
-                        py="12px"
-                        align="center"
-                      >
-                        <Text fontSize="sm" color={chatTextColor}>
-                          Typing...
-                        </Text>
-                      </Flex>
-                    </Flex>
-                  )}
-                </Box>
-              </Flex>
-            </Box>
-            
-            {/* Right: Navigator and Canvas - 65% */}
-            <Flex
-              w="65%"
-              direction="row"
-              gap="20px"
-              align="end"
-            >
-              {/* Step Navigator Panel - 30% of right side */}
-              <Box
-                w="30%"
-                minW="200px"
-                alignSelf="end"
-              >
-                <StepNavigator
-                  currentStep={configStep}
-                  completedSteps={stepCompleted}
-                  highestStepReached={highestStepReached}
-                  onStepClick={handleStepClick}
-                />
-              </Box>
-              
-              {/* Configuration Area Panel - 70% of right side */}
-              <Box
-                w="70%"
-                minW="400px"
-                alignSelf="end"
-              >
-                <Box
-                  bg={chatBg}
-                  borderRadius="20px"
-                  border="1px solid"
-                  borderColor={chatBorderColor}
-                  p="20px"
-                  h="fit-content"
-                  sx={{
-                    '& > div': {
-                      marginBottom: 0
-                    },
-                    '& > div > div:first-of-type': {
-                      display: 'none' // Hide bot avatar
-                    }
-                  }}
-                >
-                  <CanvasMessage 
-                    configStep={configStep} 
-                    onStepChange={handleStepChange}
-                  />
-                </Box>
-              </Box>
-            </Flex>
-          </Flex>
-          
-          {/* Bottom Row - Chat Input Only */}
-          <Box
-            flexShrink={0}
-            w="35%"
-            minW="300px"
-          >
+            {/* Top: Chat History */}
             <Box
               bg={chatBg}
               borderRadius="20px"
               border="1px solid"
               borderColor={chatBorderColor}
               p="20px"
+              flex="1"
+              overflow="hidden"
+            >
+              {/* Chat Header */}
+              <Text
+                fontSize="lg"
+                fontWeight="700"
+                color={chatTextColor}
+                mb="20px"
+                textAlign="center"
+                flexShrink={0}
+              >
+                💬 Chat Control
+              </Text>
+              
+              {/* Chat Messages - Scrollable */}
+              <Box
+                flex="1"
+                overflow="auto"
+                css={{
+                  '&::-webkit-scrollbar': {
+                    width: '6px',
+                  },
+                  '&::-webkit-scrollbar-track': {
+                    background: 'var(--chakra-colors-gray-100)',
+                  },
+                  '&::-webkit-scrollbar-thumb': {
+                    background: 'var(--chakra-colors-gray-300)',
+                    borderRadius: '3px',
+                  },
+                  '&::-webkit-scrollbar-thumb:hover': {
+                    background: 'var(--chakra-colors-gray-400)',
+                  },
+                }}
+              >
+                {/* Chat Messages History */}
+                {messages.map((message) => (
+                  message.type !== 'canvas' && (
+                    <ChatMessage
+                      key={message.id}
+                      content={message.content}
+                      type={message.type}
+                      timestamp={message.timestamp}
+                    />
+                  )
+                ))}
+                
+                {/* Loading indicator */}
+                {loading && (
+                  <Flex w="100%" mb="16px" align="flex-start">
+                    <Flex
+                      borderRadius="full"
+                      justify="center"
+                      align="center"
+                      bg={currentColors.gradient}
+                      me="12px"
+                      h="32px"
+                      minH="32px"
+                      minW="32px"
+                      flexShrink={0}
+                    >
+                      <Icon
+                        as={MdAutoAwesome}
+                        width="16px"
+                        height="16px"
+                        color="white"
+                      />
+                    </Flex>
+                    <Flex
+                      bg={loadingBg}
+                      borderRadius="16px"
+                      px="16px"
+                      py="12px"
+                      align="center"
+                    >
+                      <Text fontSize="sm" color={chatTextColor}>
+                        Typing...
+                      </Text>
+                    </Flex>
+                  </Flex>
+                )}
+                
+                {/* Scroll anchor for auto-scroll */}
+                <div ref={messagesEndRef} />
+              </Box>
+            </Box>
+
+            {/* Bottom: Chat Input - Fixed at bottom */}
+            <Box
+              bg={chatBg}
+              borderRadius="20px"
+              border="1px solid"
+              borderColor={chatBorderColor}
+              p="20px"
+              flexShrink={0}
             >
               <HStack spacing="10px">
                 <Box position="relative" flex="1">
@@ -1085,7 +1041,48 @@ export default function Chat(props: { apiKeyApp: string }) {
                 </Button>
               </HStack>
             </Box>
-          </Box>
+          </Flex>
+
+          {/* Column 2: Navigator + Canvas - 50% */}
+          <Flex
+            flex="1"
+            direction="column"
+            gap="20px"
+          >
+            {/* Top: Navigator */}
+            <Box
+              bg={chatBg}
+              borderRadius="20px"
+              border="1px solid"
+              borderColor={chatBorderColor}
+              p="20px"
+              flex="1"
+              overflow="auto"
+            >
+              <StepNavigator
+                currentStep={configStep}
+                completedSteps={stepCompleted}
+                highestStepReached={highestStepReached}
+                onStepClick={handleStepClick}
+              />
+            </Box>
+            
+            {/* Bottom: Canvas - Fixed at bottom */}
+            <Box
+              bg={chatBg}
+              borderRadius="20px"
+              border="1px solid"
+              borderColor={chatBorderColor}
+              p="20px"
+              flex="2"
+              overflow="hidden"
+            >
+              <CanvasMessage 
+                configStep={configStep} 
+                onStepChange={handleStepChange}
+              />
+            </Box>
+          </Flex>
         </Flex>
       ) : (
         // Original Single-Panel Layout
