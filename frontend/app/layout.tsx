@@ -49,10 +49,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 pt={{ base: '60px', md: '100px' }}
                 float="right"
                 minHeight="100vh"
-                height="100%"
+                height="100vh"
                 overflow="auto"
                 position="relative"
-                maxHeight="100%"
+                maxHeight="100vh"
                 w={{ 
                   base: '100%', 
                   xl: sidebarCollapsed ? 'calc( 100% - 79px )' : 'calc( 100% - 272px )' 
@@ -70,7 +70,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   mx="auto"
                   p={{ base: '20px', md: '30px' }}
                   pe="20px"
-                  minH="100vh"
+                  h="100%"
+                  overflow="hidden"
                 >
                   {children}
                   {/* <Component apiKeyApp={apiKey} {...pageProps} /> */}

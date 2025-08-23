@@ -96,6 +96,8 @@ export default function StepNavigator({
     // Current step always has priority over completed status
     if (step.key === currentStep) return 'current';
     if (completedSteps[step.key]) return 'completed';
+    // Check if step is accessible based on highestStepReached
+    if (step.id <= highestStepReached) return 'accessible';
     return 'pending';
   };
 
@@ -115,7 +117,14 @@ export default function StepNavigator({
           iconColor: currentColors.brand500,
           textColor: textColor
         };
-      default:
+      case 'accessible':
+        return {
+          bg: 'transparent',
+          borderColor: borderColor,
+          iconColor: textColor,
+          textColor: textColor
+        };
+      default: // pending
         return {
           bg: 'transparent',
           borderColor: borderColor,
@@ -157,12 +166,12 @@ export default function StepNavigator({
         </Box>
       </Flex>
 
-      {/* Steps List - 2 Columns */}
-      <SimpleGrid columns={2} spacing="8px" flex="1">
+      {/* Steps List - 1 Column (Vertical) */}
+      <VStack spacing="6px" flex="1" align="stretch">
         {steps.map((step) => {
           const status = getStepStatus(step);
           const colors = getStepColors(status);
-          const isClickable = onStepClick && (status === 'completed' || status === 'current');
+          const isClickable = onStepClick && (status === 'completed' || status === 'current' || status === 'accessible');
 
           return (
             <Flex
@@ -180,13 +189,13 @@ export default function StepNavigator({
                 boxShadow: 'sm'
               } : {}}
               onClick={() => isClickable && onStepClick(step.key)}
-              minH="45px"
+              minH="40px"
               h="fit-content"
             >
               {/* Step Number & Icon */}
               <Flex
-                w="22px"
-                h="22px"
+                w="20px"
+                h="20px"
                 borderRadius="full"
                 align="center"
                 justify="center"
@@ -194,12 +203,12 @@ export default function StepNavigator({
                 border={status !== 'current' ? '1px solid' : 'none'}
                 borderColor={colors.iconColor}
                 flexShrink={0}
-                me="6px"
+                me="4px"
               >
                 {status === 'completed' ? (
                   <Text color={colors.iconColor} fontSize="xs" fontWeight="bold">✓</Text>
                 ) : status === 'current' ? (
-                  <Icon as={step.icon} w="12px" h="12px" color="white" />
+                  <Icon as={step.icon} w="10px" h="10px" color="white" />
                 ) : (
                   <Text color={colors.iconColor} fontSize="xs" fontWeight="bold">{step.id}</Text>
                 )}
@@ -241,7 +250,7 @@ export default function StepNavigator({
             </Flex>
           );
         })}
-      </SimpleGrid>
+      </VStack>
     </Box>
   );
 }

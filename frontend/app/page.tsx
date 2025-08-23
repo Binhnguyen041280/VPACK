@@ -821,9 +821,9 @@ export default function Chat(props: { apiKeyApp: string }) {
           right="0"
           transition="left 0.2s linear"
         >
-          {/* Column 1: Chat History + Chat Input - 50% */}
+          {/* Column 1: Chat History + Chat Input - 40% */}
           <Flex
-            flex="1"
+            flex="2"
             direction="column"
             gap="20px"
           >
@@ -835,7 +835,22 @@ export default function Chat(props: { apiKeyApp: string }) {
               borderColor={chatBorderColor}
               p="20px"
               flex="1"
-              overflow="hidden"
+              overflow="auto"
+              css={{
+                '&::-webkit-scrollbar': {
+                  width: '6px',
+                },
+                '&::-webkit-scrollbar-track': {
+                  background: 'var(--chakra-colors-gray-100)',
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  background: 'var(--chakra-colors-gray-300)',
+                  borderRadius: '3px',
+                },
+                '&::-webkit-scrollbar-thumb:hover': {
+                  background: 'var(--chakra-colors-gray-400)',
+                },
+              }}
             >
               {/* Chat Header */}
               <Text
@@ -1043,20 +1058,39 @@ export default function Chat(props: { apiKeyApp: string }) {
             </Box>
           </Flex>
 
-          {/* Column 2: Navigator + Canvas - 50% */}
+          {/* Column 2: Canvas - 40% */}
           <Flex
-            flex="1"
+            flex="2"
             direction="column"
-            gap="20px"
           >
-            {/* Top: Navigator */}
             <Box
               bg={chatBg}
               borderRadius="20px"
               border="1px solid"
               borderColor={chatBorderColor}
               p="20px"
-              flex="1"
+              h="100%"
+              overflow="hidden"
+            >
+              <CanvasMessage 
+                configStep={configStep} 
+                onStepChange={handleStepChange}
+              />
+            </Box>
+          </Flex>
+
+          {/* Column 3: Navigator - 20% */}
+          <Flex
+            flex="1"
+            direction="column"
+          >
+            <Box
+              bg={chatBg}
+              borderRadius="20px"
+              border="1px solid"
+              borderColor={chatBorderColor}
+              p="20px"
+              h="100%"
               overflow="auto"
             >
               <StepNavigator
@@ -1064,22 +1098,6 @@ export default function Chat(props: { apiKeyApp: string }) {
                 completedSteps={stepCompleted}
                 highestStepReached={highestStepReached}
                 onStepClick={handleStepClick}
-              />
-            </Box>
-            
-            {/* Bottom: Canvas - Fixed at bottom */}
-            <Box
-              bg={chatBg}
-              borderRadius="20px"
-              border="1px solid"
-              borderColor={chatBorderColor}
-              p="20px"
-              flex="2"
-              overflow="hidden"
-            >
-              <CanvasMessage 
-                configStep={configStep} 
-                onStepChange={handleStepChange}
               />
             </Box>
           </Flex>
