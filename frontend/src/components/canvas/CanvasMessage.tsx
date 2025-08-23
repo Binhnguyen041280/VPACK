@@ -19,6 +19,7 @@ import { MdAutoAwesome, MdVideoLibrary, MdCamera } from 'react-icons/md';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
 import LocationTimeCanvas from './LocationTimeCanvas';
 import { useState, useEffect, useRef } from 'react';
+import React from 'react';
 
 interface CanvasMessageProps {
   configStep: 'brandname' | 'location_time' | 'file_save' | 'video_source' | 'packing_area' | 'timing';
@@ -313,6 +314,13 @@ function FileSaveCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) 
               _focus={{ borderColor: currentColors.brand500 }}
               bg={bgColor}
               mb="12px"
+              onFocus={(e) => {
+                // Clear input when user clicks to enter new path
+                if (storagePath === getDefaultPath()) {
+                  setStoragePath('');
+                }
+                e.target.select(); // Select all text for easy replacement
+              }}
               onChange={(e) => {
                 setStoragePath(e.target.value);
                 onStepChange?.('file_save', { storagePath: e.target.value });
@@ -382,6 +390,62 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   };
   
   const [inputPath, setInputPath] = useState(getDefaultInputPath());
+  
+  // Google Drive connection state
+  const [driveConnected, setDriveConnected] = useState(false);
+  const [driveUserEmail, setDriveUserEmail] = useState('');
+  const [driveConnecting, setDriveConnecting] = useState(false);
+  const [driveFolders, setDriveFolders] = useState<any[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState<any>(null);
+  const [folderTreeLoading, setFolderTreeLoading] = useState(false);
+  
+  // Check Google Drive connection status on component mount
+  React.useEffect(() => {
+    checkDriveConnectionStatus();
+  }, []);
+  
+  const checkDriveConnectionStatus = async () => {
+    try {
+      const response = await fetch('http://localhost:8080/api/cloud/drive-auth-status', {
+        method: 'GET',
+        credentials: 'include'
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.authenticated) {
+        setDriveConnected(true);
+        setDriveUserEmail(data.user_email || '');
+        // Load initial folder tree
+        loadInitialFolders();
+      }
+    } catch (error) {
+      console.log('Drive connection check failed:', error);
+    }
+  };
+  
+  const loadInitialFolders = async () => {
+    try {
+      setFolderTreeLoading(true);
+      
+      const response = await fetch('http://localhost:8080/api/cloud/folders/initialize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ max_folders: 30 })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.folders) {
+        setDriveFolders(data.folders);
+      }
+    } catch (error) {
+      console.error('Failed to load initial folders:', error);
+    } finally {
+      setFolderTreeLoading(false);
+    }
+  };
 
   return (
     <Box
@@ -434,7 +498,10 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
             >
               <Text fontSize={adaptiveConfig.fontSize.header} mb="8px">☁️</Text>
               <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor}>Cloud Storage</Text>
-              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>Google Drive</Text>
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>Google Drive (OAuth2)</Text>
+              {selectedSourceType === 'cloud_storage' && (
+                <Text fontSize="10px" color="green.500" mt="4px">✓ Selected</Text>
+              )}
             </Box>
           </SimpleGrid>
         </Box>
@@ -462,6 +529,13 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 _focus={{ borderColor: currentColors.brand500 }}
                 bg={bgColor}
                 mb="12px"
+                onFocus={(e) => {
+                  // Clear input when user clicks to enter new path
+                  if (inputPath === getDefaultInputPath()) {
+                    setInputPath('');
+                  }
+                  e.target.select(); // Select all text for easy replacement
+                }}
                 onChange={(e) => {
                   setInputPath(e.target.value);
                   onStepChange?.('video_source', { inputPath: e.target.value });
@@ -470,6 +544,317 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
               <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
                 📋 Input folder: {inputPath}
               </Text>
+            </Box>
+          </Box>
+        )}
+
+        {/* Google Drive Configuration - Show only when Cloud Storage is selected */}
+        {selectedSourceType === 'cloud_storage' && (
+          <Box>
+            <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="8px">
+              ☁️ Google Drive Setup
+            </Text>
+            <Box bg={cardBg} p="16px" borderRadius="12px">
+              <VStack spacing="12px" align="stretch">
+                <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                  🔐 Connect to Google Drive to access your video files stored in the cloud
+                </Text>
+                
+                {/* Connection Status */}
+                <Box borderRadius="8px" bg={useColorModeValue('blue.50', 'blue.900')} p="12px">
+                  <VStack align="stretch" spacing="8px">
+                    <HStack justify="space-between" align="center">
+                      <VStack align="start" spacing="2px">
+                        <Text fontSize={adaptiveConfig.fontSize.small} fontWeight="600" color={textColor}>
+                          Connection Status
+                        </Text>
+                        {driveConnected ? (
+                          <Text fontSize="12px" color="green.500">
+                            ✅ Connected as {driveUserEmail}
+                          </Text>
+                        ) : (
+                          <Text fontSize="12px" color="orange.500">
+                            ⚠️ Not connected - Authentication required
+                          </Text>
+                        )}
+                      </VStack>
+                      {!driveConnected && (
+                        <Button 
+                          size="sm" 
+                          colorScheme="brand"
+                          isLoading={driveConnecting}
+                          loadingText="Connecting..."
+                          onClick={async () => {
+                            setDriveConnecting(true);
+                          try {
+                            // First check Gmail authentication
+                            const gmailResponse = await fetch('http://localhost:8080/api/cloud/gmail-auth-status', {
+                              method: 'GET',
+                              credentials: 'include'
+                            });
+                            
+                            const gmailData = await gmailResponse.json();
+                            
+                            if (!gmailData.authenticated) {
+                              // Need Gmail auth first
+                              alert('Gmail authentication is required first. Please complete user login before connecting Google Drive.');
+                              return;
+                            }
+                            
+                            // Proceed with Google Drive auth
+                            const response = await fetch('http://localhost:8080/api/cloud/drive-auth', {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                              },
+                              credentials: 'include',
+                              body: JSON.stringify({
+                                action: 'initiate_auth',
+                                provider: 'google_drive'
+                              })
+                            });
+                            
+                            const data = await response.json();
+                            
+                            if (data.success && data.auth_url) {
+                              // Open OAuth URL in popup window
+                              const popup = window.open(
+                                data.auth_url, 
+                                'google_drive_auth', 
+                                'width=500,height=600,scrollbars=yes,resizable=yes'
+                              );
+                              
+                              // Listen for OAuth completion
+                              const handleMessage = async (event) => {
+                                console.log('📬 Received message:', event.data);
+                                
+                                // Allow messages from any origin during OAuth flow
+                                if (event.data.type === 'OAUTH_SUCCESS') {
+                                  console.log('Google Drive connected successfully!');
+                                  popup?.close();
+                                  window.removeEventListener('message', handleMessage);
+                                  
+                                  // Update UI state to show connected status
+                                  setDriveConnected(true);
+                                  setDriveUserEmail(event.data.user_email || '');
+                                  setDriveConnecting(false);
+                                  
+                                  // Load initial folder tree
+                                  loadInitialFolders();
+                                  
+                                } else if (event.data.type === 'OAUTH_ERROR') {
+                                  console.error('Google Drive connection failed:', event.data.error);
+                                  popup?.close();
+                                  window.removeEventListener('message', handleMessage);
+                                  setDriveConnecting(false);
+                                }
+                              };
+                              
+                              window.addEventListener('message', handleMessage);
+                              
+                              // Check if popup was closed manually
+                              const checkClosed = setInterval(async () => {
+                                if (popup?.closed) {
+                                  clearInterval(checkClosed);
+                                  window.removeEventListener('message', handleMessage);
+                                  
+                                  // Fallback: Check connection status after popup closes
+                                  console.log('🔄 Popup closed, checking connection status...');
+                                  setTimeout(async () => {
+                                    try {
+                                      const statusResponse = await fetch('http://localhost:8080/api/cloud/drive-auth-status', {
+                                        method: 'GET',
+                                        credentials: 'include'
+                                      });
+                                      
+                                      const statusData = await statusResponse.json();
+                                      
+                                      if (statusData.success && statusData.authenticated) {
+                                        console.log('✅ Connection confirmed via status check');
+                                        setDriveConnected(true);
+                                        setDriveUserEmail(statusData.user_email || '');
+                                        setDriveConnecting(false);
+                                        loadInitialFolders();
+                                      } else {
+                                        console.log('❌ Connection not found via status check');
+                                        setDriveConnecting(false);
+                                      }
+                                    } catch (error) {
+                                      console.error('Error checking connection status:', error);
+                                      setDriveConnecting(false);
+                                    }
+                                  }, 1000); // Wait 1 second for backend to process
+                                }
+                              }, 1000);
+                              
+                            } else {
+                              console.error('Failed to initiate OAuth:', data.message);
+                              if (data.error_code === 'gmail_auth_required') {
+                                alert('Please complete Gmail authentication first before connecting Google Drive.');
+                              } else {
+                                alert(`Failed to start Google Drive authentication: ${data.message}`);
+                              }
+                            }
+                          } catch (error) {
+                            console.error('Error initiating Google Drive auth:', error);
+                            alert('Failed to connect to authentication service. Please check if the backend is running.');
+                            setDriveConnecting(false);
+                          }
+                        }}
+                      >
+                        Connect Google Drive
+                      </Button>
+                      )}
+                      
+                      {driveConnected && (
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          colorScheme="red"
+                          onClick={async () => {
+                            try {
+                              await fetch('http://localhost:8080/api/cloud/disconnect', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                credentials: 'include',
+                                body: JSON.stringify({ provider: 'google_drive', user_email: driveUserEmail })
+                              });
+                              
+                              setDriveConnected(false);
+                              setDriveUserEmail('');
+                              setDriveFolders([]);
+                              setSelectedFolder(null);
+                            } catch (error) {
+                              console.error('Error disconnecting Google Drive:', error);
+                            }
+                          }}
+                        >
+                          Disconnect
+                        </Button>
+                      )}
+                    </HStack>
+                    
+                    {/* Requirements Info or Manual Refresh */}
+                    {!driveConnected ? (
+                      <Box bg={useColorModeValue('yellow.50', 'yellow.900')} p="8px" borderRadius="6px">
+                        <Text fontSize="11px" color={useColorModeValue('yellow.800', 'yellow.200')}>
+                          ℹ️ <strong>Requirement:</strong> Gmail authentication must be completed first before connecting Google Drive
+                        </Text>
+                      </Box>
+                    ) : (
+                      <HStack justify="space-between" align="center">
+                        <Text fontSize="11px" color="green.600">
+                          ✅ Google Drive connected successfully
+                        </Text>
+                        <Button 
+                          size="xs" 
+                          variant="ghost"
+                          onClick={() => checkDriveConnectionStatus()}
+                        >
+                          🔄 Refresh
+                        </Button>
+                      </HStack>
+                    )}
+                    
+                    {/* Debug: Manual check button when stuck in connecting state */}
+                    {driveConnecting && (
+                      <Box bg={useColorModeValue('orange.50', 'orange.900')} p="8px" borderRadius="6px">
+                        <HStack justify="space-between" align="center">
+                          <Text fontSize="11px" color={useColorModeValue('orange.800', 'orange.200')}>
+                            Stuck connecting? Try manual check:
+                          </Text>
+                          <Button 
+                            size="xs" 
+                            colorScheme="orange"
+                            onClick={async () => {
+                              console.log('🔧 Manual connection check triggered');
+                              setDriveConnecting(false);
+                              await checkDriveConnectionStatus();
+                            }}
+                          >
+                            Check Status
+                          </Button>
+                        </HStack>
+                      </Box>
+                    )}
+                  </VStack>
+                </Box>
+
+                {/* Folder Selection */}
+                <Box borderRadius="8px" bg={useColorModeValue('gray.50', 'gray.800')} p="12px">
+                  <Text fontSize={adaptiveConfig.fontSize.small} fontWeight="600" color={textColor} mb="8px">
+                    📁 Folder Selection
+                  </Text>
+                  
+                  {!driveConnected ? (
+                    <Text fontSize="12px" color={secondaryText}>
+                      After connecting, you'll be able to browse and select specific Google Drive folders containing your videos.
+                    </Text>
+                  ) : folderTreeLoading ? (
+                    <HStack spacing="8px">
+                      <Text fontSize="12px" color={secondaryText}>Loading folders...</Text>
+                      <Box w="16px" h="16px" borderRadius="50%" border="2px solid" borderColor="gray.300" borderTopColor={currentColors.brand500} animation="spin 1s linear infinite" />
+                    </HStack>
+                  ) : driveFolders.length > 0 ? (
+                    <VStack align="stretch" spacing="6px" maxH="200px" overflowY="auto">
+                      {driveFolders.slice(0, 10).map((folder) => (
+                        <HStack 
+                          key={folder.id} 
+                          p="6px" 
+                          bg={selectedFolder?.id === folder.id ? currentColors.brand500 + '20' : 'transparent'}
+                          borderRadius="6px" 
+                          cursor="pointer"
+                          _hover={{ bg: currentColors.brand500 + '10' }}
+                          onClick={() => setSelectedFolder(folder)}
+                        >
+                          <Text fontSize="14px">📂</Text>
+                          <Text fontSize="12px" color={textColor} flex="1" noOfLines={1}>
+                            {folder.name}
+                          </Text>
+                          {selectedFolder?.id === folder.id && (
+                            <Text fontSize="12px" color="green.500">✓</Text>
+                          )}
+                        </HStack>
+                      ))}
+                      {driveFolders.length > 10 && (
+                        <Text fontSize="11px" color="gray.500" textAlign="center">
+                          ... and {driveFolders.length - 10} more folders
+                        </Text>
+                      )}
+                      
+                      {selectedFolder && (
+                        <Box mt="8px" p="8px" bg={useColorModeValue('green.50', 'green.900')} borderRadius="6px">
+                          <Text fontSize="11px" color="green.600" fontWeight="600">
+                            Selected: 📂 {selectedFolder.name}
+                          </Text>
+                        </Box>
+                      )}
+                    </VStack>
+                  ) : (
+                    <Text fontSize="12px" color="orange.500">
+                      No folders found in your Google Drive root directory.
+                    </Text>
+                  )}
+                </Box>
+
+                {/* Sync Options */}
+                <Box borderRadius="8px" bg={useColorModeValue('green.50', 'green.900')} p="12px">
+                  <Text fontSize={adaptiveConfig.fontSize.small} fontWeight="600" color={textColor} mb="8px">
+                    🔄 Sync Options
+                  </Text>
+                  <VStack align="start" spacing="4px">
+                    <Checkbox size="sm" colorScheme="brand" defaultChecked>
+                      <Text fontSize="12px">Auto-sync new files</Text>
+                    </Checkbox>
+                    <Checkbox size="sm" colorScheme="brand">
+                      <Text fontSize="12px">Download for offline processing</Text>
+                    </Checkbox>
+                    <Checkbox size="sm" colorScheme="brand" defaultChecked>
+                      <Text fontSize="12px">Monitor folder changes</Text>
+                    </Checkbox>
+                  </VStack>
+                </Box>
+              </VStack>
             </Box>
           </Box>
         )}
