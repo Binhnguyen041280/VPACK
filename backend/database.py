@@ -19,9 +19,44 @@ BASE_DIR = find_project_root(os.path.abspath(__file__))
 DB_DIR = os.path.join(BASE_DIR, "backend/database")
 DB_PATH = os.path.join(DB_DIR, "events.db")
 
-# Đường dẫn mặc định
-INPUT_VIDEO_DIR = os.path.join(BASE_DIR, "resources/Inputvideo")
-OUTPUT_CLIPS_DIR = os.path.join(BASE_DIR, "resources/output_clips")
+# Đường dẫn mặc định - OS-aware paths for Canvas compatibility
+def get_default_storage_paths():
+    """Get OS-specific default storage paths matching Canvas frontend expectations"""
+    import platform
+    system = platform.system().lower()
+    
+    if system == "windows":
+        # Windows: C:\Users\%USERNAME%\Videos\VTrack
+        import os
+        username = os.environ.get('USERNAME', 'User')
+        input_dir = f"C:\\Users\\{username}\\Videos\\VTrack\\Input"
+        output_dir = f"C:\\Users\\{username}\\Videos\\VTrack\\Output"
+    elif system == "darwin":  # macOS
+        # Mac: /Users/%USER%/Movies/VTrack  
+        import os
+        username = os.environ.get('USER', 'user')
+        input_dir = f"/Users/{username}/Movies/VTrack/Input"
+        output_dir = f"/Users/{username}/Movies/VTrack/Output"
+    else:  # Linux and others
+        # Linux: /home/%USER%/Videos/VTrack
+        import os
+        username = os.environ.get('USER', 'user')
+        input_dir = f"/home/{username}/Videos/VTrack/Input"
+        output_dir = f"/home/{username}/Videos/VTrack/Output"
+    
+    return input_dir, output_dir
+
+# Get OS-specific paths
+INPUT_VIDEO_DIR, OUTPUT_CLIPS_DIR = get_default_storage_paths()
+
+# Fallback to project-relative paths if OS-specific paths fail
+try:
+    os.makedirs(os.path.dirname(INPUT_VIDEO_DIR), exist_ok=True)
+    os.makedirs(os.path.dirname(OUTPUT_CLIPS_DIR), exist_ok=True)
+except (OSError, PermissionError):
+    print("⚠️ Cannot create OS-specific paths, falling back to project directories")
+    INPUT_VIDEO_DIR = os.path.join(BASE_DIR, "resources/Inputvideo")
+    OUTPUT_CLIPS_DIR = os.path.join(BASE_DIR, "resources/output_clips")
 
 def get_db_connection():
     """
@@ -189,9 +224,9 @@ def update_database():
                         timezone_iana_name, timezone_display_name, timezone_utc_offset_hours,
                         timezone_format_type, timezone_validated, timezone_updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (1, "Việt Nam", "UTC+7", "MyBrand", working_days, "07:00", "23:00",
+                """, (1, "Vietnam", "Asia/Ho_Chi_Minh", "Alan_go", working_days, "07:00", "23:00",
                       "Asia/Ho_Chi_Minh", "Vietnam (Ho Chi Minh City)", 7.0, 
-                      "utc_offset", 1, datetime.now().isoformat()))
+                      "iana_standard", 1, datetime.now().isoformat()))
 
             # ==================== VIDEO PROCESSING TABLES ====================
             
