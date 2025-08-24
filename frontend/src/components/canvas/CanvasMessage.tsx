@@ -853,104 +853,20 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                   </VStack>
                 </Box>
 
-                {/* Enhanced Folder Selection with Tree Navigation */}
-                <Box borderRadius="8px" bg={cardBg} p="12px">
-                  <Text fontSize={adaptiveConfig.fontSize.small} fontWeight="600" color={textColor} mb="8px">
-                    📁 Advanced Folder Selection
-                  </Text>
-                  
-                  {!driveConnected ? (
-                    <Text fontSize="12px" color={secondaryText}>
-                      After connecting, you'll be able to browse and select specific Google Drive folders using an advanced tree navigator.
-                    </Text>
-                  ) : (
-                    <>
-                      <Text fontSize="11px" color={secondaryText} mb="12px">
-                        📋 Navigate your Google Drive folders using the tree view below. You can select multiple folders at the same depth level for monitoring.
-                      </Text>
-                      
-                      {/* Google Drive Folder Tree */}
-                      <Box 
-                        border="1px solid" 
-                        borderColor={borderColor} 
-                        borderRadius="8px" 
-                        overflow="hidden"
-                        maxH={{ base: "250px", md: "350px" }}
-                      >
-                        <GoogleDriveFolderTree
-                          session_token={driveSessionTokenRef.current}
-                          onFoldersSelected={handleTreeFolderSelection}
-                          maxDepth={3}
-                        />
-                      </Box>
-                      
-                      {/* Selection Summary */}
-                      {selectedTreeFolders.length > 0 && (
-                        <Box mt="12px" p="8px" bg={cardBg} border="1px solid" borderColor="green.400" borderRadius="6px">
-                          <Text fontSize="11px" color="green.600" fontWeight="600" mb="4px">
-                            ✅ Selected {selectedTreeFolders.length} folder(s) for monitoring:
-                          </Text>
-                          <VStack align="start" spacing="2px">
-                            {selectedTreeFolders.slice(0, 3).map((folder, idx) => (
-                              <Text key={folder.id} fontSize="10px" color="green.500">
-                                {idx + 1}. {folder.name} (Depth {folder.depth})
-                              </Text>
-                            ))}
-                            {selectedTreeFolders.length > 3 && (
-                              <Text fontSize="10px" color="green.400">
-                                ... and {selectedTreeFolders.length - 3} more folders
-                              </Text>
-                            )}
-                          </VStack>
-                        </Box>
-                      )}
-                      
-                      {/* Quick Actions */}
-                      <HStack mt="8px" spacing="8px">
-                        <Button 
-                          size="xs" 
-                          variant="outline" 
-                          colorScheme="blue"
-                          onClick={() => {
-                            console.log('🔄 Manual folder refresh triggered');
-                            loadInitialFolders();
-                          }}
-                        >
-                          🔄 Refresh
-                        </Button>
-                        <Button 
-                          size="xs" 
-                          variant="outline" 
-                          colorScheme="gray"
-                          onClick={() => {
-                            setSelectedTreeFolders([]);
-                            console.log('🗑️ Cleared tree selection');
-                          }}
-                        >
-                          🗑️ Clear Selection
-                        </Button>
-                      </HStack>
-                    </>
-                  )}
+                {/* Google Drive Folder Tree */}
+                <Box 
+                  border="1px solid" 
+                  borderColor={borderColor} 
+                  borderRadius="8px" 
+                  overflow="visible"
+                >
+                  <GoogleDriveFolderTree
+                    session_token={driveSessionTokenRef.current}
+                    onFoldersSelected={handleTreeFolderSelection}
+                    maxDepth={3}
+                  />
                 </Box>
 
-                {/* Sync Options */}
-                <Box borderRadius="8px" bg={cardBg} border="1px solid" borderColor="green.400" p="12px">
-                  <Text fontSize={adaptiveConfig.fontSize.small} fontWeight="600" color={textColor} mb="8px">
-                    🔄 Sync Options
-                  </Text>
-                  <VStack align="start" spacing="4px">
-                    <Checkbox size="sm" colorScheme="brand" defaultChecked>
-                      <Text fontSize="12px">Auto-sync new files</Text>
-                    </Checkbox>
-                    <Checkbox size="sm" colorScheme="brand">
-                      <Text fontSize="12px">Download for offline processing</Text>
-                    </Checkbox>
-                    <Checkbox size="sm" colorScheme="brand" defaultChecked>
-                      <Text fontSize="12px">Monitor folder changes</Text>
-                    </Checkbox>
-                  </VStack>
-                </Box>
               </VStack>
             </Box>
           </Box>

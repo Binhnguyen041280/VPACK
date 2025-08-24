@@ -566,61 +566,7 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
 
   return (
     <Box className={className}>
-      {/* Header with Depth Info */}
-      <Flex justify="space-between" align="start" mb={4} direction={{ base: "column", md: "row" }} gap={3}>
-        <Box flex="1">
-          <Text fontWeight="medium" color={textColor} fontSize="sm">
-            📁 Navigate & Select Folders (Max Depth {maxDepth})
-          </Text>
-          <Text fontSize="xs" color="gray.400" mt={1}>
-            {selectedDepth !== null ? (
-              <Text as="span" color="blue.300">
-                Currently selecting: <Text as="span" fontWeight="bold">Depth {selectedDepth}</Text> ({getFolderTypeLabel({depth: selectedDepth} as DriveFolder)})
-              </Text>
-            ) : (
-              <Text as="span">Select folders at any depth (1-{maxDepth}), but all must be same depth</Text>
-            )}
-          </Text>
-        </Box>
-        <HStack spacing={2} flexShrink={0}>
-          <Button
-            size="xs"
-            colorScheme="blue"
-            isDisabled={selectedDepth === null}
-            onClick={handleSelectAll}
-            fontSize="10px"
-          >
-            All D{selectedDepth || '?'}
-          </Button>
-          <Button
-            size="xs"
-            variant="outline"
-            onClick={handleDeselectAll}
-            fontSize="10px"
-          >
-            Clear
-          </Button>
-        </HStack>
-      </Flex>
 
-      {/* Selection Summary */}
-      {selectedFolders.length > 0 && (
-        <Alert status="success" borderRadius="md" mb={4}>
-          <AlertIcon />
-          <Box>
-            <Text fontSize="sm">
-              ✅ Selected {selectedFolders.length} folder(s) at <Text as="span" fontWeight="bold">Depth {selectedDepth}</Text>:
-            </Text>
-            <Box fontSize="xs" mt={1} maxH="80px" overflowY="auto">
-              {selectedFolders.map((f, idx) => (
-                <Text key={f.id}>
-                  {idx + 1}. {f.name} <Text as="span" color="green.300">({getFolderTypeLabel(f)})</Text>
-                </Text>
-              ))}
-            </Box>
-          </Box>
-        </Alert>
-      )}
 
       {/* Error Display */}
       {error && (
@@ -645,11 +591,28 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
         bg={bgColor} 
         borderRadius="md" 
         p={{ base: 2, md: 4 }} 
-        maxH={{ base: "300px", md: "400px" }} 
+        maxH={{ base: "350px", md: "450px" }} 
         overflowY="auto" 
+        overflowX="hidden"
         border="1px solid" 
         borderColor={borderColor}
         fontSize={{ base: "xs", md: "sm" }}
+        sx={{
+          '&::-webkit-scrollbar': {
+            width: '6px',
+          },
+          '&::-webkit-scrollbar-track': {
+            background: 'gray.100',
+            borderRadius: '3px',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            background: 'gray.400',
+            borderRadius: '3px',
+          },
+          '&::-webkit-scrollbar-thumb:hover': {
+            background: 'gray.500',
+          },
+        }}
       >
         {treeData['root'] ? (
           <VStack align="stretch" spacing={0}>
