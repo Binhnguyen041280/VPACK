@@ -845,6 +845,7 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   };
   
   const [traditionalInputPath, setTraditionalInputPath] = useState(getDefaultInputPath());
+  const [qrInputPath, setQrInputPath] = useState(getDefaultInputPath());
 
   return (
     <Box
@@ -972,6 +973,250 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
             </Box>
           </Box>
         )}
+
+        {/* TimeGo QR Code Display - Show when qr method is selected */}
+        {selectedPackingMethod === 'qr' && (
+          <Box 
+            animation="pulse 2s infinite"
+            sx={{
+              '@keyframes pulse': {
+                '0%, 100%': { opacity: 1 },
+                '50%': { opacity: 0.7 }
+              }
+            }}
+          >
+            <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="8px">
+              🏷️ TimeGo QR Code for Printing
+            </Text>
+            <Box bg={cardBg} p="16px" borderRadius="12px" border="2px solid" borderColor="green.300">
+              <VStack spacing="12px" align="center">
+                <VStack spacing="8px">
+                  <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} textAlign="center">
+                    📋 Print this QR code and place it in the center of your packing area
+                  </Text>
+                  <Text fontSize="xs" color="blue.600" textAlign="center">
+                    💡 Click QR image to download • Use Print button for direct printing
+                  </Text>
+                </VStack>
+                
+                {/* QR Code Image */}
+                <Box 
+                  p="16px" 
+                  bg="white" 
+                  borderRadius="8px" 
+                  border="2px solid" 
+                  borderColor="gray.200"
+                  boxShadow="md"
+                  position="relative"
+                  cursor="pointer"
+                  _hover={{
+                    transform: 'scale(1.05)',
+                    boxShadow: 'xl',
+                    '& .download-hint': {
+                      opacity: 1
+                    }
+                  }}
+                  transition="all 0.2s ease"
+                  onClick={() => {
+                    // Download QR code image
+                    const link = document.createElement('a');
+                    link.href = '/images/TimeGo-qr.png';
+                    link.download = 'TimeGo-QR-Code.png';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}
+                >
+                  <img 
+                    src="/images/TimeGo-qr.png" 
+                    alt="TimeGo QR Code" 
+                    style={{
+                      width: '200px',
+                      height: '200px',
+                      display: 'block'
+                    }}
+                  />
+                  
+                  {/* Download Hint Overlay */}
+                  <Box
+                    className="download-hint"
+                    position="absolute"
+                    top="0"
+                    left="0"
+                    right="0"
+                    bottom="0"
+                    bg="rgba(0,0,0,0.8)"
+                    borderRadius="8px"
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                    opacity="0"
+                    transition="opacity 0.2s ease"
+                    color="white"
+                    fontSize="sm"
+                    fontWeight="600"
+                    textAlign="center"
+                    flexDirection="column"
+                  >
+                    <Text fontSize="lg" mb="4px">📥</Text>
+                    <Text>Click to Download</Text>
+                    <Text fontSize="xs" opacity="0.8">for offline printing</Text>
+                  </Box>
+                </Box>
+                
+                {/* Print Button */}
+                <Button 
+                  leftIcon={<Text>🖨️</Text>}
+                  colorScheme="green" 
+                  size="md"
+                  onClick={() => {
+                    // Create print window for QR code
+                    const printWindow = window.open('', '_blank');
+                    if (printWindow) {
+                      printWindow.document.write(`
+                        <html>
+                          <head>
+                            <title>TimeGo QR Code - Print</title>
+                            <style>
+                              @page {
+                                margin: 0;
+                                size: A4;
+                              }
+                              * {
+                                margin: 0;
+                                padding: 0;
+                                box-sizing: border-box;
+                              }
+                              body { 
+                                width: 100vw;
+                                height: 100vh;
+                                display: flex;
+                                justify-content: center;
+                                align-items: center;
+                                background: white;
+                              }
+                              .qr-container { 
+                                width: 90vmin;
+                                height: 90vmin;
+                                display: flex;
+                                justify-content: center;
+                                align-items: center;
+                              }
+                              .qr-container img { 
+                                width: 90vmin;
+                                height: 90vmin;
+                                object-fit: contain;
+                                border: 3px solid #333;
+                              }
+                              @media print {
+                                body { 
+                                  width: 100%;
+                                  height: 100vh;
+                                  margin: 0;
+                                  padding: 10mm;
+                                  display: flex;
+                                  justify-content: center;
+                                  align-items: center;
+                                }
+                                .qr-container {
+                                  width: auto;
+                                  height: auto;
+                                  display: flex;
+                                  justify-content: center;
+                                  align-items: center;
+                                }
+                                .qr-container img {
+                                  width: 70vmin;
+                                  height: 70vmin;
+                                  object-fit: contain;
+                                  border: 2px solid #000;
+                                }
+                              }
+                            </style>
+                          </head>
+                          <body>
+                            <div class="qr-container">
+                              <img src="/images/TimeGo-qr.png" alt="TimeGo QR Code" />
+                            </div>
+                          </body>
+                        </html>
+                      `);
+                      printWindow.document.close();
+                      printWindow.focus();
+                      setTimeout(() => {
+                        printWindow.print();
+                        printWindow.close();
+                      }, 250);
+                    }
+                  }}
+                >
+                  Print QR Code
+                </Button>
+                
+                <Text fontSize={adaptiveConfig.fontSize.small} color="blue.600" textAlign="center">
+                  💡 After printing, place the QR code in the center of your packing area where packages will cover/uncover it, then record packing activities to create analysis videos
+                </Text>
+              </VStack>
+            </Box>
+          </Box>
+        )}
+
+        {/* QR Code Video Input Path Selection - Show when qr method is selected */}
+        {selectedPackingMethod === 'qr' && (
+          <Box 
+            animation="pulse 2s infinite"
+            sx={{
+              '@keyframes pulse': {
+                '0%, 100%': { opacity: 1 },
+                '50%': { opacity: 0.7 }
+              }
+            }}
+          >
+            <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="8px">
+              📂 QR Code Video Input Directory
+            </Text>
+            <Box bg={cardBg} p="16px" borderRadius="12px" border="2px solid" borderColor="blue.300">
+              <VStack spacing="8px" align="stretch" mb="12px">
+                <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                  📝 Choose where your QR code packing videos are stored for processing
+                </Text>
+                <Text fontSize={adaptiveConfig.fontSize.small} color="green.500" fontWeight="500">
+                  ⏱️ Video Requirements: Minimum 1 minute - Maximum 5 minutes duration
+                </Text>
+                <Text fontSize={adaptiveConfig.fontSize.small} color="orange.500" fontStyle="italic">
+                  💡 Tip: Open folder in explorer, copy path from address bar and paste here
+                </Text>
+              </VStack>
+              <Input
+                value={qrInputPath}
+                placeholder="Copy and paste QR video folder path here..."
+                size="sm"
+                borderColor={borderColor}
+                _focus={{ borderColor: currentColors.brand500 }}
+                bg={bgColor}
+                mb="12px"
+                onFocus={(e) => {
+                  // Clear input when user clicks to enter new path
+                  if (qrInputPath === getDefaultInputPath()) {
+                    setQrInputPath('');
+                  }
+                  e.target.select(); // Select all text for easy replacement
+                }}
+                onChange={(e) => {
+                  setQrInputPath(e.target.value);
+                  onStepChange?.('packing_area', { 
+                    qrInputPath: e.target.value,
+                    packingMethod: 'qr'
+                  });
+                }}
+              />
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                📋 QR video folder: {qrInputPath}
+              </Text>
+            </Box>
+          </Box>
+        )}
+
 
         {/* Detection Zone Preview */}
         <Box>
@@ -1135,6 +1380,7 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 position="relative"
                 onClick={() => {
                   setSelectedPackingMethod('qr');
+                  setShowCameraPopup(false); // Auto close popup
                   onStepChange?.('packing_area', { 
                     packingMethod: 'qr'
                   });
