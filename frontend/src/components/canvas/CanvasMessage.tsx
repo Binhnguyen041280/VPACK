@@ -155,6 +155,7 @@ export default function CanvasMessage({ configStep, onStepChange }: CanvasMessag
       h="100%" 
       w="100%"
       overflow={shouldScroll ? "auto" : "hidden"}
+      pr={configStep === 'packing_area' ? "12px" : "0"}
       css={shouldScroll ? {
         '&::-webkit-scrollbar': {
           width: '6px',
@@ -829,6 +830,21 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   const [selectedCameras, setSelectedCameras] = useState<string[]>([]);
   const [showCameraPopup, setShowCameraPopup] = useState(false);
   const [selectedCameraForConfig, setSelectedCameraForConfig] = useState<string | null>(null);
+  const [selectedPackingMethod, setSelectedPackingMethod] = useState<'traditional' | 'qr' | null>(null);
+  
+  // Default input path for traditional method
+  const getDefaultInputPath = () => {
+    const platform = navigator.platform.toLowerCase();
+    if (platform.includes('win')) {
+      return 'C:\\Users\\%USERNAME%\\Videos\\Input';
+    } else if (platform.includes('mac')) {
+      return '/Users/%USER%/Movies/Input';
+    } else {
+      return '/home/%USER%/Videos/Input';
+    }
+  };
+  
+  const [traditionalInputPath, setTraditionalInputPath] = useState(getDefaultInputPath());
 
   return (
     <Box
@@ -901,6 +917,62 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
             </Text>
           </Box>
         </Box>
+        {/* Traditional Video Input Path Selection - Show when traditional method is selected */}
+        {selectedPackingMethod === 'traditional' && (
+          <Box 
+            animation="pulse 2s infinite"
+            sx={{
+              '@keyframes pulse': {
+                '0%, 100%': { opacity: 1 },
+                '50%': { opacity: 0.7 }
+              }
+            }}
+          >
+            <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="8px">
+              📂 Traditional Video Input Directory
+            </Text>
+            <Box bg={cardBg} p="16px" borderRadius="12px" border="2px solid" borderColor="orange.300">
+              <VStack spacing="8px" align="stretch" mb="12px">
+                <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                  📝 Choose where your traditional packing videos are stored for processing
+                </Text>
+                <Text fontSize={adaptiveConfig.fontSize.small} color="blue.500" fontWeight="500">
+                  ⏱️ Video Requirements: Minimum 1 minute - Maximum 5 minutes duration
+                </Text>
+                <Text fontSize={adaptiveConfig.fontSize.small} color="orange.500" fontStyle="italic">
+                  💡 Tip: Open folder in explorer, copy path from address bar and paste here
+                </Text>
+              </VStack>
+              <Input
+                value={traditionalInputPath}
+                placeholder="Copy and paste traditional video folder path here..."
+                size="sm"
+                borderColor={borderColor}
+                _focus={{ borderColor: currentColors.brand500 }}
+                bg={bgColor}
+                mb="12px"
+                onFocus={(e) => {
+                  // Clear input when user clicks to enter new path
+                  if (traditionalInputPath === getDefaultInputPath()) {
+                    setTraditionalInputPath('');
+                  }
+                  e.target.select(); // Select all text for easy replacement
+                }}
+                onChange={(e) => {
+                  setTraditionalInputPath(e.target.value);
+                  onStepChange?.('packing_area', { 
+                    traditionalInputPath: e.target.value,
+                    packingMethod: 'traditional'
+                  });
+                }}
+              />
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                📋 Traditional video folder: {traditionalInputPath}
+              </Text>
+            </Box>
+          </Box>
+        )}
+
         {/* Detection Zone Preview */}
         <Box>
           <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
@@ -1007,6 +1079,12 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 cursor="pointer"
                 _hover={{ transform: 'translateY(-2px)', boxShadow: 'lg' }}
                 transition="all 0.2s ease"
+                onClick={() => {
+                  setSelectedPackingMethod('traditional');
+                  onStepChange?.('packing_area', { 
+                    packingMethod: 'traditional'
+                  });
+                }}
               >
                 <Text fontSize="lg" fontWeight="600" color={textColor} mb="16px">
                   📦 Traditional Packing Table
@@ -1055,6 +1133,12 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 _hover={{ transform: 'translateY(-2px)', boxShadow: 'lg' }}
                 transition="all 0.2s ease"
                 position="relative"
+                onClick={() => {
+                  setSelectedPackingMethod('qr');
+                  onStepChange?.('packing_area', { 
+                    packingMethod: 'qr'
+                  });
+                }}
               >
                 {/* Recommended Badge */}
                 <Box
@@ -1178,6 +1262,7 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
           </ModalBody>
         </ModalContent>
       </Modal>
+
     </Box>
   );
 }
