@@ -208,24 +208,28 @@ export default function Chat(props: { apiKeyApp: string }) {
           localStorage.setItem('userConfigured', 'true');
           setShowConfigLayout(true);
         }
+        // Auto-advance to next step
         setConfigStep('location_time');
         setHighestStepReached(prev => Math.max(prev, 2));
         return '📍 Step 2: Location & Time Configuration\n\nNow we\'ll set up your timezone, work schedule, and language preferences.\n\nThe system will auto-detect your location and timezone. You can modify these settings if needed.\n\n⚡ Auto-detection is running...';
       
       case 'location_time':
         // Save default location/time settings
+        // Auto-advance to next step
         setConfigStep('video_source');
         setHighestStepReached(prev => Math.max(prev, 3));
         return '📹 Step 3: Video Source Configuration\n\nChoose where your video files are located for processing.\n\nSelect between local storage (PC, external drive, network mount) or cloud storage (Google Drive). Configure video quality and frame rate settings.\n\n📁 Choose the source that best fits your video storage setup.';
       
       case 'video_source':
         // Save default video source settings
+        // Auto-advance to next step
         setConfigStep('packing_area');
         setHighestStepReached(prev => Math.max(prev, 4));
         return '📦 Step 4: Packing Area Detection\n\nDefine the detection zones for monitoring.\n\nSet up areas to monitor and configure detection zones for optimal coverage.\n\n🎯 Detection zones are ready for customization.';
       
       case 'packing_area':
         // Save default packing area settings
+        // Auto-advance to next step
         setConfigStep('timing');
         setHighestStepReached(prev => Math.max(prev, 5));
         return '⏱️ Step 5: Timing & File Storage\n\nFinal step! Configure timing settings and file storage.\n\nSet up buffer times, packing time limits, storage paths, and retention policies.\n\n🚀 Timing and storage settings are ready for configuration.';
@@ -253,26 +257,41 @@ export default function Chat(props: { apiKeyApp: string }) {
           stopAnimation();
           localStorage.setItem('userConfigured', 'true');
           setShowConfigLayout(true);
-          return '✅ Changes confirmed. Using default: "Alan_go"\n\nType "continue" to proceed to next step.';
+          // Auto-advance to next step
+          setConfigStep('location_time');
+          setHighestStepReached(prev => Math.max(prev, 2));
+          return '📍 Step 2: Location & Time Configuration\n\nNow we\'ll set up your timezone, work schedule, and language preferences.\n\nThe system will auto-detect your location and timezone. You can modify these settings if needed.\n\n⚡ Auto-detection is running...';
         } else {
           setShowConfigLayout(true);
-          return `✅ Changes confirmed: "${companyName}"\n\nType "continue" to proceed to next step.`;
+          // Auto-advance to next step
+          setConfigStep('location_time');
+          setHighestStepReached(prev => Math.max(prev, 2));
+          return '📍 Step 2: Location & Time Configuration\n\nNow we\'ll set up your timezone, work schedule, and language preferences.\n\nThe system will auto-detect your location and timezone. You can modify these settings if needed.\n\n⚡ Auto-detection is running...';
         }
       
       case 'location_time':
-        return '✅ Location & Time settings confirmed.\n\nType "continue" to proceed to next step.';
+        // Auto-advance to next step
+        setConfigStep('video_source');
+        setHighestStepReached(prev => Math.max(prev, 3));
+        return '📹 Step 3: Video Source Configuration\n\nChoose where your video files are located for processing.\n\nSelect between local storage (PC, external drive, network mount) or cloud storage (Google Drive). Configure video quality and frame rate settings.\n\n📁 Choose the source that best fits your video storage setup.';
       
       case 'video_source':
-        return '✅ Video source settings confirmed.\n\nType "continue" to proceed to next step.';
+        // Auto-advance to next step
+        setConfigStep('packing_area');
+        setHighestStepReached(prev => Math.max(prev, 4));
+        return '📦 Step 4: Packing Area Detection\n\nDefine the detection zones for monitoring.\n\nSet up areas to monitor and configure detection zones for optimal coverage.\n\n🎯 Detection zones are ready for customization.';
       
       case 'packing_area':
-        return '✅ Packing area settings confirmed.\n\nType "continue" to proceed to next step.';
+        // Auto-advance to next step
+        setConfigStep('timing');
+        setHighestStepReached(prev => Math.max(prev, 5));
+        return '⏱️ Step 5: Timing & File Storage\n\nFinal step! Configure timing settings and file storage.\n\nSet up buffer times, packing time limits, storage paths, and retention policies.\n\n🚀 Timing and storage settings are ready for configuration.';
       
       case 'timing':
-        return '✅ Timing & storage settings confirmed.\n\nConfiguration completed!';
+        return '✅ Step 5 completed. Timing & storage settings saved.\n\n🎉 All configuration completed!\n\nAll 5 steps finished with your settings. Ready to start processing.';
       
       default:
-        return '✅ Settings confirmed.\n\nType "continue" to proceed.';
+        return 'Configuration step completed.';
     }
   };
 
@@ -353,7 +372,7 @@ export default function Chat(props: { apiKeyApp: string }) {
       return 'Available commands:\n• "continue" or "next" - Proceed to next step\n• "back" - Go to previous step\n• "step X" - Jump to specific step (1-5)\n• "edit" - Modify current step settings\n• "help" - Show this help\n\nOr enter data to configure the current step.';
     }
     
-    // Handle company name input when in brandname step - Direct Submit (no intermediate step)
+    // Handle company name input when in brandname step - Direct Submit with auto-advance
     if (configStep === 'brandname' && userInput.trim().length > 0) {
       setCompanyName(userInput.trim());
       
@@ -370,8 +389,12 @@ export default function Chat(props: { apiKeyApp: string }) {
       // Mark step as completed immediately (direct submit pattern)
       setStepCompleted(prev => ({ ...prev, brandname: true }));
       
-      // Direct submit result - no intermediate confirmation
-      return `✅ Changes confirmed: "${userInput.trim()}"\n\nType "continue" to proceed to next step.`;
+      // Auto-advance to next step
+      setConfigStep('location_time');
+      setHighestStepReached(prev => Math.max(prev, 2));
+      
+      // Direct submit result with auto-advance
+      return '📍 Step 2: Location & Time Configuration\n\nNow we\'ll set up your timezone, work schedule, and language preferences.\n\nThe system will auto-detect your location and timezone. You can modify these settings if needed.\n\n⚡ Auto-detection is running...';
     }
     
     // Handle empty submit for brandname (use default) - this is covered by handleSubmitCommand now
@@ -387,11 +410,63 @@ export default function Chat(props: { apiKeyApp: string }) {
       return;
     }
 
-    // Add user message (only if not empty)
-    if (inputCode.trim()) {
+    // Add user message with auto-response if input is empty but action taken
+    let userMessageContent = inputCode.trim();
+    
+    // Special case: if user entered company name, show it in user message
+    if (userMessageContent && configStep === 'brandname') {
+      userMessageContent = `Tôi thiết lập tên công ty: "${userMessageContent}"`;
+    }
+    
+    // If empty input but step completed, show auto-response based on current step
+    if (!inputCode.trim() && stepCompleted[configStep]) {
+      switch (configStep) {
+        case 'brandname':
+          userMessageContent = 'Tôi đồng ý với nội dung thiết lập Step 1';
+          break;
+        case 'location_time':
+          userMessageContent = 'Tôi đồng ý với nội dung thiết lập Step 2';
+          break;
+        case 'video_source':
+          userMessageContent = 'Tôi đồng ý với nội dung thiết lập Step 3';
+          break;
+        case 'packing_area':
+          userMessageContent = 'Tôi đồng ý với nội dung thiết lập Step 4';
+          break;
+        case 'timing':
+          userMessageContent = 'Tôi đồng ý với nội dung thiết lập Step 5';
+          break;
+        default:
+          userMessageContent = 'Tôi đồng ý với thiết lập này';
+      }
+    } else if (!inputCode.trim() && !stepCompleted[configStep]) {
+      // Empty submit on incomplete step - show confirmation message
+      switch (configStep) {
+        case 'brandname':
+          userMessageContent = 'Tôi xác nhận thiết lập mặc định';
+          break;
+        case 'location_time':
+          userMessageContent = 'Tôi xác nhận thiết lập Location & Time';
+          break;
+        case 'video_source':
+          userMessageContent = 'Tôi xác nhận thiết lập Video Source';
+          break;
+        case 'packing_area':
+          userMessageContent = 'Tôi xác nhận thiết lập Packing Area';
+          break;
+        case 'timing':
+          userMessageContent = 'Tôi xác nhận thiết lập Timing & Storage';
+          break;
+        default:
+          userMessageContent = 'Tôi xác nhận thiết lập này';
+      }
+    }
+    
+    // Add user message (always add for visual feedback)
+    if (userMessageContent) {
       const userMessage: Message = {
         id: Date.now().toString(),
-        content: inputCode.trim(),
+        content: userMessageContent,
         type: 'user',
         timestamp: new Date()
       };
