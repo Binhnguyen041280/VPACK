@@ -28,7 +28,7 @@ warnings.filterwarnings('ignore')
 from modules.config.logging_config import setup_logging, get_logger
 from modules.config.config import config_bp, init_app_and_config
 from modules.db_utils.safe_connection import safe_db_connection
-from modules.scheduler.program import program_bp, scheduler
+#from modules.scheduler.program import program_bp, scheduler
 from modules.query.query import query_bp
 from blueprints.cutter_bp import cutter_bp
 from blueprints.hand_detection_bp import hand_detection_bp
@@ -242,7 +242,7 @@ logger.info("🔑 Session configuration applied")
 
 # ==================== REGISTER BLUEPRINTS ====================
 # Core modules
-app.register_blueprint(program_bp)
+#app.register_blueprint(program_bp)
 app.register_blueprint(config_bp, url_prefix='/api/config')
 app.register_blueprint(query_bp)
 app.register_blueprint(cutter_bp)
