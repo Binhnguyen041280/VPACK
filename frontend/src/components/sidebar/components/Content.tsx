@@ -43,17 +43,8 @@ function SidebarContent(props: SidebarContent) {
   const { currentColors } = useColorTheme();
   const { userInfo, refreshUserInfo } = useUser();
   
-  // Only refresh user info if user has been configured before
-  useEffect(() => {
-    const isUserConfigured = localStorage.getItem('userConfigured') === 'true';
-    
-    if (isUserConfigured) {
-      console.log('🚀 Sidebar mounted - user already configured, refreshing info');
-      refreshUserInfo();
-    } else {
-      console.log('🚀 Sidebar mounted - first-time user, using defaults');
-    }
-  }, []); // Empty dependency array to run only once
+  // UserContext will handle refreshing user info on mount
+  // No additional refresh needed here
   
   // Debug userInfo
   console.log('🎨 Sidebar userInfo:', userInfo);

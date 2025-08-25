@@ -46,7 +46,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <Sidebar routes={routes} collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
               <ToggleButtons />
               <Box
-                pt={{ base: '60px', md: '100px' }}
                 float="right"
                 minHeight="100vh"
                 height="100vh"

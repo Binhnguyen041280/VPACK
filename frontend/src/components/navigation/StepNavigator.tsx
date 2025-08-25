@@ -13,7 +13,6 @@ import {
 import { 
   MdBusiness,
   MdLocationOn, 
-  MdSave,
   MdVideoLibrary,
   MdCropFree,
   MdTimer
@@ -45,30 +44,23 @@ const steps: Step[] = [
   },
   {
     id: 3,
-    key: 'file_save',
-    title: 'File Save',
-    description: 'Storage path & retention',
-    icon: MdSave
-  },
-  {
-    id: 4,
     key: 'video_source',
     title: 'Video Source',
     description: 'Camera & quality settings',
     icon: MdVideoLibrary
   },
   {
-    id: 5,
+    id: 4,
     key: 'packing_area',
     title: 'Packing Area',
-    description: 'Detection zones & triggers',
+    description: 'Detection zones',
     icon: MdCropFree
   },
   {
-    id: 6,
+    id: 5,
     key: 'timing',
-    title: 'Timing',
-    description: 'Speed & buffer settings',
+    title: 'Timing & Storage',
+    description: 'Buffer, timing & file storage',
     icon: MdTimer
   }
 ];
@@ -161,7 +153,7 @@ export default function StepNavigator({
           borderRadius="4px"
         >
           <Text fontSize="xs" color={secondaryText} fontWeight="500">
-            {highestStepReached}/6
+            {highestStepReached}/5
           </Text>
         </Box>
       </Flex>

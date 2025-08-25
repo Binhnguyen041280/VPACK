@@ -13,7 +13,14 @@ import {
   Select,
   Checkbox,
   SimpleGrid,
-  useColorModeValue
+  useColorModeValue,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  ModalCloseButton
 } from '@chakra-ui/react';
 import { MdAutoAwesome, MdVideoLibrary, MdCamera } from 'react-icons/md';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
@@ -23,7 +30,7 @@ import { useState, useEffect, useRef } from 'react';
 import React from 'react';
 
 interface CanvasMessageProps {
-  configStep: 'brandname' | 'location_time' | 'file_save' | 'video_source' | 'packing_area' | 'timing';
+  configStep: 'brandname' | 'location_time' | 'video_source' | 'packing_area' | 'timing';
   onStepChange?: (stepName: string, data: any) => void;
 }
 
@@ -128,8 +135,6 @@ export default function CanvasMessage({ configStep, onStepChange }: CanvasMessag
         return <BrandnameCanvas {...commonProps} />;
       case 'location_time':
         return <LocationTimeCanvas {...commonProps} />;
-      case 'file_save':
-        return <FileSaveCanvas {...commonProps} />;
       case 'video_source':
         return <VideoSourceCanvas {...commonProps} />;
       case 'packing_area':
@@ -259,112 +264,6 @@ function BrandnameCanvas({ adaptiveConfig }: CanvasComponentProps) {
   );
 }
 
-// Step 3: File Save Canvas
-function FileSaveCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
-  const { currentColors } = useColorTheme();
-  const bgColor = useColorModeValue('white', 'navy.800');
-  const borderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
-  const textColor = useColorModeValue('navy.700', 'white');
-  const secondaryText = useColorModeValue('gray.600', 'gray.400');
-  const cardBg = useColorModeValue('gray.50', 'navy.700');
-  
-  // Local state for storage path - Default based on OS
-  const getDefaultPath = () => {
-    const platform = navigator.platform.toLowerCase();
-    if (platform.includes('win')) {
-      return 'C:\\Users\\%USERNAME%\\Videos\\VTrack';
-    } else if (platform.includes('mac')) {
-      return '/Users/%USER%/Movies/VTrack';
-    } else {
-      return '/home/%USER%/Videos/VTrack';
-    }
-  };
-  
-  const [storagePath, setStoragePath] = useState(getDefaultPath());
-
-  return (
-    <Box
-      w="100%"
-      minH="fit-content"
-    >
-      {/* Header */}
-      <Text fontSize={adaptiveConfig.fontSize.header} fontWeight="700" color={textColor} mb={adaptiveConfig.spacing.section}>
-        💾 Step 3: File Storage Settings
-      </Text>
-
-      <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
-        {/* Storage Path Section */}
-        <Box>
-          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
-            💾 Video Output Directory
-          </Text>
-          <Box bg={cardBg} p="16px" borderRadius="12px">
-            <VStack spacing="8px" align="stretch" mb="12px">
-              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-                📝 Choose where to save processed videos and detection results
-              </Text>
-              <Text fontSize={adaptiveConfig.fontSize.small} color="orange.500" fontStyle="italic">
-                💡 Tip: Open folder in explorer, copy path from address bar and paste here
-              </Text>
-            </VStack>
-            <Input
-              value={storagePath}
-              placeholder="Copy and paste folder path here..."
-              size="sm"
-              borderColor={borderColor}
-              _focus={{ borderColor: currentColors.brand500 }}
-              bg={bgColor}
-              mb="12px"
-              onFocus={(e) => {
-                // Clear input when user clicks to enter new path
-                if (storagePath === getDefaultPath()) {
-                  setStoragePath('');
-                }
-                e.target.select(); // Select all text for easy replacement
-              }}
-              onChange={(e) => {
-                setStoragePath(e.target.value);
-                onStepChange?.('file_save', { storagePath: e.target.value });
-              }}
-            />
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              📋 Output folder: {storagePath}
-            </Text>
-          </Box>
-        </Box>
-
-        {/* Retention Policy */}
-        <Box>
-          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
-            🗓️ File Retention
-          </Text>
-          <Box bg={cardBg} p="16px" borderRadius="12px">
-            <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} mb="8px">
-              Auto-delete after:
-            </Text>
-            <HStack spacing="8px">
-              <Input
-                placeholder="30"
-                size="sm"
-                w="60px"
-                borderColor={borderColor}
-                _focus={{ borderColor: currentColors.brand500 }}
-                onChange={() => onStepChange?.('file_save', { retention: '30' })}
-              />
-              <Select size="sm" borderColor={borderColor}>
-                <option value="days">Days</option>
-                <option value="weeks">Weeks</option>
-                <option value="months">Months</option>
-              </Select>
-            </HStack>
-          </Box>
-        </Box>
-
-
-      </VStack>
-    </Box>
-  );
-}
 
 // Step 4: Video Source Canvas
 function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
@@ -910,7 +809,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   );
 }
 
-// Step 5: Packing Area Canvas
+// Step 4: Packing Area Canvas
 function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
   const { currentColors } = useColorTheme();
   const bgColor = useColorModeValue('white', 'navy.800');
@@ -918,6 +817,18 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   const textColor = useColorModeValue('navy.700', 'white');
   const secondaryText = useColorModeValue('gray.600', 'gray.400');
   const cardBg = useColorModeValue('gray.50', 'navy.700');
+  
+  // Mock camera list - will be replaced with actual data from step 4
+  const [availableCameras] = useState([
+    { id: '1', name: 'Camera 1 - Main Entrance', ip: '192.168.1.100', status: 'online' },
+    { id: '2', name: 'Camera 2 - Packing Area', ip: '192.168.1.101', status: 'online' },
+    { id: '3', name: 'Camera 3 - Storage Room', ip: '192.168.1.102', status: 'offline' },
+    { id: '4', name: 'Camera 4 - Loading Dock', ip: '192.168.1.103', status: 'online' }
+  ]);
+  
+  const [selectedCameras, setSelectedCameras] = useState<string[]>([]);
+  const [showCameraPopup, setShowCameraPopup] = useState(false);
+  const [selectedCameraForConfig, setSelectedCameraForConfig] = useState<string | null>(null);
 
   return (
     <Box
@@ -926,10 +837,70 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
     >
       {/* Header */}
       <Text fontSize={adaptiveConfig.fontSize.header} fontWeight="700" color={textColor} mb={adaptiveConfig.spacing.section}>
-        📦 Step 5: Packing Area Detection
+        📦 Step 4: Packing Area Detection
       </Text>
 
       <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
+        {/* Camera Selection */}
+        <Box>
+          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
+            📹 Select Cameras for Detection
+          </Text>
+          <Box bg={cardBg} p="16px" borderRadius="12px">
+            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} mb="12px">
+              Choose cameras from your video sources to monitor for packing area detection
+            </Text>
+            <VStack spacing="8px" align="stretch">
+              {availableCameras.map((camera) => (
+                <Flex
+                  key={camera.id}
+                  align="center"
+                  p="8px"
+                  borderRadius="8px"
+                  border="1px solid"
+                  borderColor={borderColor}
+                  bg={bgColor}
+                >
+                  <Checkbox
+                    isChecked={selectedCameras.includes(camera.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        // Add camera to selection and open popup for configuration
+                        setSelectedCameras(prev => [...prev, camera.id]);
+                        setSelectedCameraForConfig(camera.id);
+                        setShowCameraPopup(true);
+                      } else {
+                        // Remove camera from selection
+                        setSelectedCameras(prev => prev.filter(id => id !== camera.id));
+                      }
+                      onStepChange?.('packing_area', { selectedCameras });
+                    }}
+                    colorScheme="brand"
+                    me="12px"
+                  />
+                  <Box flex="1">
+                    <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor}>
+                      {camera.name}
+                    </Text>
+                    <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                      {camera.ip} • Status: {camera.status}
+                    </Text>
+                  </Box>
+                  <Box
+                    w="8px"
+                    h="8px"
+                    borderRadius="full"
+                    bg={camera.status === 'online' ? 'green.400' : 'red.400'}
+                    flexShrink={0}
+                  />
+                </Flex>
+              ))}
+            </VStack>
+            <Text fontSize={adaptiveConfig.fontSize.small} color="blue.500" mt="12px" fontStyle="italic">
+              📊 Selected: {selectedCameras.length} camera(s) for detection monitoring
+            </Text>
+          </Box>
+        </Box>
         {/* Detection Zone Preview */}
         <Box>
           <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
@@ -984,64 +955,6 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
           </Box>
         </Box>
 
-        {/* Detection Settings */}
-        <Box>
-          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
-            ⚡ Detection Triggers
-          </Text>
-          <SimpleGrid columns={2} spacing="12px">
-            <Box bg={cardBg} p="16px" borderRadius="12px">
-              <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} mb="8px">
-                Motion Sensitivity:
-              </Text>
-              <HStack spacing="8px">
-                <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>Low</Text>
-                <Box flex="1" bg={borderColor} h="4px" borderRadius="2px" position="relative">
-                  <Box
-                    bg={currentColors.brand500}
-                    h="4px"
-                    w="70%"
-                    borderRadius="2px"
-                  />
-                </Box>
-                <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>High</Text>
-              </HStack>
-            </Box>
-            
-            <Box bg={cardBg} p="16px" borderRadius="12px">
-              <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} mb="8px">
-                Object Size Filter:
-              </Text>
-              <Select size="sm" borderColor={borderColor} defaultValue="medium" onChange={(e) => onStepChange?.('packing_area', { objectSize: e.target.value })}>
-                <option value="any">Any Size</option>
-                <option value="small">Small Objects</option>
-                <option value="medium">Medium Objects</option>
-                <option value="large">Large Objects Only</option>
-              </Select>
-            </Box>
-          </SimpleGrid>
-        </Box>
-
-        {/* Alert Settings */}
-        <Box>
-          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
-            🚨 Alert Settings
-          </Text>
-          <VStack spacing="8px" align="stretch">
-            <Checkbox defaultChecked colorScheme="brand" onChange={(e) => onStepChange?.('packing_area', { instantNotifications: e.target.checked })}>
-              <Text fontSize={adaptiveConfig.fontSize.body}>Instant notifications</Text>
-            </Checkbox>
-            <Checkbox defaultChecked colorScheme="brand" onChange={(e) => onStepChange?.('packing_area', { emailAlerts: e.target.checked })}>
-              <Text fontSize={adaptiveConfig.fontSize.body}>Email alerts</Text>
-            </Checkbox>
-            <Checkbox colorScheme="brand" onChange={(e) => onStepChange?.('packing_area', { soundAlarm: e.target.checked })}>
-              <Text fontSize={adaptiveConfig.fontSize.body}>Sound alarm</Text>
-            </Checkbox>
-            <Checkbox defaultChecked colorScheme="brand" onChange={(e) => onStepChange?.('packing_area', { autoRecord: e.target.checked })}>
-              <Text fontSize={adaptiveConfig.fontSize.body}>Auto-record on detection</Text>
-            </Checkbox>
-          </VStack>
-        </Box>
 
         {/* Detection Stats */}
         <Box
@@ -1070,11 +983,206 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
           </VStack>
         </Box>
       </VStack>
+
+      {/* Camera Configuration Popup */}
+      <Modal 
+        isOpen={showCameraPopup} 
+        onClose={() => setShowCameraPopup(false)}
+        size="6xl"
+        isCentered
+      >
+        <ModalOverlay bg="blackAlpha.600" />
+        <ModalContent maxW="90vw" maxH="90vh">
+          <ModalCloseButton />
+          <ModalBody pt="40px">
+            <Flex direction="row" h="70vh" gap="20px">
+              {/* Left Panel - Section 1 */}
+              <Box 
+                flex="1" 
+                bg={cardBg} 
+                p="20px" 
+                borderRadius="12px"
+                border="1px solid"
+                borderColor={borderColor}
+                cursor="pointer"
+                _hover={{ transform: 'translateY(-2px)', boxShadow: 'lg' }}
+                transition="all 0.2s ease"
+              >
+                <Text fontSize="lg" fontWeight="600" color={textColor} mb="16px">
+                  📦 Traditional Packing Table
+                </Text>
+                
+                <VStack spacing="16px" align="stretch">
+                  <Box>
+                    <Text fontSize="md" fontWeight="500" color={textColor} mb="8px">
+                      🏷️ Description:
+                    </Text>
+                    <Text fontSize="sm" color={secondaryText} lineHeight="tall">
+                      Use the packing table as it currently is, without changing layout or adding any equipment. 
+                      The system will detect packing events based on motion and image changes.
+                    </Text>
+                  </Box>
+                  
+                  <Box>
+                    <Text fontSize="md" fontWeight="500" color="green.500" mb="8px">
+                      ✅ Advantages:
+                    </Text>
+                    <Text fontSize="sm" color={secondaryText} lineHeight="tall">
+                      • No adjustments needed
+                    </Text>
+                  </Box>
+                  
+                  <Box>
+                    <Text fontSize="md" fontWeight="500" color="orange.500" mb="8px">
+                      ⚠️ Disadvantages:
+                    </Text>
+                    <Text fontSize="sm" color={secondaryText} lineHeight="tall">
+                      • Sometimes need to adjust buffer for correct events
+                    </Text>
+                  </Box>
+                </VStack>
+              </Box>
+              
+              {/* Right Panel - Section 2 */}
+              <Box 
+                flex="1" 
+                bg={cardBg} 
+                p="20px" 
+                borderRadius="12px"
+                border="2px solid"
+                borderColor={currentColors.brand500}
+                cursor="pointer"
+                _hover={{ transform: 'translateY(-2px)', boxShadow: 'lg' }}
+                transition="all 0.2s ease"
+                position="relative"
+              >
+                {/* Recommended Badge */}
+                <Box
+                  position="absolute"
+                  top="-8px"
+                  right="16px"
+                  bg={currentColors.brand500}
+                  color="white"
+                  px="8px"
+                  py="2px"
+                  borderRadius="full"
+                  fontSize="xs"
+                  fontWeight="600"
+                >
+                  Recommended
+                </Box>
+                
+                <Text fontSize="lg" fontWeight="600" color={textColor} mb="16px">
+                  🎯 QR Code Packing Table (TimeGo)
+                </Text>
+                
+                <VStack spacing="16px" align="stretch">
+                  <Box>
+                    <Text fontSize="md" fontWeight="500" color={textColor} mb="8px">
+                      🏷️ Description:
+                    </Text>
+                    <Text fontSize="sm" color={secondaryText} lineHeight="tall">
+                      Paste QR Code (TimeGo) in the center of packing area. When packages move to cover/uncover the QR code, 
+                      the system will accurately identify the start and end times of packing events.
+                    </Text>
+                  </Box>
+                  
+                  <Box>
+                    <Text fontSize="md" fontWeight="500" color="green.500" mb="8px">
+                      ✅ Advantages:
+                    </Text>
+                    <Text fontSize="sm" color={secondaryText} lineHeight="tall">
+                      • High timing accuracy<br/>
+                      • Clear distinction of packing events
+                    </Text>
+                  </Box>
+                  
+                  {/* Visual Illustration */}
+                  <Box>
+                    <Text fontSize="md" fontWeight="500" color={textColor} mb="8px">
+                      📷 Setup Illustration:
+                    </Text>
+                    <Box 
+                      bg={cardBg} 
+                      p="20px" 
+                      borderRadius="12px"
+                      border="2px dashed" 
+                      borderColor={currentColors.brand500}
+                      minH="180px"
+                      h="180px"
+                      position="relative"
+                      w="80%"
+                      mx="auto"
+                    >
+                      {/* Camera preview area text - moved to top right corner */}
+                      <Text 
+                        position="absolute"
+                        top="8px"
+                        right="8px"
+                        fontSize={adaptiveConfig.fontSize.small} 
+                        color={secondaryText}
+                      >
+                        Camera preview area
+                      </Text>
+                      
+                      {/* Packing Area - Outer frame around QR Code */}
+                      <Box
+                        position="absolute"
+                        top="50%"
+                        left="50%"
+                        transform="translate(-50%, -50%)"
+                        w="140px"
+                        h="100px"
+                        border="2px solid"
+                        borderColor="orange.400"
+                        bg="orange.50"
+                        borderRadius="8px"
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
+                      >
+                        {/* Packing area text */}
+                        <Text 
+                          position="absolute"
+                          top="4px"
+                          left="6px"
+                          fontSize={adaptiveConfig.fontSize.small} 
+                          color="orange.600"
+                          fontWeight="500"
+                        >
+                          Packing area
+                        </Text>
+                        
+                        {/* QR Code Zone in center of packing area */}
+                        <Box
+                          w="70px"
+                          h="45px"
+                          border="2px solid"
+                          borderColor={currentColors.brand500}
+                          bg={`${currentColors.brand500}20`}
+                          borderRadius="6px"
+                          display="flex"
+                          alignItems="center"
+                          justifyContent="center"
+                        >
+                          <Text fontSize={adaptiveConfig.fontSize.small} color={currentColors.brand500} fontWeight="bold">
+                            QR Code
+                          </Text>
+                        </Box>
+                      </Box>
+                    </Box>
+                  </Box>
+                </VStack>
+              </Box>
+            </Flex>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </Box>
   );
 }
 
-// Step 6: Timing Canvas
+// Step 5: Timing & File Storage Canvas 
 function TimingCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
   const { currentColors } = useColorTheme();
   const bgColor = useColorModeValue('white', 'navy.800');
@@ -1082,6 +1190,20 @@ function TimingCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
   const textColor = useColorModeValue('navy.700', 'white');
   const secondaryText = useColorModeValue('gray.600', 'gray.400');
   const cardBg = useColorModeValue('gray.50', 'navy.700');
+  
+  // Local state for storage path - Default based on OS
+  const getDefaultPath = () => {
+    const platform = navigator.platform.toLowerCase();
+    if (platform.includes('win')) {
+      return 'C:\\Users\\%USERNAME%\\Videos\\VTrack';
+    } else if (platform.includes('mac')) {
+      return '/Users/%USER%/Movies/VTrack';
+    } else {
+      return '/home/%USER%/Videos/VTrack';
+    }
+  };
+  
+  const [storagePath, setStoragePath] = useState(getDefaultPath());
 
   return (
     <Box
@@ -1090,64 +1212,75 @@ function TimingCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
     >
       {/* Header */}
       <Text fontSize={adaptiveConfig.fontSize.header} fontWeight="700" color={textColor} mb={adaptiveConfig.spacing.section}>
-        ⏱️ Step 6: Timing & Performance
+        ⏱️ Step 5: Timing & File Storage
       </Text>
 
       <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
-        {/* Processing Speed Settings */}
+        {/* Storage Path Section */}
         <Box>
           <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
-            🚀 Processing Speed
+            💾 Video Output Directory
           </Text>
-          <SimpleGrid columns={3} spacing="12px">
-            <Box 
-              bg={cardBg} 
-              p="16px" 
-              borderRadius="12px" 
-              border="1px solid" 
+          <Box bg={cardBg} p="16px" borderRadius="12px">
+            <VStack spacing="8px" align="stretch" mb="12px">
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                📝 Choose where to save processed videos and detection results
+              </Text>
+              <Text fontSize={adaptiveConfig.fontSize.small} color="orange.500" fontStyle="italic">
+                💡 Tip: Open folder in explorer, copy path from address bar and paste here
+              </Text>
+            </VStack>
+            <Input
+              value={storagePath}
+              placeholder="Copy and paste folder path here..."
+              size="sm"
               borderColor={borderColor}
-              textAlign="center"
-              cursor="pointer"
-              onClick={() => onStepChange?.('timing', { processingSpeed: 'slow' })}
-            >
-              <Text fontSize={adaptiveConfig.fontSize.header} mb="8px">🐌</Text>
-              <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor}>Slow</Text>
-              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>High Accuracy</Text>
-              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>3-5 seconds</Text>
-            </Box>
-            
-            <Box 
-              bg={cardBg} 
-              p="16px" 
-              borderRadius="12px" 
-              border="2px solid" 
-              borderColor={currentColors.brand500}
-              textAlign="center"
-              cursor="pointer"
-              onClick={() => onStepChange?.('timing', { processingSpeed: 'medium' })}
-            >
-              <Text fontSize={adaptiveConfig.fontSize.header} mb="8px">⚡</Text>
-              <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor}>Medium</Text>
-              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>Balanced</Text>
-              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>1-2 seconds</Text>
-            </Box>
-            
-            <Box 
-              bg={cardBg} 
-              p="16px" 
-              borderRadius="12px" 
-              border="1px solid" 
-              borderColor={borderColor}
-              textAlign="center"
-              cursor="pointer"
-              onClick={() => onStepChange?.('timing', { processingSpeed: 'fast' })}
-            >
-              <Text fontSize={adaptiveConfig.fontSize.header} mb="8px">🏃</Text>
-              <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor}>Fast</Text>
-              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>Real-time</Text>
-              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>&lt; 1 second</Text>
-            </Box>
-          </SimpleGrid>
+              _focus={{ borderColor: currentColors.brand500 }}
+              bg={bgColor}
+              mb="12px"
+              onFocus={(e) => {
+                // Clear input when user clicks to enter new path
+                if (storagePath === getDefaultPath()) {
+                  setStoragePath('');
+                }
+                e.target.select(); // Select all text for easy replacement
+              }}
+              onChange={(e) => {
+                setStoragePath(e.target.value);
+                onStepChange?.('timing', { storagePath: e.target.value });
+              }}
+            />
+            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+              📋 Output folder: {storagePath}
+            </Text>
+          </Box>
+        </Box>
+
+        {/* Retention Policy */}
+        <Box>
+          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
+            🗓️ File Retention
+          </Text>
+          <Box bg={cardBg} p="16px" borderRadius="12px">
+            <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} mb="8px">
+              Auto-delete after:
+            </Text>
+            <HStack spacing="8px">
+              <Input
+                placeholder="30"
+                size="sm"
+                w="60px"
+                borderColor={borderColor}
+                _focus={{ borderColor: currentColors.brand500 }}
+                onChange={(e) => onStepChange?.('timing', { retention: e.target.value })}
+              />
+              <Select size="sm" borderColor={borderColor} onChange={(e) => onStepChange?.('timing', { retentionUnit: e.target.value })}>
+                <option value="days">Days</option>
+                <option value="weeks">Weeks</option>
+                <option value="months">Months</option>
+              </Select>
+            </HStack>
+          </Box>
         </Box>
 
         {/* Buffer Settings */}
@@ -1155,90 +1288,76 @@ function TimingCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
           <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
             📹 Buffer Settings
           </Text>
+          <Box bg={cardBg} p="16px" borderRadius="12px">
+            <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} mb="8px">
+              Event Buffer Duration:
+            </Text>
+            <HStack spacing="8px" mb="8px">
+              <Input
+                placeholder="5"
+                size="sm"
+                w="60px"
+                borderColor={borderColor}
+                _focus={{ borderColor: currentColors.brand500 }}
+                onChange={(e) => onStepChange?.('timing', { eventBuffer: e.target.value })}
+              />
+              <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText}>seconds before and after detection</Text>
+            </HStack>
+            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} fontStyle="italic">
+              💡 Same buffer time applied for both pre and post event recording
+            </Text>
+          </Box>
+        </Box>
+
+        {/* Packing Time Settings */}
+        <Box>
+          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
+            ⏰ Packing Time Limits
+          </Text>
           <SimpleGrid columns={2} spacing="12px">
             <Box bg={cardBg} p="16px" borderRadius="12px">
               <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} mb="8px">
-                Pre-event Buffer:
+                Min Packing Time:
               </Text>
-              <HStack spacing="8px">
+              <HStack spacing="8px" mb="8px">
                 <Input
-                  placeholder="5"
+                  placeholder="30"
                   size="sm"
                   w="60px"
                   borderColor={borderColor}
                   _focus={{ borderColor: currentColors.brand500 }}
-                  onChange={(e) => onStepChange?.('timing', { preEventBuffer: e.target.value })}
+                  onChange={(e) => onStepChange?.('timing', { minPackingTime: e.target.value })}
                 />
-                <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText}>seconds before detection</Text>
+                <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText}>seconds</Text>
               </HStack>
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} fontStyle="italic">
+                🚀 Fastest packing expected
+              </Text>
             </Box>
             
             <Box bg={cardBg} p="16px" borderRadius="12px">
               <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} mb="8px">
-                Post-event Buffer:
+                Max Packing Time:
               </Text>
-              <HStack spacing="8px">
+              <HStack spacing="8px" mb="8px">
                 <Input
-                  placeholder="10"
+                  placeholder="300"
                   size="sm"
                   w="60px"
                   borderColor={borderColor}
                   _focus={{ borderColor: currentColors.brand500 }}
-                  onChange={(e) => onStepChange?.('timing', { postEventBuffer: e.target.value })}
+                  onChange={(e) => onStepChange?.('timing', { maxPackingTime: e.target.value })}
                 />
-                <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText}>seconds after detection</Text>
+                <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText}>seconds</Text>
               </HStack>
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} fontStyle="italic">
+                🐌 Slowest packing acceptable
+              </Text>
             </Box>
           </SimpleGrid>
         </Box>
 
-        {/* Performance Optimization */}
-        <Box>
-          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
-            ⚙️ Performance Optimization
-          </Text>
-          <VStack spacing="8px" align="stretch">
-            <Checkbox defaultChecked colorScheme="brand" onChange={(e) => onStepChange?.('timing', { gpuAcceleration: e.target.checked })}>
-              <Text fontSize={adaptiveConfig.fontSize.body}>GPU acceleration (if available)</Text>
-            </Checkbox>
-            <Checkbox defaultChecked colorScheme="brand" onChange={(e) => onStepChange?.('timing', { multiThreaded: e.target.checked })}>
-              <Text fontSize={adaptiveConfig.fontSize.body}>Multi-threaded processing</Text>
-            </Checkbox>
-            <Checkbox colorScheme="brand" onChange={(e) => onStepChange?.('timing', { lowPowerMode: e.target.checked })}>
-              <Text fontSize={adaptiveConfig.fontSize.body}>Low-power mode (battery saving)</Text>
-            </Checkbox>
-            <Checkbox defaultChecked colorScheme="brand" onChange={(e) => onStepChange?.('timing', { adaptiveQuality: e.target.checked })}>
-              <Text fontSize={adaptiveConfig.fontSize.body}>Adaptive quality based on load</Text>
-            </Checkbox>
-          </VStack>
-        </Box>
 
-        {/* Performance Stats */}
-        <Box
-          bg={cardBg}
-          borderRadius="12px"
-          p="16px"
-          border="1px solid"
-          borderColor="orange.400"
-        >
-          <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor} mb="8px">
-            📊 Current Performance:
-          </Text>
-          <VStack align="stretch" spacing="4px">
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              <strong>Processing Time:</strong> 1.2s average (Medium mode)
-            </Text>
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              <strong>CPU Usage:</strong> 45% average, 78% peak
-            </Text>
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              <strong>Memory Usage:</strong> 2.1 GB / 8 GB (26%)
-            </Text>
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              <strong>Queue Status:</strong> 3 videos pending processing
-            </Text>
-          </VStack>
-        </Box>
       </VStack>
     </Box>
   );

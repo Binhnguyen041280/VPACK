@@ -89,8 +89,11 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     }
   };
 
-  // Removed auto-fetch on mount for clean first-time experience
-  // Users will have default state until explicit actions taken
+  // Auto-fetch on mount to check for existing user data
+  useEffect(() => {
+    console.log('🚀 UserProvider mounted - checking for existing user data');
+    refreshUserInfo();
+  }, []);
 
   return (
     <UserContext.Provider value={{ userInfo, updateUserInfo, refreshUserInfo }}>

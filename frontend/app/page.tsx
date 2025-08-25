@@ -39,22 +39,20 @@ interface Message {
 }
 
 // Step mapping constants
-const STEP_NUMBER_TO_KEY: { [key: string]: 'brandname' | 'location_time' | 'file_save' | 'video_source' | 'packing_area' | 'timing' } = {
+const STEP_NUMBER_TO_KEY: { [key: string]: 'brandname' | 'location_time' | 'video_source' | 'packing_area' | 'timing' } = {
   '1': 'brandname',
   '2': 'location_time', 
-  '3': 'file_save',
-  '4': 'video_source',
-  '5': 'packing_area',
-  '6': 'timing'
+  '3': 'video_source',
+  '4': 'packing_area',
+  '5': 'timing'
 };
 
 const STEP_KEY_TO_NUMBER: { [key: string]: number } = {
   'brandname': 1,
   'location_time': 2,
-  'file_save': 3,
-  'video_source': 4,
-  'packing_area': 5,
-  'timing': 6
+  'video_source': 3,
+  'packing_area': 4,
+  'timing': 5
 };
 
 export default function Chat(props: { apiKeyApp: string }) {
@@ -69,17 +67,16 @@ export default function Chat(props: { apiKeyApp: string }) {
   const [gmailError, setGmailError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [authenticatedUser, setAuthenticatedUser] = useState<string>('');
-  // Configuration state - Updated for 6-step workflow
-  const [configStep, setConfigStep] = useState<'brandname' | 'location_time' | 'file_save' | 'video_source' | 'packing_area' | 'timing'>('brandname');
+  // Configuration state - Updated for 5-step workflow
+  const [configStep, setConfigStep] = useState<'brandname' | 'location_time' | 'video_source' | 'packing_area' | 'timing'>('brandname');
   const [companyName, setCompanyName] = useState<string>('');
-  // Step completion tracking for 6 steps - All start as completed with defaults
+  // Step completion tracking for 5 steps - All start as completed with defaults
   const [stepCompleted, setStepCompleted] = useState<{[key: string]: boolean}>({
     brandname: true,   // Default: "Alan_go"
     location_time: true,   // Default: Auto-detected timezone/schedule
-    file_save: true,   // Default: Storage settings
     video_source: true,   // Default: Camera settings
     packing_area: true,   // Default: Detection zones
-    timing: true   // Default: Performance settings
+    timing: true   // Default: Performance & file storage settings
   });
   // Track highest step reached for progress display
   const [highestStepReached, setHighestStepReached] = useState<number>(1);
@@ -164,7 +161,7 @@ export default function Chat(props: { apiKeyApp: string }) {
 
   // Handle Back Command - Go to Previous Step
   const handleBackCommand = (): string => {
-    const stepOrder = ['brandname', 'location_time', 'file_save', 'video_source', 'packing_area', 'timing'];
+    const stepOrder = ['brandname', 'location_time', 'video_source', 'packing_area', 'timing'];
     const currentIndex = stepOrder.indexOf(configStep);
     
     if (currentIndex <= 0) {
@@ -181,7 +178,7 @@ export default function Chat(props: { apiKeyApp: string }) {
   const handleStepJump = (stepNumber: string): string => {
     const targetStep = STEP_NUMBER_TO_KEY[stepNumber];
     if (!targetStep) {
-      return '❌ Invalid step number. Use: step 1, step 2, step 3, step 4, step 5, or step 6';
+      return '❌ Invalid step number. Use: step 1, step 2, step 3, step 4, or step 5';
     }
     
     setConfigStep(targetStep);
@@ -217,31 +214,25 @@ export default function Chat(props: { apiKeyApp: string }) {
       
       case 'location_time':
         // Save default location/time settings
-        setConfigStep('file_save');
-        setHighestStepReached(prev => Math.max(prev, 3));
-        return '💾 Step 3: File Storage Settings\n\nLet\'s configure where your videos will be stored and how long to keep them.\n\nSet up storage path, retention policies, and file organization preferences.\n\n📁 Default storage location and settings are ready for your review.';
-      
-      case 'file_save':
-        // Save default file storage settings
         setConfigStep('video_source');
-        setHighestStepReached(prev => Math.max(prev, 4));
-        return '📹 Step 4: Video Source Configuration\n\nChoose where your video files are located for processing.\n\nSelect between local storage (PC, external drive, network mount) or cloud storage (Google Drive). Configure video quality and frame rate settings.\n\n📁 Choose the source that best fits your video storage setup.';
+        setHighestStepReached(prev => Math.max(prev, 3));
+        return '📹 Step 3: Video Source Configuration\n\nChoose where your video files are located for processing.\n\nSelect between local storage (PC, external drive, network mount) or cloud storage (Google Drive). Configure video quality and frame rate settings.\n\n📁 Choose the source that best fits your video storage setup.';
       
       case 'video_source':
         // Save default video source settings
         setConfigStep('packing_area');
-        setHighestStepReached(prev => Math.max(prev, 5));
-        return '📦 Step 5: Packing Area Detection\n\nDefine the detection zones and configure motion triggers.\n\nSet up areas to monitor, adjust sensitivity levels, and configure alert settings for when activity is detected.\n\n🎯 Detection zones and alert settings are ready for customization.';
+        setHighestStepReached(prev => Math.max(prev, 4));
+        return '📦 Step 4: Packing Area Detection\n\nDefine the detection zones for monitoring.\n\nSet up areas to monitor and configure detection zones for optimal coverage.\n\n🎯 Detection zones are ready for customization.';
       
       case 'packing_area':
         // Save default packing area settings
         setConfigStep('timing');
-        setHighestStepReached(prev => Math.max(prev, 6));
-        return '⏱️ Step 6: Timing & Performance\n\nFinal step! Configure processing speed and performance optimization.\n\nChoose between speed vs accuracy, set buffer times, and enable performance features like GPU acceleration.\n\n🚀 Performance settings are tuned for optimal monitoring efficiency.';
+        setHighestStepReached(prev => Math.max(prev, 5));
+        return '⏱️ Step 5: Timing & File Storage\n\nFinal step! Configure timing settings and file storage.\n\nSet up buffer times, packing time limits, storage paths, and retention policies.\n\n🚀 Timing and storage settings are ready for configuration.';
       
       case 'timing':
         // Save default timing settings - Final step
-        return '✅ Step 6 completed. Timing settings saved.\n\n🎉 All configuration completed!\n\nAll 6 steps finished with your settings. Ready to start processing.';
+        return '✅ Step 5 completed. Timing & storage settings saved.\n\n🎉 All configuration completed!\n\nAll 5 steps finished with your settings. Ready to start processing.';
       
       default:
         return 'Configuration step completed.';
@@ -271,9 +262,6 @@ export default function Chat(props: { apiKeyApp: string }) {
       case 'location_time':
         return '✅ Location & Time settings confirmed.\n\nType "continue" to proceed to next step.';
       
-      case 'file_save':
-        return '✅ File storage settings confirmed.\n\nType "continue" to proceed to next step.';
-      
       case 'video_source':
         return '✅ Video source settings confirmed.\n\nType "continue" to proceed to next step.';
       
@@ -281,7 +269,7 @@ export default function Chat(props: { apiKeyApp: string }) {
         return '✅ Packing area settings confirmed.\n\nType "continue" to proceed to next step.';
       
       case 'timing':
-        return '✅ Timing settings confirmed.\n\nConfiguration completed!';
+        return '✅ Timing & storage settings confirmed.\n\nConfiguration completed!';
       
       default:
         return '✅ Settings confirmed.\n\nType "continue" to proceed.';
@@ -362,7 +350,7 @@ export default function Chat(props: { apiKeyApp: string }) {
     
     // Handle help command
     if (input === 'help') {
-      return 'Available commands:\n• "continue" or "next" - Proceed to next step\n• "back" - Go to previous step\n• "step X" - Jump to specific step (1-6)\n• "edit" - Modify current step settings\n• "help" - Show this help\n\nOr enter data to configure the current step.';
+      return 'Available commands:\n• "continue" or "next" - Proceed to next step\n• "back" - Go to previous step\n• "step X" - Jump to specific step (1-5)\n• "edit" - Modify current step settings\n• "help" - Show this help\n\nOr enter data to configure the current step.';
     }
     
     // Handle company name input when in brandname step - Direct Submit (no intermediate step)
@@ -389,7 +377,7 @@ export default function Chat(props: { apiKeyApp: string }) {
     // Handle empty submit for brandname (use default) - this is covered by handleSubmitCommand now
     
     // Default response for unrecognized input
-    return 'Available commands:\n• "continue" or "next" - Proceed to next step\n• "back" - Go to previous step\n• "step X" - Jump to specific step (1-6)\n• "edit" - Modify current step settings\n• "help" - Show this help\n\nOr enter data to configure the current step.';
+    return 'Available commands:\n• "continue" or "next" - Proceed to next step\n• "back" - Go to previous step\n• "step X" - Jump to specific step (1-5)\n• "edit" - Modify current step settings\n• "help" - Show this help\n\nOr enter data to configure the current step.';
   };
 
   const handleTranslate = () => {
@@ -563,6 +551,11 @@ export default function Chat(props: { apiKeyApp: string }) {
             authenticated: true
           });
           
+          // Refresh user info to get downloaded avatar from backend
+          setTimeout(() => {
+            refreshUserInfo();
+          }, 2000);
+          
           // Add success message to chat
           const successMessage: Message = {
             id: Date.now().toString(),
@@ -659,6 +652,11 @@ export default function Chat(props: { apiKeyApp: string }) {
                       avatar: result.user_info?.photo_url || '/img/avatars/avatar4.png',
                       authenticated: true
                     });
+                    
+                    // Refresh user info to get downloaded avatar from backend
+                    setTimeout(() => {
+                      refreshUserInfo();
+                    }, 2000);
                     
                     // Add success message and auto-trigger canvas
                     const successMessage: Message = {
@@ -789,7 +787,6 @@ export default function Chat(props: { apiKeyApp: string }) {
   return (
     <Flex
       w="100%"
-      pt={{ base: '70px', md: '0px' }}
       direction="column"
       position="relative"
       overflow="hidden"
@@ -868,6 +865,7 @@ export default function Chat(props: { apiKeyApp: string }) {
               <Box
                 flex="1"
                 overflow="auto"
+                pt="16px"
                 css={{
                   '&::-webkit-scrollbar': {
                     width: '6px',
@@ -1113,7 +1111,7 @@ export default function Chat(props: { apiKeyApp: string }) {
           position="relative"
         >
           {/* Content Area */}
-          <Flex direction="column" flex="1" pb="100px" pt="20px" overflowY="auto">
+          <Flex direction="column" flex="1" pb="100px" pt="36px" overflowY="auto">
             {/* Main Box */}
             <Flex
               direction="column"
