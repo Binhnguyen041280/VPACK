@@ -191,7 +191,8 @@ def update_database():
                     brand_name TEXT,
                     working_days TEXT,
                     from_time TEXT,
-                    to_time TEXT
+                    to_time TEXT,
+                    language TEXT
                 )
             """)
             # ==================== TIMEZONE ENHANCEMENT ====================
@@ -204,7 +205,8 @@ def update_database():
                 ("timezone_format_type", "TEXT"),
                 ("timezone_validated", "INTEGER DEFAULT 0"),
                 ("timezone_updated_at", "TEXT"),
-                ("timezone_validation_warnings", "TEXT")
+                ("timezone_validation_warnings", "TEXT"),
+                ("language", "TEXT")
             ]
             
             for col_name, col_definition in timezone_columns:
@@ -222,11 +224,11 @@ def update_database():
                     INSERT INTO general_info (
                         id, country, timezone, brand_name, working_days, from_time, to_time,
                         timezone_iana_name, timezone_display_name, timezone_utc_offset_hours,
-                        timezone_format_type, timezone_validated, timezone_updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        timezone_format_type, timezone_validated, timezone_updated_at, language
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (1, "Vietnam", "Asia/Ho_Chi_Minh", "Alan_go", working_days, "07:00", "23:00",
                       "Asia/Ho_Chi_Minh", "Vietnam (Ho Chi Minh City)", 7.0, 
-                      "iana_standard", 1, datetime.now().isoformat()))
+                      "iana_standard", 1, datetime.now().isoformat(), "vi"))
 
             # ==================== VIDEO PROCESSING TABLES ====================
             
