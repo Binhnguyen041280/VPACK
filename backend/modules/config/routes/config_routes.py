@@ -610,3 +610,102 @@ def migrate_to_global_timezone():
         error_msg = f"Migration failed: {str(e)}"
         print(f"❌ {error_msg}")
         return jsonify({"error": error_msg}), 500
+
+# Step 1 Brandname Configuration Endpoints
+@config_routes_bp.route('/step/brandname', methods=['GET'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
+def get_step_brandname():
+    """Get current brandname from general_info table for Step 1."""
+    try:
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT brand_name FROM general_info WHERE id = 1")
+            row = cursor.fetchone()
+            
+            brand_name = row[0] if row else "Alan_go"  # Default value
+            
+            return jsonify({
+                "success": True,
+                "data": {
+                    "brand_name": brand_name
+                }
+            }), 200
+            
+    except Exception as e:
+        error_msg = f"Failed to get brandname: {str(e)}"
+        print(f"❌ Get brandname error: {error_msg}")
+        return jsonify({"error": error_msg}), 500
+
+@config_routes_bp.route('/step/brandname', methods=['PUT'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
+def update_step_brandname():
+    """Update brandname only if changed for Step 1."""
+    try:
+        data = request.json
+        if not data or 'brand_name' not in data:
+            return jsonify({"error": "brand_name field is required"}), 400
+        
+        new_brand_name = data['brand_name'].strip()
+        
+        # Validation
+        if not new_brand_name:
+            return jsonify({"error": "Brand name cannot be empty"}), 400
+        
+        if len(new_brand_name) > 100:
+            return jsonify({"error": "Brand name cannot exceed 100 characters"}), 400
+        
+        # Check for invalid characters (allow letters, numbers, underscore, hyphen, spaces)
+        import re
+        if not re.match(r'^[a-zA-Z0-9_\-\s]+$', new_brand_name):
+            return jsonify({"error": "Brand name can only contain letters, numbers, underscore, hyphen, and spaces"}), 400
+        
+        # Get current brand_name and compare
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT brand_name FROM general_info WHERE id = 1")
+            row = cursor.fetchone()
+            
+            current_brand_name = row[0] if row else "Alan_go"
+            
+            # Check if there's actually a change
+            if current_brand_name == new_brand_name:
+                return jsonify({
+                    "success": True,
+                    "data": {
+                        "brand_name": current_brand_name,
+                        "changed": False
+                    },
+                    "message": "No changes detected"
+                }), 200
+            
+            # Update only if changed
+            cursor.execute("""
+                INSERT OR REPLACE INTO general_info (
+                    id, brand_name, country, timezone, working_days, from_time, to_time
+                ) VALUES (
+                    1, ?, 
+                    COALESCE((SELECT country FROM general_info WHERE id = 1), ''),
+                    COALESCE((SELECT timezone FROM general_info WHERE id = 1), ''),
+                    COALESCE((SELECT working_days FROM general_info WHERE id = 1), '[]'),
+                    COALESCE((SELECT from_time FROM general_info WHERE id = 1), '07:00'),
+                    COALESCE((SELECT to_time FROM general_info WHERE id = 1), '23:00')
+                )
+            """, (new_brand_name,))
+            
+            conn.commit()
+            
+            return jsonify({
+                "success": True,
+                "data": {
+                    "brand_name": new_brand_name,
+                    "changed": True
+                },
+                "message": "Brand name updated successfully"
+            }), 200
+            
+    except Exception as e:
+        error_msg = f"Failed to update brandname: {str(e)}"
+        print(f"❌ Update brandname error: {error_msg}")
+        return jsonify({"error": error_msg}), 500

@@ -32,6 +32,9 @@ import React from 'react';
 interface CanvasMessageProps {
   configStep: 'brandname' | 'location_time' | 'video_source' | 'packing_area' | 'timing';
   onStepChange?: (stepName: string, data: any) => void;
+  // Chat-controlled state
+  brandName?: string;
+  isLoading?: boolean;
 }
 
 // Height breakpoints for adaptive behavior
@@ -53,7 +56,7 @@ interface AdaptiveConfig {
   showOptional: boolean;
 }
 
-export default function CanvasMessage({ configStep, onStepChange }: CanvasMessageProps) {
+export default function CanvasMessage({ configStep, onStepChange, brandName, isLoading }: CanvasMessageProps) {
   const { currentColors } = useColorTheme();
   const bgColor = useColorModeValue('white', 'navy.800');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
@@ -132,7 +135,7 @@ export default function CanvasMessage({ configStep, onStepChange }: CanvasMessag
     
     switch (configStep) {
       case 'brandname':
-        return <BrandnameCanvas {...commonProps} />;
+        return <BrandnameCanvas {...commonProps} brandName={brandName} isLoading={isLoading} />;
       case 'location_time':
         return <LocationTimeCanvas {...commonProps} />;
       case 'video_source':
@@ -142,7 +145,7 @@ export default function CanvasMessage({ configStep, onStepChange }: CanvasMessag
       case 'timing':
         return <TimingCanvas {...commonProps} />;
       default:
-        return <BrandnameCanvas {...commonProps} />;
+        return <BrandnameCanvas {...commonProps} brandName={brandName} isLoading={isLoading} />;
     }
   };
 
@@ -189,10 +192,13 @@ interface CanvasComponentProps {
   onStepChange?: (stepName: string, data: any) => void;
   adaptiveConfig: AdaptiveConfig;
   availableHeight: number;
+  // Chat-controlled props
+  brandName?: string;
+  isLoading?: boolean;
 }
 
-// Brandname Canvas Component (Step 1)
-function BrandnameCanvas({ adaptiveConfig }: CanvasComponentProps) {
+// Brandname Canvas Component (Step 1) - Pure Display
+function BrandnameCanvas({ adaptiveConfig, brandName = 'Alan_go', isLoading = false }: CanvasComponentProps) {
   const { currentColors } = useColorTheme();
   const bgColor = useColorModeValue('white', 'navy.800');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
@@ -244,7 +250,7 @@ function BrandnameCanvas({ adaptiveConfig }: CanvasComponentProps) {
 
         {adaptiveConfig.showOptional && <Divider />}
 
-        {/* Status Summary - Essential Content */}
+        {/* Current Brand Name Display - Essential Content */}
         <Box
           bg={cardBg}
           p={adaptiveConfig.spacing.item}
@@ -252,13 +258,20 @@ function BrandnameCanvas({ adaptiveConfig }: CanvasComponentProps) {
           textAlign="center"
         >
           <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor} mb="4px">
-            ⏳ Waiting for Company Name
+            Current Brand Name:
           </Text>
-          {adaptiveConfig.showOptional && (
+          {isLoading ? (
             <Text fontSize={adaptiveConfig.fontSize.small} color="gray.500">
-              Please enter your company name in the chat and click Submit
+              Loading...
+            </Text>
+          ) : (
+            <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="700" color={currentColors.brand500} mb="8px">
+              "{brandName}"
             </Text>
           )}
+          <Text fontSize={adaptiveConfig.fontSize.small} color="gray.500">
+            💡 Type new company name in chat and click Submit, or click Continue to proceed
+          </Text>
         </Box>
       </VStack>
     </Box>

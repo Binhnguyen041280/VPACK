@@ -30,6 +30,7 @@ import { useUser } from '@/contexts/UserContext';
 import { useRoute } from '@/contexts/RouteContext';
 import StepNavigator from '@/components/navigation/StepNavigator';
 import CanvasMessage from '@/components/canvas/CanvasMessage';
+import { stepConfigService } from '@/services/stepConfigService';
 
 interface Message {
   id: string;
@@ -70,6 +71,15 @@ export default function Chat(props: { apiKeyApp: string }) {
   // Configuration state - Updated for 5-step workflow
   const [configStep, setConfigStep] = useState<'brandname' | 'location_time' | 'video_source' | 'packing_area' | 'timing'>('brandname');
   const [companyName, setCompanyName] = useState<string>('');
+  
+  // Chat-controlled Canvas state
+  const [canvasState, setCanvasState] = useState<{
+    brandName: string;
+    isLoading: boolean;
+  }>({
+    brandName: 'Alan_go',
+    isLoading: false
+  });
   // Step completion tracking for 5 steps - All start as completed with defaults
   const [stepCompleted, setStepCompleted] = useState<{[key: string]: boolean}>({
     brandname: true,   // Default: "Alan_go"
@@ -200,18 +210,8 @@ export default function Chat(props: { apiKeyApp: string }) {
     // Save current defaults before transitioning
     switch (configStep) {
       case 'brandname':
-        // Save default company name if not set
-        if (!companyName.trim()) {
-          setCompanyName('Alan_go');
-          setRouteCompanyName('Alan_go');
-          stopAnimation();
-          localStorage.setItem('userConfigured', 'true');
-          setShowConfigLayout(true);
-        }
-        // Auto-advance to next step
-        setConfigStep('location_time');
-        setHighestStepReached(prev => Math.max(prev, 2));
-        return '📍 Step 2: Location & Time Configuration\n\nNow we\'ll set up your timezone, work schedule, and language preferences.\n\nThe system will auto-detect your location and timezone. You can modify these settings if needed.\n\n⚡ Auto-detection is running...';
+        // For Step 1, always use async API call - return flag to trigger async handling
+        return 'ASYNC_CONTINUE_BRANDNAME_DEFAULT';
       
       case 'location_time':
         // Save default location/time settings
@@ -245,31 +245,14 @@ export default function Chat(props: { apiKeyApp: string }) {
 
   // Handle Submit Command - Confirm changes and mark step completed
   const handleSubmitCommand = (): string => {
-    // Mark current step as completed
-    setStepCompleted(prev => ({ ...prev, [configStep]: true }));
-    
     switch (configStep) {
       case 'brandname':
-        // If no company name set, use default
-        if (!companyName.trim()) {
-          setCompanyName('Alan_go');
-          setRouteCompanyName('Alan_go');
-          stopAnimation();
-          localStorage.setItem('userConfigured', 'true');
-          setShowConfigLayout(true);
-          // Auto-advance to next step
-          setConfigStep('location_time');
-          setHighestStepReached(prev => Math.max(prev, 2));
-          return '📍 Step 2: Location & Time Configuration\n\nNow we\'ll set up your timezone, work schedule, and language preferences.\n\nThe system will auto-detect your location and timezone. You can modify these settings if needed.\n\n⚡ Auto-detection is running...';
-        } else {
-          setShowConfigLayout(true);
-          // Auto-advance to next step
-          setConfigStep('location_time');
-          setHighestStepReached(prev => Math.max(prev, 2));
-          return '📍 Step 2: Location & Time Configuration\n\nNow we\'ll set up your timezone, work schedule, and language preferences.\n\nThe system will auto-detect your location and timezone. You can modify these settings if needed.\n\n⚡ Auto-detection is running...';
-        }
+        // For Step 1, always use async API call - return flag to trigger async handling
+        return 'ASYNC_SUBMIT_BRANDNAME_DEFAULT';
       
       case 'location_time':
+        // Mark current step as completed
+        setStepCompleted(prev => ({ ...prev, [configStep]: true }));
         // Auto-advance to next step
         setConfigStep('video_source');
         setHighestStepReached(prev => Math.max(prev, 3));
@@ -374,27 +357,8 @@ export default function Chat(props: { apiKeyApp: string }) {
     
     // Handle company name input when in brandname step - Direct Submit with auto-advance
     if (configStep === 'brandname' && userInput.trim().length > 0) {
-      setCompanyName(userInput.trim());
-      
-      // Update sidebar route name (replaces "Alan_go")
-      setRouteCompanyName(userInput.trim());
-      
-      // Stop company name blinking animation
-      stopAnimation();
-      
-      // Mark user as configured (allow future database operations)
-      localStorage.setItem('userConfigured', 'true');
-      setShowConfigLayout(true);
-      
-      // Mark step as completed immediately (direct submit pattern)
-      setStepCompleted(prev => ({ ...prev, brandname: true }));
-      
-      // Auto-advance to next step
-      setConfigStep('location_time');
-      setHighestStepReached(prev => Math.max(prev, 2));
-      
-      // Direct submit result with auto-advance
-      return '📍 Step 2: Location & Time Configuration\n\nNow we\'ll set up your timezone, work schedule, and language preferences.\n\nThe system will auto-detect your location and timezone. You can modify these settings if needed.\n\n⚡ Auto-detection is running...';
+      // This will be handled asynchronously by handleBrandnameSubmit
+      return 'ASYNC_BRANDNAME_SUBMIT';
     }
     
     // Handle empty submit for brandname (use default) - this is covered by handleSubmitCommand now
@@ -474,22 +438,102 @@ export default function Chat(props: { apiKeyApp: string }) {
     }
     setLoading(true);
 
-    // Simulate processing time
-    setTimeout(() => {
-      // Get auto response - pass original input to detect empty vs content
-      const botResponse = getAutoResponse(inputCode);
-      
-      // Add bot message
-      const botMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: botResponse,
-        type: 'bot',
-        timestamp: new Date()
-      };
+    // Get auto response first to check for async flags
+    const botResponse = getAutoResponse(inputCode);
+    
+    // Handle async brandname operations
+    if (configStep === 'brandname' && inputCode.trim().length > 0) {
+      // User entered brandname text
+      handleBrandnameSubmit(inputCode.trim())
+        .then(response => {
+          const botMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: response,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, botMessage]);
+          setLoading(false);
+        })
+        .catch(error => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ Error: ${error.message || 'Failed to process request'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setLoading(false);
+        });
+    } else if (botResponse === 'ASYNC_SUBMIT_BRANDNAME_DEFAULT') {
+      // Empty submit for brandname
+      handleBrandnameSubmitDefault()
+        .then(response => {
+          const botMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: response,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, botMessage]);
+          setLoading(false);
+        })
+        .catch(error => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ Error: ${error.message || 'Failed to process request'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setLoading(false);
+        });
+    } else if (botResponse === 'ASYNC_CONTINUE_BRANDNAME_DEFAULT') {
+      // Continue command for brandname
+      handleBrandnameContinueDefault()
+        .then(response => {
+          const botMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: response,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, botMessage]);
+          setLoading(false);
+        })
+        .catch(error => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ Error: ${error.message || 'Failed to process request'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setLoading(false);
+        });
+    } else {
+      // Handle other responses synchronously
+      setTimeout(() => {
+        // Skip if async brandname response
+        if (botResponse === 'ASYNC_BRANDNAME_SUBMIT' || 
+            botResponse === 'ASYNC_SUBMIT_BRANDNAME_DEFAULT' || 
+            botResponse === 'ASYNC_CONTINUE_BRANDNAME_DEFAULT') {
+          setLoading(false);
+          return;
+        }
+        
+        // Add bot message
+        const botMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: botResponse,
+          type: 'bot',
+          timestamp: new Date()
+        };
 
-      setMessages(prev => [...prev, botMessage]);
-      setLoading(false);
-    }, 800); // Small delay for realistic feel
+        setMessages(prev => [...prev, botMessage]);
+        setLoading(false);
+      }, 800); // Small delay for realistic feel
+    }
 
     // Clear input
     setInputCode('');
@@ -852,11 +896,106 @@ export default function Chat(props: { apiKeyApp: string }) {
     setConfigStep(stepKey as any);
   };
 
+  // Store canvas refresh functions (legacy - can be removed)
+  const [canvasRefreshFunctions, setCanvasRefreshFunctions] = useState<{[key: string]: any}>({});
+
+  // Load initial brandname from database (Chat controller)
+  const loadBrandnameState = async () => {
+    try {
+      setCanvasState(prev => ({ ...prev, isLoading: true }));
+      const result = await stepConfigService.fetchBrandnameState();
+      if (result.success) {
+        setCanvasState(prev => ({ 
+          ...prev, 
+          brandName: result.data.brand_name,
+          isLoading: false 
+        }));
+        setCompanyName(result.data.brand_name); // Sync with local state
+      }
+    } catch (error) {
+      console.error('Error loading brandname:', error);
+      setCanvasState(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  // Initialize brandname when component mounts
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadBrandnameState();
+    }
+  }, [isAuthenticated]);
+
   // Handle canvas changes - mark step incomplete for submission
   const handleStepChange = (stepName: string, data: any) => {
+    // Store refresh functions from canvas components
+    if (data && data.refreshBrandname) {
+      setCanvasRefreshFunctions(prev => ({ 
+        ...prev, 
+        [stepName]: { ...prev[stepName], refreshBrandname: data.refreshBrandname }
+      }));
+      return; // Don't mark as incomplete for refresh function registration
+    }
+
     // Mark step as incomplete when modified - requires Submit
     // No intermediate message - user will Submit directly
     setStepCompleted(prev => ({ ...prev, [stepName]: false }));
+  };
+
+  // Handle brandname submission with API call (for user input)
+  const handleBrandnameSubmit = async (brandName: string): Promise<string> => {
+    try {
+      // Show loading state on Canvas
+      setCanvasState(prev => ({ ...prev, isLoading: true }));
+      
+      const result = await stepConfigService.updateBrandnameState(brandName);
+      
+      if (result.success) {
+        // Update Canvas state (Chat controls Canvas)
+        setCanvasState(prev => ({ 
+          ...prev, 
+          brandName: result.data.brand_name,
+          isLoading: false 
+        }));
+        
+        // Update local state
+        setCompanyName(result.data.brand_name);
+        setRouteCompanyName(result.data.brand_name);
+        stopAnimation();
+        localStorage.setItem('userConfigured', 'true');
+        setShowConfigLayout(true);
+        setStepCompleted(prev => ({ ...prev, brandname: true }));
+        setConfigStep('location_time');
+        setHighestStepReached(prev => Math.max(prev, 2));
+
+        // Show different message based on whether brand name was changed
+        if (result.data.changed) {
+          return `✅ Brand name updated to: "${result.data.brand_name}"\n\n📍 Step 2: Location & Time Configuration\n\nNow we'll set up your timezone, work schedule, and language preferences.\n\nThe system will auto-detect your location and timezone. You can modify these settings if needed.\n\n⚡ Auto-detection is running...`;
+        } else {
+          return `✅ Brand name confirmed: "${result.data.brand_name}" (no changes)\n\n📍 Step 2: Location & Time Configuration\n\nNow we'll set up your timezone, work schedule, and language preferences.\n\nThe system will auto-detect your location and timezone. You can modify these settings if needed.\n\n⚡ Auto-detection is running...`;
+        }
+      } else {
+        // Hide loading state on error
+        setCanvasState(prev => ({ ...prev, isLoading: false }));
+        return `❌ Failed to update brand name: ${result.error || result.message || 'Unknown error'}`;
+      }
+    } catch (error) {
+      // Hide loading state on error
+      setCanvasState(prev => ({ ...prev, isLoading: false }));
+      console.error('Error submitting brand name:', error);
+      return `❌ Failed to update brand name: ${error instanceof Error ? error.message : 'Network error'}`;
+    }
+  };
+
+  // Handle brandname Submit with default value (empty submit)
+  const handleBrandnameSubmitDefault = async (): Promise<string> => {
+    const brandNameToUse = companyName.trim() || 'Alan_go';
+    return await handleBrandnameSubmit(brandNameToUse);
+  };
+
+  // Handle brandname Continue with default value
+  const handleBrandnameContinueDefault = async (): Promise<string> => {
+    const brandNameToUse = companyName.trim() || 'Alan_go';
+    return await handleBrandnameSubmit(brandNameToUse);
   };
 
   return (
@@ -1148,6 +1287,8 @@ export default function Chat(props: { apiKeyApp: string }) {
               <CanvasMessage 
                 configStep={configStep} 
                 onStepChange={handleStepChange}
+                brandName={canvasState.brandName}
+                isLoading={canvasState.isLoading}
               />
             </Box>
           </Flex>
