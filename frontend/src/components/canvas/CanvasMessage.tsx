@@ -35,6 +35,16 @@ interface CanvasMessageProps {
   // Chat-controlled state
   brandName?: string;
   isLoading?: boolean;
+  // Step 2 state
+  locationTimeData?: {
+    country: string;
+    timezone: string;
+    language: string;
+    working_days: string[];
+    from_time: string;
+    to_time: string;
+  };
+  locationTimeLoading?: boolean;
 }
 
 // Height breakpoints for adaptive behavior
@@ -56,7 +66,7 @@ interface AdaptiveConfig {
   showOptional: boolean;
 }
 
-export default function CanvasMessage({ configStep, onStepChange, brandName, isLoading }: CanvasMessageProps) {
+export default function CanvasMessage({ configStep, onStepChange, brandName, isLoading, locationTimeData, locationTimeLoading }: CanvasMessageProps) {
   const { currentColors } = useColorTheme();
   const bgColor = useColorModeValue('white', 'navy.800');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
@@ -137,7 +147,7 @@ export default function CanvasMessage({ configStep, onStepChange, brandName, isL
       case 'brandname':
         return <BrandnameCanvas {...commonProps} brandName={brandName} isLoading={isLoading} />;
       case 'location_time':
-        return <LocationTimeCanvas {...commonProps} />;
+        return <LocationTimeCanvas {...commonProps} locationTimeData={locationTimeData} locationTimeLoading={locationTimeLoading} />;
       case 'video_source':
         return <VideoSourceCanvas {...commonProps} />;
       case 'packing_area':
@@ -195,6 +205,16 @@ interface CanvasComponentProps {
   // Chat-controlled props
   brandName?: string;
   isLoading?: boolean;
+  // Step 2 props
+  locationTimeData?: {
+    country: string;
+    timezone: string;
+    language: string;
+    working_days: string[];
+    from_time: string;
+    to_time: string;
+  };
+  locationTimeLoading?: boolean;
 }
 
 // Brandname Canvas Component (Step 1) - Pure Display

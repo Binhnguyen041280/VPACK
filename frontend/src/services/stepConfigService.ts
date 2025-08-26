@@ -13,6 +13,21 @@ interface BrandnameResponse {
   error?: string;
 }
 
+interface LocationTimeResponse {
+  success: boolean;
+  data: {
+    country: string;
+    timezone: string;
+    language: string;
+    working_days: string[];
+    from_time: string;
+    to_time: string;
+    changed?: boolean;
+  };
+  message?: string;
+  error?: string;
+}
+
 class StepConfigService {
   private baseUrl = 'http://localhost:8080/api/config';
 
@@ -63,6 +78,62 @@ class StepConfigService {
       return await response.json();
     } catch (error) {
       console.error('Error updating brandname state:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch current location/time configuration from backend
+   */
+  async fetchLocationTimeState(): Promise<LocationTimeResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/step/location-time`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching location-time state:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update location/time configuration if changed
+   */
+  async updateLocationTimeState(locationTimeData: {
+    country: string;
+    timezone: string;
+    language: string;
+    working_days: string[];
+    from_time: string;
+    to_time: string;
+  }): Promise<LocationTimeResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/step/location-time`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(locationTimeData),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error updating location-time state:', error);
       throw error;
     }
   }

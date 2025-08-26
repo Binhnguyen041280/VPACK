@@ -17,31 +17,17 @@ import {
 import { useState, useEffect } from 'react';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
 
-interface LocationTimeData {
-  country: string;
-  timezone: string;
-  language: string;
-  workStartTime: string;
-  workEndTime: string;
-  workDays: {
-    monday: boolean;
-    tuesday: boolean;
-    wednesday: boolean;
-    thursday: boolean;
-    friday: boolean;
-    saturday: boolean;
-    sunday: boolean;
-  };
-}
-
-interface DetectedInfo {
-  country: string;
-  timezone: string;
-  language: string;
-  isDetecting: boolean;
-}
-
 interface LocationTimeCanvasProps {
+  // Chat-controlled data
+  locationTimeData?: {
+    country: string;
+    timezone: string;
+    language: string;
+    working_days: string[];
+    from_time: string;
+    to_time: string;
+  };
+  isLoading?: boolean;
   onStepChange?: (stepName: string, data: any) => void;
   adaptiveConfig?: {
     mode: 'compact' | 'normal' | 'spacious';
@@ -62,6 +48,8 @@ interface LocationTimeCanvasProps {
 }
 
 export default function LocationTimeCanvas({ 
+  locationTimeData,
+  isLoading = false,
   onStepChange, 
   adaptiveConfig = {
     mode: 'normal',
@@ -77,127 +65,32 @@ export default function LocationTimeCanvas({
   const secondaryText = useColorModeValue('gray.600', 'gray.400');
   const labelColor = useColorModeValue('navy.700', 'white');
 
-  // Auto-detection state
-  const [detected, setDetected] = useState<DetectedInfo>({
-    country: '',
-    timezone: '',
-    language: '',
-    isDetecting: true
-  });
+  // Debug logging for workdays
+  console.log('🔄 Step 2 Canvas - locationTimeData:', locationTimeData);
+  console.log('🔄 Step 2 Canvas - working_days:', locationTimeData?.working_days);
 
-  // Configuration state
-  const [config, setConfig] = useState<LocationTimeData>({
-    country: 'Vietnam',
-    timezone: 'Asia/Ho_Chi_Minh (UTC+7)',
-    language: 'English (en-US)',
-    workStartTime: '07:00',
-    workEndTime: '22:00',
-    workDays: {
-      monday: true,
-      tuesday: true,
-      wednesday: true,
-      thursday: true,
-      friday: true,
-      saturday: true,
-      sunday: true
-    }
-  });
-
-  // Auto-detection logic
-  useEffect(() => {
-    const detectUserLocation = async () => {
-      try {
-        // Detect timezone
-        const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        
-        // Detect language
-        const detectedLanguage = navigator.language || 'en-US';
-        
-        // Map timezone to country (simplified mapping)
-        const timezoneToCountry: { [key: string]: string } = {
-          'Asia/Ho_Chi_Minh': 'Vietnam',
-          'Asia/Bangkok': 'Thailand',
-          'Asia/Singapore': 'Singapore',
-          'Asia/Jakarta': 'Indonesia',
-          'Asia/Manila': 'Philippines',
-          'America/New_York': 'United States',
-          'America/Los_Angeles': 'United States',
-          'Europe/London': 'United Kingdom',
-          'Europe/Paris': 'France',
-          'Asia/Tokyo': 'Japan',
-          'Asia/Seoul': 'South Korea',
-          'Australia/Sydney': 'Australia'
-        };
-
-        const detectedCountry = timezoneToCountry[detectedTimezone] || 'Vietnam';
-        
-        // Format timezone display
-        const timezoneOffset = new Intl.DateTimeFormat('en', {
-          timeZoneName: 'short'
-        }).formatToParts(new Date()).find(part => part.type === 'timeZoneName')?.value || 'UTC+7';
-        
-        const formattedTimezone = `${detectedTimezone.split('/')[1]?.replace('_', ' ')} (${timezoneOffset})`;
-        
-        // Format language display
-        const languageNames: { [key: string]: string } = {
-          'en': 'English',
-          'en-US': 'English (US)',
-          'en-GB': 'English (UK)',
-          'vi': 'Tiếng Việt',
-          'vi-VN': 'Tiếng Việt (VN)',
-          'zh': 'Chinese',
-          'ja': 'Japanese',
-          'ko': 'Korean',
-          'th': 'Thai',
-          'id': 'Indonesian'
-        };
-        
-        const languageCode = detectedLanguage.split('-')[0];
-        const formattedLanguage = languageNames[detectedLanguage] || languageNames[languageCode] || 'English (en-US)';
-
-        setTimeout(() => {
-          setDetected({
-            country: detectedCountry,
-            timezone: formattedTimezone,
-            language: formattedLanguage,
-            isDetecting: false
-          });
-
-          // Update config with detected values
-          setConfig(prev => ({
-            ...prev,
-            country: detectedCountry,
-            timezone: formattedTimezone,
-            language: formattedLanguage
-          }));
-        }, 1500); // Simulate detection delay
-
-      } catch (error) {
-        console.error('Detection error:', error);
-        setTimeout(() => {
-          setDetected({
-            country: 'Vietnam',
-            timezone: 'Ho Chi Minh (UTC+7)',
-            language: 'English (en-US)',
-            isDetecting: false
-          });
-        }, 1500);
-      }
-    };
-
-    detectUserLocation();
-  }, []);
-
-  // Handle work day toggle
-  const handleWorkDayChange = (day: keyof typeof config.workDays) => {
-    setConfig(prev => ({
-      ...prev,
-      workDays: {
-        ...prev.workDays,
-        [day]: !prev.workDays[day]
-      }
-    }));
+  // Convert working_days array to workDays object for display
+  const workDays = {
+    monday: locationTimeData?.working_days?.includes('Monday') ?? true,
+    tuesday: locationTimeData?.working_days?.includes('Tuesday') ?? true,
+    wednesday: locationTimeData?.working_days?.includes('Wednesday') ?? true,
+    thursday: locationTimeData?.working_days?.includes('Thursday') ?? true,
+    friday: locationTimeData?.working_days?.includes('Friday') ?? true,
+    saturday: locationTimeData?.working_days?.includes('Saturday') ?? true,
+    sunday: locationTimeData?.working_days?.includes('Sunday') ?? true
   };
+
+  // Default values for display
+  const displayData = {
+    country: locationTimeData?.country ?? 'Vietnam',
+    timezone: locationTimeData?.timezone ?? 'Asia/Ho_Chi_Minh',
+    language: locationTimeData?.language ?? 'English (en-US)',
+    workStartTime: locationTimeData?.from_time ?? '07:00',
+    workEndTime: locationTimeData?.to_time ?? '22:00',
+    workDays: workDays
+  };
+
+  // Pure display component - no business logic
 
   // Country options
   const countryOptions = [
@@ -206,13 +99,29 @@ export default function LocationTimeCanvas({
     'South Korea', 'Australia', 'Canada', 'India', 'China'
   ];
 
-  // Timezone options
+  // Timezone options (IANA format for backend compatibility)
   const timezoneOptions = [
-    'Ho Chi Minh (UTC+7)', 'Bangkok (UTC+7)', 'Singapore (UTC+8)',
-    'Jakarta (UTC+7)', 'Manila (UTC+8)', 'Tokyo (UTC+9)',
-    'Seoul (UTC+9)', 'Sydney (UTC+11)', 'London (UTC+0)',
-    'Paris (UTC+1)', 'New York (UTC-5)', 'Los Angeles (UTC-8)'
+    'Asia/Ho_Chi_Minh', 'Asia/Bangkok', 'Asia/Singapore',
+    'Asia/Jakarta', 'Asia/Manila', 'Asia/Tokyo',
+    'Asia/Seoul', 'Australia/Sydney', 'Europe/London',
+    'Europe/Paris', 'America/New_York', 'America/Los_Angeles'
   ];
+
+  // Display names for timezone options
+  const timezoneDisplayNames: { [key: string]: string } = {
+    'Asia/Ho_Chi_Minh': 'Ho Chi Minh (UTC+7)',
+    'Asia/Bangkok': 'Bangkok (UTC+7)', 
+    'Asia/Singapore': 'Singapore (UTC+8)',
+    'Asia/Jakarta': 'Jakarta (UTC+7)',
+    'Asia/Manila': 'Manila (UTC+8)',
+    'Asia/Tokyo': 'Tokyo (UTC+9)',
+    'Asia/Seoul': 'Seoul (UTC+9)',
+    'Australia/Sydney': 'Sydney (UTC+11)',
+    'Europe/London': 'London (UTC+0)',
+    'Europe/Paris': 'Paris (UTC+1)',
+    'America/New_York': 'New York (UTC-5)',
+    'America/Los_Angeles': 'Los Angeles (UTC-8)'
+  };
 
   // Language options
   const languageOptions = [
@@ -248,10 +157,10 @@ export default function LocationTimeCanvas({
           >
             📍 Location & Time Configuration
           </Text>
-          {detected.isDetecting && adaptiveConfig.showOptional && (
+          {isLoading && adaptiveConfig.showOptional && (
             <HStack spacing="8px">
               <Spinner size="sm" color={currentColors.brand500} />
-              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>Detecting...</Text>
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>Loading...</Text>
             </HStack>
           )}
         </Flex>
@@ -274,14 +183,10 @@ export default function LocationTimeCanvas({
                 <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={labelColor}>
                   Country
                 </Text>
-                {!detected.isDetecting && detected.country === config.country && adaptiveConfig.showOptional && (
-                  <Badge colorScheme="green" size="sm">detected</Badge>
-                )}
               </HStack>
               <Select
-                value={config.country}
+                value={displayData.country}
                 onChange={(e) => {
-                  setConfig(prev => ({ ...prev, country: e.target.value }));
                   onStepChange?.('location_time', { country: e.target.value });
                 }}
                 size="sm"
@@ -300,14 +205,10 @@ export default function LocationTimeCanvas({
                 <Text fontSize="sm" fontWeight="500" color={labelColor}>
                   Timezone
                 </Text>
-                {!detected.isDetecting && detected.timezone === config.timezone && (
-                  <Badge colorScheme="green" size="sm">detected</Badge>
-                )}
               </HStack>
               <Select
-                value={config.timezone}
+                value={displayData.timezone}
                 onChange={(e) => {
-                  setConfig(prev => ({ ...prev, timezone: e.target.value }));
                   onStepChange?.('location_time', { timezone: e.target.value });
                 }}
                 size="sm"
@@ -315,7 +216,9 @@ export default function LocationTimeCanvas({
                 _focus={{ borderColor: currentColors.brand500 }}
               >
                 {timezoneOptions.map(timezone => (
-                  <option key={timezone} value={timezone}>{timezone}</option>
+                  <option key={timezone} value={timezone}>
+                    {timezoneDisplayNames[timezone] || timezone}
+                  </option>
                 ))}
               </Select>
             </VStack>
@@ -326,14 +229,10 @@ export default function LocationTimeCanvas({
                 <Text fontSize="sm" fontWeight="500" color={labelColor}>
                   Language
                 </Text>
-                {!detected.isDetecting && detected.language === config.language && (
-                  <Badge colorScheme="green" size="sm">detected</Badge>
-                )}
               </HStack>
               <Select
-                value={config.language}
+                value={displayData.language}
                 onChange={(e) => {
-                  setConfig(prev => ({ ...prev, language: e.target.value }));
                   onStepChange?.('location_time', { language: e.target.value });
                 }}
                 size="sm"
@@ -363,9 +262,8 @@ export default function LocationTimeCanvas({
             <HStack spacing="8px">
               <Input
                 type="time"
-                value={config.workStartTime}
+                value={displayData.workStartTime}
                 onChange={(e) => {
-                  setConfig(prev => ({ ...prev, workStartTime: e.target.value }));
                   onStepChange?.('location_time', { workStartTime: e.target.value });
                 }}
                 size="sm"
@@ -376,9 +274,8 @@ export default function LocationTimeCanvas({
               <Text fontSize="sm" color={secondaryText}>to</Text>
               <Input
                 type="time"
-                value={config.workEndTime}
+                value={displayData.workEndTime}
                 onChange={(e) => {
-                  setConfig(prev => ({ ...prev, workEndTime: e.target.value }));
                   onStepChange?.('location_time', { workEndTime: e.target.value });
                 }}
                 size="sm"
@@ -398,9 +295,8 @@ export default function LocationTimeCanvas({
               {dayLabels.map(({ key, label }) => (
                 <Checkbox
                   key={key}
-                  isChecked={config.workDays[key as keyof typeof config.workDays]}
+                  isChecked={displayData.workDays[key as keyof typeof displayData.workDays]}
                   onChange={() => {
-                    handleWorkDayChange(key as keyof typeof config.workDays);
                     onStepChange?.('location_time', { workDay: key });
                   }}
                   colorScheme="brand"
@@ -427,15 +323,15 @@ export default function LocationTimeCanvas({
           </Text>
           <VStack align="stretch" spacing="4px">
             <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              <strong>Location:</strong> {config.country}, {config.timezone}
+              <strong>Location:</strong> {displayData.country}, {displayData.timezone}
             </Text>
             {adaptiveConfig.showOptional && (
               <>
                 <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-                  <strong>Language:</strong> {config.language}
+                  <strong>Language:</strong> {displayData.language}
                 </Text>
                 <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-                  <strong>Work Schedule:</strong> {config.workStartTime} - {config.workEndTime}, {Object.values(config.workDays).filter(Boolean).length} days/week
+                  <strong>Work Schedule:</strong> {displayData.workStartTime} - {displayData.workEndTime}, {Object.values(displayData.workDays).filter(Boolean).length} days/week
                 </Text>
               </>
             )}

@@ -6,6 +6,7 @@ import os
 import sqlite3
 from datetime import datetime
 from modules.db_utils.safe_connection import safe_db_connection
+from modules.utils.timezone_validator import TimezoneValidator
 # Import db_rwlock conditionally to avoid circular imports
 try:
     from modules.scheduler.db_sync import db_rwlock
@@ -708,4 +709,206 @@ def update_step_brandname():
     except Exception as e:
         error_msg = f"Failed to update brandname: {str(e)}"
         print(f"❌ Update brandname error: {error_msg}")
+        return jsonify({"error": error_msg}), 500
+
+# Step 2 Location/Time Configuration Endpoints
+@config_routes_bp.route('/step/location-time', methods=['GET'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
+def get_step_location_time():
+    """Get current location/time configuration from general_info table for Step 2."""
+    try:
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT country, timezone, language, working_days, from_time, to_time 
+                FROM general_info WHERE id = 1
+            """)
+            row = cursor.fetchone()
+            
+            if row:
+                country, timezone, language, working_days_json, from_time, to_time = row
+                
+                # Parse working_days JSON string to array
+                import json
+                try:
+                    working_days = json.loads(working_days_json) if working_days_json else ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                except json.JSONDecodeError:
+                    working_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                
+                return jsonify({
+                    "success": True,
+                    "data": {
+                        "country": country or "Vietnam",
+                        "timezone": timezone or "Asia/Ho_Chi_Minh",
+                        "language": language or "English (en-US)",
+                        "working_days": working_days,
+                        "from_time": from_time or "07:00",
+                        "to_time": to_time or "23:00"
+                    }
+                }), 200
+            else:
+                # Return defaults if no record exists
+                return jsonify({
+                    "success": True,
+                    "data": {
+                        "country": "Vietnam",
+                        "timezone": "Asia/Ho_Chi_Minh", 
+                        "language": "English (en-US)",
+                        "working_days": ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+                        "from_time": "07:00",
+                        "to_time": "23:00"
+                    }
+                }), 200
+            
+    except Exception as e:
+        error_msg = f"Failed to get location-time: {str(e)}"
+        print(f"❌ Get location-time error: {error_msg}")
+        return jsonify({"error": error_msg}), 500
+
+@config_routes_bp.route('/step/location-time', methods=['PUT'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
+def update_step_location_time():
+    """Update location/time configuration only if changed for Step 2."""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"error": "Request data is required"}), 400
+        
+        # Extract and validate required fields
+        new_country = data.get('country', '').strip()
+        new_timezone = data.get('timezone', '').strip()
+        new_language = data.get('language', '').strip()
+        new_working_days = data.get('working_days', [])
+        new_from_time = data.get('from_time', '').strip()
+        new_to_time = data.get('to_time', '').strip()
+        
+        # Validation
+        if not new_country:
+            return jsonify({"error": "Country is required"}), 400
+        if not new_timezone:
+            return jsonify({"error": "Timezone is required"}), 400
+        if not new_language:
+            return jsonify({"error": "Language is required"}), 400
+        if not new_working_days or not isinstance(new_working_days, list):
+            return jsonify({"error": "Working days must be a non-empty array"}), 400
+        if not new_from_time or not new_to_time:
+            return jsonify({"error": "Work start and end times are required"}), 400
+        
+        # Validate time format (HH:MM)
+        import re
+        time_pattern = r'^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+        if not re.match(time_pattern, new_from_time):
+            return jsonify({"error": "Invalid start time format. Use HH:MM"}), 400
+        if not re.match(time_pattern, new_to_time):
+            return jsonify({"error": "Invalid end time format. Use HH:MM"}), 400
+        
+        # Validate and process timezone with comprehensive timezone data
+        try:
+            timezone_validator = TimezoneValidator()
+            timezone_result = timezone_validator.validate_timezone(new_timezone)
+            
+            if not timezone_result.is_valid:
+                return jsonify({"error": f"Invalid timezone: {timezone_result.error_message}"}), 400
+                
+            # Extract all timezone fields
+            timezone_iana_name = timezone_result.iana_name
+            timezone_display_name = timezone_result.display_name
+            timezone_utc_offset_hours = timezone_result.utc_offset_hours
+            timezone_format_type = timezone_result.format_type.value if timezone_result.format_type else None
+            timezone_validated = 1
+            timezone_updated_at = datetime.now().isoformat()
+            timezone_validation_warnings = None  # Could add warnings if needed
+            
+        except Exception as tz_error:
+            print(f"Timezone validation error: {tz_error}")
+            return jsonify({"error": f"Timezone validation failed: {str(tz_error)}"}), 400
+        
+        # Get current values and compare for diff detection
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT country, timezone, language, working_days, from_time, to_time 
+                FROM general_info WHERE id = 1
+            """)
+            row = cursor.fetchone()
+            
+            # Set current values (or defaults)
+            if row:
+                current_country, current_timezone, current_language, current_working_days_json, current_from_time, current_to_time = row
+                
+                import json
+                try:
+                    current_working_days = json.loads(current_working_days_json) if current_working_days_json else []
+                except json.JSONDecodeError:
+                    current_working_days = []
+            else:
+                current_country, current_timezone, current_language = "Vietnam", "Asia/Ho_Chi_Minh", "English (en-US)"
+                current_working_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                current_from_time, current_to_time = "07:00", "23:00"
+            
+            # Check if there are any changes
+            new_working_days_json = json.dumps(new_working_days)
+            current_working_days_json = json.dumps(current_working_days) if current_working_days else json.dumps(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'])
+            
+            changes_detected = (
+                current_country != new_country or
+                current_timezone != new_timezone or
+                current_language != new_language or
+                current_working_days_json != new_working_days_json or
+                current_from_time != new_from_time or
+                current_to_time != new_to_time
+            )
+            
+            if not changes_detected:
+                return jsonify({
+                    "success": True,
+                    "data": {
+                        "country": current_country or new_country,
+                        "timezone": current_timezone or new_timezone,
+                        "language": current_language or new_language,
+                        "working_days": current_working_days or new_working_days,
+                        "from_time": current_from_time or new_from_time,
+                        "to_time": current_to_time or new_to_time,
+                        "changed": False
+                    },
+                    "message": "No changes detected"
+                }), 200
+            
+            # Update with new values including all timezone fields
+            cursor.execute("""
+                INSERT OR REPLACE INTO general_info (
+                    id, country, timezone, language, working_days, from_time, to_time,
+                    timezone_iana_name, timezone_display_name, timezone_utc_offset_hours,
+                    timezone_format_type, timezone_validated, timezone_updated_at,
+                    timezone_validation_warnings, brand_name
+                ) VALUES (
+                    1, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?,
+                    COALESCE((SELECT brand_name FROM general_info WHERE id = 1), 'Alan_go')
+                )
+            """, (new_country, new_timezone, new_language, new_working_days_json, new_from_time, new_to_time,
+                  timezone_iana_name, timezone_display_name, timezone_utc_offset_hours,
+                  timezone_format_type, timezone_validated, timezone_updated_at, timezone_validation_warnings))
+            
+            conn.commit()
+            
+            return jsonify({
+                "success": True,
+                "data": {
+                    "country": new_country,
+                    "timezone": new_timezone,
+                    "language": new_language,
+                    "working_days": new_working_days,
+                    "from_time": new_from_time,
+                    "to_time": new_to_time,
+                    "changed": True
+                },
+                "message": "Location/time configuration updated successfully"
+            }), 200
+            
+    except Exception as e:
+        error_msg = f"Failed to update location-time: {str(e)}"
+        print(f"❌ Update location-time error: {error_msg}")
         return jsonify({"error": error_msg}), 500

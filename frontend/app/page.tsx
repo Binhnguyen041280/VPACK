@@ -76,9 +76,29 @@ export default function Chat(props: { apiKeyApp: string }) {
   const [canvasState, setCanvasState] = useState<{
     brandName: string;
     isLoading: boolean;
+    // Step 2 state
+    locationTime: {
+      country: string;
+      timezone: string;
+      language: string;
+      working_days: string[];
+      from_time: string;
+      to_time: string;
+    };
+    locationTimeLoading: boolean;
   }>({
     brandName: 'Alan_go',
-    isLoading: false
+    isLoading: false,
+    // Step 2 defaults (IANA timezone format)
+    locationTime: {
+      country: 'Vietnam',
+      timezone: 'Asia/Ho_Chi_Minh',
+      language: 'English (en-US)',
+      working_days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+      from_time: '07:00',
+      to_time: '23:00'
+    },
+    locationTimeLoading: false
   });
   // Step completion tracking for 5 steps - All start as completed with defaults
   const [stepCompleted, setStepCompleted] = useState<{[key: string]: boolean}>({
@@ -214,11 +234,8 @@ export default function Chat(props: { apiKeyApp: string }) {
         return 'ASYNC_CONTINUE_BRANDNAME_DEFAULT';
       
       case 'location_time':
-        // Save default location/time settings
-        // Auto-advance to next step
-        setConfigStep('video_source');
-        setHighestStepReached(prev => Math.max(prev, 3));
-        return '📹 Step 3: Video Source Configuration\n\nChoose where your video files are located for processing.\n\nSelect between local storage (PC, external drive, network mount) or cloud storage (Google Drive). Configure video quality and frame rate settings.\n\n📁 Choose the source that best fits your video storage setup.';
+        // For Step 2, always use async API call - return flag to trigger async handling
+        return 'ASYNC_CONTINUE_LOCATION_TIME_DEFAULT';
       
       case 'video_source':
         // Save default video source settings
@@ -251,12 +268,8 @@ export default function Chat(props: { apiKeyApp: string }) {
         return 'ASYNC_SUBMIT_BRANDNAME_DEFAULT';
       
       case 'location_time':
-        // Mark current step as completed
-        setStepCompleted(prev => ({ ...prev, [configStep]: true }));
-        // Auto-advance to next step
-        setConfigStep('video_source');
-        setHighestStepReached(prev => Math.max(prev, 3));
-        return '📹 Step 3: Video Source Configuration\n\nChoose where your video files are located for processing.\n\nSelect between local storage (PC, external drive, network mount) or cloud storage (Google Drive). Configure video quality and frame rate settings.\n\n📁 Choose the source that best fits your video storage setup.';
+        // For Step 2, always use async API call - return flag to trigger async handling
+        return 'ASYNC_SUBMIT_LOCATION_TIME_DEFAULT';
       
       case 'video_source':
         // Auto-advance to next step
@@ -511,13 +524,61 @@ export default function Chat(props: { apiKeyApp: string }) {
           setMessages(prev => [...prev, errorMessage]);
           setLoading(false);
         });
+    } else if (botResponse === 'ASYNC_SUBMIT_LOCATION_TIME_DEFAULT') {
+      // Empty submit for location-time
+      handleLocationTimeSubmitDefault()
+        .then(response => {
+          const botMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: response,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, botMessage]);
+          setLoading(false);
+        })
+        .catch(error => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ Error: ${error.message || 'Failed to process request'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setLoading(false);
+        });
+    } else if (botResponse === 'ASYNC_CONTINUE_LOCATION_TIME_DEFAULT') {
+      // Continue command for location-time
+      handleLocationTimeContinueDefault()
+        .then(response => {
+          const botMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: response,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, botMessage]);
+          setLoading(false);
+        })
+        .catch(error => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ Error: ${error.message || 'Failed to process request'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setLoading(false);
+        });
     } else {
       // Handle other responses synchronously
       setTimeout(() => {
-        // Skip if async brandname response
+        // Skip if async response
         if (botResponse === 'ASYNC_BRANDNAME_SUBMIT' || 
             botResponse === 'ASYNC_SUBMIT_BRANDNAME_DEFAULT' || 
-            botResponse === 'ASYNC_CONTINUE_BRANDNAME_DEFAULT') {
+            botResponse === 'ASYNC_CONTINUE_BRANDNAME_DEFAULT' ||
+            botResponse === 'ASYNC_SUBMIT_LOCATION_TIME_DEFAULT' ||
+            botResponse === 'ASYNC_CONTINUE_LOCATION_TIME_DEFAULT') {
           setLoading(false);
           return;
         }
@@ -918,12 +979,45 @@ export default function Chat(props: { apiKeyApp: string }) {
     }
   };
 
-  // Initialize brandname when component mounts
+  // Load initial location/time from database (Chat controller)
+  const loadLocationTimeState = async () => {
+    try {
+      setCanvasState(prev => ({ ...prev, locationTimeLoading: true }));
+      const result = await stepConfigService.fetchLocationTimeState();
+      if (result.success) {
+        setCanvasState(prev => ({
+          ...prev,
+          locationTime: {
+            country: result.data.country,
+            timezone: result.data.timezone,
+            language: result.data.language,
+            working_days: result.data.working_days,
+            from_time: result.data.from_time,
+            to_time: result.data.to_time
+          },
+          locationTimeLoading: false
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading location-time:', error);
+      setCanvasState(prev => ({ ...prev, locationTimeLoading: false }));
+    }
+  };
+
+  // Initialize step data when component mounts
   useEffect(() => {
     if (isAuthenticated) {
       loadBrandnameState();
+      loadLocationTimeState();
     }
   }, [isAuthenticated]);
+
+  // Load Step 2 data when switching to location_time step
+  useEffect(() => {
+    if (configStep === 'location_time') {
+      loadLocationTimeState();
+    }
+  }, [configStep]);
 
   // Handle canvas changes - mark step incomplete for submission
   const handleStepChange = (stepName: string, data: any) => {
@@ -934,6 +1028,44 @@ export default function Chat(props: { apiKeyApp: string }) {
         [stepName]: { ...prev[stepName], refreshBrandname: data.refreshBrandname }
       }));
       return; // Don't mark as incomplete for refresh function registration
+    }
+
+    // Update Canvas state in real-time for Step 2 location_time
+    if (stepName === 'location_time' && data) {
+      console.log('🔄 Step 2 Canvas Change:', data);
+      setCanvasState(prev => {
+        const newLocationTime = { ...prev.locationTime };
+        
+        // Handle workDay toggle specifically
+        if (data.workDay) {
+          const dayKey = data.workDay;
+          const currentWorkingDays = [...newLocationTime.working_days];
+          const dayName = dayKey.charAt(0).toUpperCase() + dayKey.slice(1); // monday -> Monday
+          
+          if (currentWorkingDays.includes(dayName)) {
+            // Remove the day
+            newLocationTime.working_days = currentWorkingDays.filter(d => d !== dayName);
+          } else {
+            // Add the day
+            newLocationTime.working_days = [...currentWorkingDays, dayName];
+          }
+        } else {
+          // Handle other field updates with field name mapping
+          if (data.workStartTime) {
+            newLocationTime.from_time = data.workStartTime;
+          } else if (data.workEndTime) {
+            newLocationTime.to_time = data.workEndTime;
+          } else {
+            // Direct field mapping for country, timezone, language
+            Object.assign(newLocationTime, data);
+          }
+        }
+        
+        return {
+          ...prev,
+          locationTime: newLocationTime
+        };
+      });
     }
 
     // Mark step as incomplete when modified - requires Submit
@@ -996,6 +1128,77 @@ export default function Chat(props: { apiKeyApp: string }) {
   const handleBrandnameContinueDefault = async (): Promise<string> => {
     const brandNameToUse = companyName.trim() || 'Alan_go';
     return await handleBrandnameSubmit(brandNameToUse);
+  };
+
+  // Handle Step 2 location/time submission with API call
+  const handleLocationTimeSubmit = async (locationTimeData?: {
+    country: string;
+    timezone: string;
+    language: string;
+    working_days: string[];
+    from_time: string;
+    to_time: string;
+  }): Promise<string> => {
+    try {
+      // Show loading state on Canvas
+      setCanvasState(prev => ({ ...prev, locationTimeLoading: true }));
+      
+      // Use provided data or current Canvas state
+      const dataToSubmit = locationTimeData || canvasState.locationTime;
+      
+      console.log('🔄 Step 2 Submit - Data to submit:', dataToSubmit);
+      
+      const result = await stepConfigService.updateLocationTimeState(dataToSubmit);
+      
+      console.log('✅ Step 2 Submit - API Result:', result);
+      
+      if (result.success) {
+        // Update Canvas state (Chat controls Canvas)
+        setCanvasState(prev => ({
+          ...prev,
+          locationTime: {
+            country: result.data.country,
+            timezone: result.data.timezone,
+            language: result.data.language,
+            working_days: result.data.working_days,
+            from_time: result.data.from_time,
+            to_time: result.data.to_time
+          },
+          locationTimeLoading: false
+        }));
+        
+        // Update step completion and advance
+        setStepCompleted(prev => ({ ...prev, location_time: true }));
+        setConfigStep('video_source');
+        setHighestStepReached(prev => Math.max(prev, 3));
+
+        // Show different message based on whether data was changed
+        if (result.data.changed) {
+          return `✅ Location & Time configuration updated\n\n📹 Step 3: Video Source Configuration\n\nChoose where your video files are located for processing.\n\nSelect between local storage (PC, external drive, network mount) or cloud storage (Google Drive). Configure video quality and frame rate settings.\n\n📁 Choose the source that best fits your video storage setup.`;
+        } else {
+          return `✅ Location & Time configuration confirmed (no changes)\n\n📹 Step 3: Video Source Configuration\n\nChoose where your video files are located for processing.\n\nSelect between local storage (PC, external drive, network mount) or cloud storage (Google Drive). Configure video quality and frame rate settings.\n\n📁 Choose the source that best fits your video storage setup.`;
+        }
+      } else {
+        // Hide loading state on error
+        setCanvasState(prev => ({ ...prev, locationTimeLoading: false }));
+        return `❌ Failed to update location/time configuration: ${result.error || result.message || 'Unknown error'}`;
+      }
+    } catch (error) {
+      // Hide loading state on error
+      setCanvasState(prev => ({ ...prev, locationTimeLoading: false }));
+      console.error('Error submitting location/time:', error);
+      return `❌ Failed to update location/time configuration: ${error instanceof Error ? error.message : 'Network error'}`;
+    }
+  };
+
+  // Handle Step 2 Submit with default value (empty submit)
+  const handleLocationTimeSubmitDefault = async (): Promise<string> => {
+    return await handleLocationTimeSubmit();
+  };
+
+  // Handle Step 2 Continue with default value
+  const handleLocationTimeContinueDefault = async (): Promise<string> => {
+    return await handleLocationTimeSubmit();
   };
 
   return (
@@ -1289,6 +1492,8 @@ export default function Chat(props: { apiKeyApp: string }) {
                 onStepChange={handleStepChange}
                 brandName={canvasState.brandName}
                 isLoading={canvasState.isLoading}
+                locationTimeData={canvasState.locationTime}
+                locationTimeLoading={canvasState.locationTimeLoading}
               />
             </Box>
           </Flex>
