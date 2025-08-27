@@ -155,7 +155,7 @@ export default function LocationTimeCanvas({
             fontWeight="700"
             color={textColor}
           >
-            📍 Location & Time Configuration
+            📍 Step 2: Location & Time Configuration
           </Text>
           {isLoading && adaptiveConfig.showOptional && (
             <HStack spacing="8px">

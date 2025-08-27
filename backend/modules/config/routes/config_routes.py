@@ -720,14 +720,30 @@ def get_step_location_time():
         with safe_db_connection() as conn:
             cursor = conn.cursor()
             
-            cursor.execute("""
-                SELECT country, timezone, language, working_days, from_time, to_time 
-                FROM general_info WHERE id = 1
-            """)
-            row = cursor.fetchone()
+            # Check if language column exists first
+            cursor.execute("PRAGMA table_info(general_info)")
+            existing_columns = [col[1] for col in cursor.fetchall()]
+            has_language_column = 'language' in existing_columns
             
-            if row:
-                country, timezone, language, working_days_json, from_time, to_time = row
+            if has_language_column:
+                cursor.execute("""
+                    SELECT country, timezone, language, working_days, from_time, to_time 
+                    FROM general_info WHERE id = 1
+                """)
+                row = cursor.fetchone()
+                if row:
+                    country, timezone, language, working_days_json, from_time, to_time = row
+                else:
+                    language = "English (en-US)"  # Default
+            else:
+                cursor.execute("""
+                    SELECT country, timezone, working_days, from_time, to_time 
+                    FROM general_info WHERE id = 1
+                """)
+                row = cursor.fetchone()
+                language = "English (en-US)"  # Default since column doesn't exist
+                if row:
+                    country, timezone, working_days_json, from_time, to_time = row
                 
                 # Parse working_days JSON string to array
                 import json
@@ -828,15 +844,33 @@ def update_step_location_time():
         with safe_db_connection() as conn:
             cursor = conn.cursor()
             
-            cursor.execute("""
-                SELECT country, timezone, language, working_days, from_time, to_time 
-                FROM general_info WHERE id = 1
-            """)
-            row = cursor.fetchone()
+            # Check if language column exists first
+            cursor.execute("PRAGMA table_info(general_info)")
+            existing_columns = [col[1] for col in cursor.fetchall()]
+            has_language_column = 'language' in existing_columns
             
-            # Set current values (or defaults)
-            if row:
-                current_country, current_timezone, current_language, current_working_days_json, current_from_time, current_to_time = row
+            if has_language_column:
+                cursor.execute("""
+                    SELECT country, timezone, language, working_days, from_time, to_time 
+                    FROM general_info WHERE id = 1
+                """)
+                row = cursor.fetchone()
+                if row:
+                    current_country, current_timezone, current_language, current_working_days_json, current_from_time, current_to_time = row
+                else:
+                    current_country, current_timezone, current_language = "Vietnam", "Asia/Ho_Chi_Minh", "English (en-US)"
+                    current_working_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                    current_from_time, current_to_time = "07:00", "23:00"
+                    current_working_days_json = json.dumps(current_working_days)
+            else:
+                cursor.execute("""
+                    SELECT country, timezone, working_days, from_time, to_time 
+                    FROM general_info WHERE id = 1
+                """)
+                row = cursor.fetchone()
+                current_language = "English (en-US)"  # Default since column doesn't exist
+                if row:
+                    current_country, current_timezone, current_working_days_json, current_from_time, current_to_time = row
                 
                 import json
                 try:

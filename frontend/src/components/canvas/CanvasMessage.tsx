@@ -437,7 +437,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
     >
       {/* Header */}
       <Text fontSize={adaptiveConfig.fontSize.header} fontWeight="700" color={textColor} mb={adaptiveConfig.spacing.section}>
-        📹 Step 4: Video Source Configuration
+        📹 Step 3: Video Source Configuration
       </Text>
 
       <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
