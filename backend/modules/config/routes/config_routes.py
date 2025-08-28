@@ -18,6 +18,10 @@ from modules.sources.path_manager import PathManager
 from modules.utils.timezone_validator import timezone_validator, get_available_timezones
 from modules.utils.timezone_schema_migration import timezone_schema_manager
 from ..utils import get_working_path_for_source, load_config
+from ..services.validate_packing_video_service import validate_packing_video
+from modules.config.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 config_routes_bp = Blueprint('config_routes', __name__)
 
@@ -611,6 +615,61 @@ def migrate_to_global_timezone():
         error_msg = f"Migration failed: {str(e)}"
         print(f"❌ {error_msg}")
         return jsonify({"error": error_msg}), 500
+
+@config_routes_bp.route('/validate-packing-video', methods=['POST'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
+def validate_packing_video_endpoint():
+    """Validate a single training video for packing area configuration."""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        file_path = data.get('file', '').strip()
+        video_type = data.get('type', 'traditional').strip()
+        
+        # Validation
+        if not file_path:
+            return jsonify({"error": "file parameter is required"}), 400
+        
+        # Validate video type
+        if video_type not in ['traditional', 'qr']:
+            return jsonify({"error": "type must be 'traditional' or 'qr'"}), 400
+        
+        logger.info(f"Validating packing video: {file_path} (type: {video_type})")
+        
+        # Perform video validation
+        validation_result = validate_packing_video(file_path, video_type)
+        
+        # Return validation result
+        return jsonify(validation_result), 200
+        
+    except Exception as e:
+        error_msg = f"Video validation error: {str(e)}"
+        logger.error(f"❌ {error_msg}")
+        return jsonify({
+            "success": False,
+            "error": error_msg,
+            "video_file": {
+                "filename": "",
+                "path": "",
+                "duration_seconds": 0,
+                "duration_formatted": "0s",
+                "valid": False,
+                "error": error_msg,
+                "file_size_mb": 0.0,
+                "format": "unknown"
+            },
+            "summary": {
+                "valid": False,
+                "duration_seconds": 0,
+                "scan_time_ms": 0
+            },
+            "file_info": {
+                "exists": False,
+                "readable": False
+            }
+        }), 500
 
 # Register step-based modular routes
 from .steps import (

@@ -192,6 +192,38 @@ interface PerformanceEstimateResponse {
   error?: string;
 }
 
+/**
+ * Video Validation Interfaces
+ */
+interface VideoValidationRequest {
+  file: string;
+  type?: 'traditional' | 'qr';
+}
+
+interface VideoValidationResponse {
+  success: boolean;
+  video_file: {
+    filename: string;
+    path: string;
+    duration_seconds: number;
+    duration_formatted: string;
+    valid: boolean;
+    error: string | null;
+    file_size_mb: number;
+    format: string;
+  };
+  summary: {
+    valid: boolean;
+    duration_seconds: number;
+    scan_time_ms: number;
+  };
+  file_info: {
+    exists: boolean;
+    readable: boolean;
+  };
+  error?: string;
+}
+
 class StepConfigService {
   private baseUrl = 'http://localhost:8080/api/config';
 
@@ -676,6 +708,80 @@ class StepConfigService {
     }
   }
 
+  // ==============================================
+  // VIDEO VALIDATION METHODS
+  // ==============================================
+
+  /**
+   * Validate a single training video for packing area configuration
+   */
+  async validatePackingVideo(filePath: string, videoType: 'traditional' | 'qr' = 'traditional'): Promise<VideoValidationResponse> {
+    try {
+      console.log('🔍 StepConfigService - Validating packing video:', filePath);
+      
+      const requestPayload: VideoValidationRequest = {
+        file: filePath,
+        type: videoType
+      };
+      
+      const response = await fetch(`${this.baseUrl}/validate-packing-video`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestPayload),
+      });
+
+      console.log('📡 StepConfigService - Video validation response status:', response.status);
+
+      if (!response.ok) {
+        // Try to get error details from response
+        let errorDetail = `HTTP error! status: ${response.status}`;
+        try {
+          const errorResponse = await response.json();
+          if (errorResponse.error) {
+            errorDetail = `HTTP ${response.status}: ${errorResponse.error}`;
+          }
+        } catch (parseError) {
+          // Response isn't JSON, keep original error
+        }
+        throw new Error(errorDetail);
+      }
+
+      const result = await response.json();
+      console.log('✅ StepConfigService - Video validation result:', result);
+      return result;
+    } catch (error) {
+      console.error('❌ StepConfigService - Error validating packing video:', error);
+      
+      // Return error response in expected format
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        video_file: {
+          filename: filePath ? filePath.split('/').pop() || '' : '',
+          path: filePath || '',
+          duration_seconds: 0,
+          duration_formatted: '0s',
+          valid: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          file_size_mb: 0.0,
+          format: 'unknown'
+        },
+        summary: {
+          valid: false,
+          duration_seconds: 0,
+          scan_time_ms: 0
+        },
+        file_info: {
+          exists: false,
+          readable: false
+        }
+      };
+    }
+  }
+
   /**
    * Utility method to check if timing configuration is optimal
    */
@@ -736,5 +842,7 @@ export type {
   TimingStatisticsResponse,
   TimingDefaultsResponse,
   PerformanceEstimateRequest,
-  PerformanceEstimateResponse
+  PerformanceEstimateResponse,
+  VideoValidationRequest,
+  VideoValidationResponse
 };

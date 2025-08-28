@@ -19,7 +19,7 @@ import {
 import { useColorTheme } from '@/contexts/ColorThemeContext';
 import { useState, useEffect } from 'react';
 import React from 'react';
-import { stepConfigService } from '@/services/stepConfigService';
+import { stepConfigService, VideoValidationResponse } from '@/services/stepConfigService';
 
 // Height breakpoints for adaptive behavior
 type HeightMode = 'compact' | 'normal' | 'spacious';
@@ -205,6 +205,172 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   
   const [traditionalInputPath, setTraditionalInputPath] = useState(getDefaultInputPath());
   const [qrInputPath, setQrInputPath] = useState(getDefaultInputPath());
+
+  // Video validation states
+  const [traditionalValidation, setTraditionalValidation] = useState<VideoValidationResponse | null>(null);
+  const [traditionalValidating, setTraditionalValidating] = useState(false);
+  const [qrValidation, setQrValidation] = useState<VideoValidationResponse | null>(null);
+  const [qrValidating, setQrValidating] = useState(false);
+
+  // Debounced validation function
+  const debounceRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  // Video validation function
+  const validateVideo = async (filePath: string, videoType: 'traditional' | 'qr') => {
+    if (!filePath || filePath.trim() === '' || filePath === getDefaultInputPath()) {
+      // Clear validation state for empty paths
+      if (videoType === 'traditional') {
+        setTraditionalValidation(null);
+      } else {
+        setQrValidation(null);
+      }
+      return;
+    }
+
+    try {
+      // Set loading state
+      if (videoType === 'traditional') {
+        setTraditionalValidating(true);
+      } else {
+        setQrValidating(true);
+      }
+
+      console.log(`🔍 Validating ${videoType} video:`, filePath);
+      const result = await stepConfigService.validatePackingVideo(filePath, videoType);
+      
+      console.log(`✅ Validation result for ${videoType}:`, result);
+      
+      // Update validation state
+      if (videoType === 'traditional') {
+        setTraditionalValidation(result);
+      } else {
+        setQrValidation(result);
+      }
+    } catch (error) {
+      console.error(`❌ Error validating ${videoType} video:`, error);
+      
+      // Set error validation state
+      const errorResult: VideoValidationResponse = {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        video_file: {
+          filename: filePath.split('/').pop() || '',
+          path: filePath,
+          duration_seconds: 0,
+          duration_formatted: '0s',
+          valid: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          file_size_mb: 0,
+          format: 'unknown'
+        },
+        summary: {
+          valid: false,
+          duration_seconds: 0,
+          scan_time_ms: 0
+        },
+        file_info: {
+          exists: false,
+          readable: false
+        }
+      };
+      
+      if (videoType === 'traditional') {
+        setTraditionalValidation(errorResult);
+      } else {
+        setQrValidation(errorResult);
+      }
+    } finally {
+      // Clear loading state
+      if (videoType === 'traditional') {
+        setTraditionalValidating(false);
+      } else {
+        setQrValidating(false);
+      }
+    }
+  };
+
+  // Debounced validation handler
+  const handleVideoPathChange = (filePath: string, videoType: 'traditional' | 'qr') => {
+    // Clear previous debounce
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    // Set new debounced validation
+    debounceRef.current = setTimeout(() => {
+      validateVideo(filePath, videoType);
+    }, 1000); // 1 second delay
+  };
+
+  // Cleanup debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, []);
+
+  // Helper function to render validation result
+  const renderValidationResult = (validation: VideoValidationResponse | null, isLoading: boolean) => {
+    if (isLoading) {
+      return (
+        <HStack spacing="8px" mt="8px">
+          <Text fontSize="16px">⏳</Text>
+          <Text fontSize="sm" color="gray.500">
+            Validating video file...
+          </Text>
+        </HStack>
+      );
+    }
+
+    if (!validation) {
+      return null;
+    }
+
+    const { video_file, file_info } = validation;
+
+    if (validation.success && video_file.valid) {
+      return (
+        <HStack spacing="8px" mt="8px" p="8px" bg="green.50" borderRadius="6px" border="1px solid" borderColor="green.200">
+          <Text fontSize="16px">✅</Text>
+          <VStack align="start" spacing="2px" flex="1">
+            <Text fontSize="sm" color="green.700" fontWeight="500">
+              Valid video ({video_file.duration_formatted})
+            </Text>
+            <Text fontSize="xs" color="green.600">
+              {video_file.filename} • {video_file.file_size_mb}MB • {video_file.format.toUpperCase()}
+            </Text>
+          </VStack>
+        </HStack>
+      );
+    } else {
+      // Error cases
+      const isFileIssue = !file_info.exists || !file_info.readable;
+      const icon = isFileIssue ? "❌" : "⚠️";
+      const bgColor = isFileIssue ? "red.50" : "orange.50";
+      const borderColor = isFileIssue ? "red.200" : "orange.200";
+      const textColor = isFileIssue ? "red.700" : "orange.700";
+      const secondaryColor = isFileIssue ? "red.600" : "orange.600";
+
+      return (
+        <HStack spacing="8px" mt="8px" p="8px" bg={bgColor} borderRadius="6px" border="1px solid" borderColor={borderColor}>
+          <Text fontSize="16px">{icon}</Text>
+          <VStack align="start" spacing="2px" flex="1">
+            <Text fontSize="sm" color={textColor} fontWeight="500">
+              {video_file.error || validation.error || 'Unknown error'}
+            </Text>
+            {video_file.filename && (
+              <Text fontSize="xs" color={secondaryColor}>
+                {video_file.filename}
+                {video_file.duration_seconds > 0 && ` • ${video_file.duration_formatted}`}
+              </Text>
+            )}
+          </VStack>
+        </HStack>
+      );
+    }
+  };
 
   return (
     <Box
@@ -422,9 +588,14 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                   e.target.select(); // Select all text for easy replacement
                 }}
                 onChange={(e) => {
-                  setTraditionalInputPath(e.target.value);
+                  const newPath = e.target.value;
+                  setTraditionalInputPath(newPath);
+                  
+                  // Trigger debounced validation
+                  handleVideoPathChange(newPath, 'traditional');
+                  
                   onStepChange?.('packing_area', { 
-                    traditionalInputPath: e.target.value,
+                    traditionalInputPath: newPath,
                     packingMethod: 'traditional'
                   });
                 }}
@@ -432,6 +603,9 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
               <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
                 📋 Traditional video folder: {traditionalInputPath}
               </Text>
+              
+              {/* Validation Result */}
+              {renderValidationResult(traditionalValidation, traditionalValidating)}
             </Box>
           </Box>
         )}
@@ -665,9 +839,14 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                   e.target.select(); // Select all text for easy replacement
                 }}
                 onChange={(e) => {
-                  setQrInputPath(e.target.value);
+                  const newPath = e.target.value;
+                  setQrInputPath(newPath);
+                  
+                  // Trigger debounced validation
+                  handleVideoPathChange(newPath, 'qr');
+                  
                   onStepChange?.('packing_area', { 
-                    qrInputPath: e.target.value,
+                    qrInputPath: newPath,
                     packingMethod: 'qr'
                   });
                 }}
@@ -675,6 +854,9 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
               <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
                 📋 QR video folder: {qrInputPath}
               </Text>
+              
+              {/* Validation Result */}
+              {renderValidationResult(qrValidation, qrValidating)}
             </Box>
           </Box>
         )}
