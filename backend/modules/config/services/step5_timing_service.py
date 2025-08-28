@@ -12,6 +12,7 @@ from ..shared import (
     safe_connection_wrapper,
     execute_with_change_detection,
     validate_timing_config,
+    validate_output_path,
     sanitize_input,
     log_step_operation
 )
@@ -107,23 +108,44 @@ class Step5TimingService:
             Tuple of (success: bool, result_data: dict)
         """
         try:
-            # Extract and sanitize data
-            sanitized_data = {
-                "min_packing_time": data.get('min_packing_time', self.DEFAULT_MIN_PACKING_TIME),
-                "max_packing_time": data.get('max_packing_time', self.DEFAULT_MAX_PACKING_TIME),
-                "video_buffer": data.get('video_buffer', self.DEFAULT_VIDEO_BUFFER),
-                "storage_duration": data.get('storage_duration', self.DEFAULT_STORAGE_DURATION),
-                "frame_rate": data.get('frame_rate', self.DEFAULT_FRAME_RATE),
-                "frame_interval": data.get('frame_interval', self.DEFAULT_FRAME_INTERVAL),
-                "output_path": sanitize_input(data.get('output_path', self.DEFAULT_OUTPUT_PATH), 500)
-            }
+            # Extract and sanitize data with enhanced validation
+            sanitized_data = {}
             
-            # Validate data using shared validation
+            # Process each field with proper defaults and sanitization
+            for field in ["min_packing_time", "max_packing_time", "video_buffer", 
+                         "storage_duration", "frame_rate", "frame_interval"]:
+                if field in data:
+                    sanitized_data[field] = data[field]
+                else:
+                    # Use current value or default
+                    current_config = self.get_timing_config()
+                    sanitized_data[field] = current_config.get(field, getattr(self, f"DEFAULT_{field.upper()}"))
+            
+            # Handle output_path separately with enhanced validation
+            output_path = data.get('output_path')
+            if output_path is not None:
+                sanitized_output_path = sanitize_input(output_path, 500)
+                
+                # Enhanced path validation with directory creation option
+                path_valid, path_error = validate_output_path(
+                    sanitized_output_path, 
+                    create_if_missing=True  # Allow service to create missing directories
+                )
+                if not path_valid:
+                    return False, {"error": path_error}
+                
+                sanitized_data["output_path"] = sanitized_output_path
+            else:
+                # Use current or default
+                current_config = self.get_timing_config()
+                sanitized_data["output_path"] = current_config.get("output_path", self.DEFAULT_OUTPUT_PATH)
+            
+            # Validate data using enhanced shared validation
             is_valid, validation_error = validate_timing_config(sanitized_data)
             if not is_valid:
                 return False, {"error": validation_error}
             
-            # Additional business logic validation
+            # Additional business logic validation with detailed error messages
             business_valid, business_error = self._validate_business_rules(sanitized_data)
             if not business_valid:
                 return False, {"error": business_error}
@@ -207,7 +229,7 @@ class Step5TimingService:
     
     def _validate_business_rules(self, data: Dict[str, Any]) -> Tuple[bool, str]:
         """
-        Apply business validation rules similar to save_config.
+        Apply enhanced business validation rules similar to save_config.
         
         Args:
             data: Configuration data to validate
@@ -215,39 +237,48 @@ class Step5TimingService:
         Returns:
             Tuple of (is_valid: bool, error_message: str)
         """
-        # Validate output path exists or can be created
+        # Enhanced output path validation (already done in main function)
         output_path = data.get("output_path", "")
-        if output_path and output_path != self.DEFAULT_OUTPUT_PATH:
-            try:
-                # Create directory if it doesn't exist
-                os.makedirs(output_path, exist_ok=True)
-                
-                # Check if we can write to the directory
-                if not os.access(output_path, os.W_OK):
-                    return False, f"Output directory is not writable: {output_path}"
-                    
-            except Exception as e:
-                return False, f"Cannot create or access output directory: {str(e)}"
         
-        # Validate timing relationships
+        # Validate timing relationships with more detailed checks
         min_time = data.get("min_packing_time", 0)
         max_time = data.get("max_packing_time", 0)
         
         if min_time >= max_time:
-            return False, "Minimum packing time must be less than maximum packing time"
+            return False, f"Minimum packing time ({min_time}s) must be less than maximum packing time ({max_time}s)"
         
-        # Validate frame settings
+        # Check for reasonable gap between min and max
+        time_gap = max_time - min_time
+        if time_gap < 5:
+            return False, f"Time gap between min and max packing time is too small ({time_gap}s). Minimum gap should be 5 seconds."
+        
+        # Validate frame settings with performance considerations
         frame_rate = data.get("frame_rate", 30)
         frame_interval = data.get("frame_interval", 5)
         
         if frame_interval > frame_rate:
-            return False, "Frame interval cannot be greater than frame rate"
+            return False, f"Frame interval ({frame_interval}) cannot be greater than frame rate ({frame_rate})"
+        
+        # Performance warning for high processing loads
+        processing_fps = frame_rate / max(1, frame_interval)
+        if processing_fps > 60:
+            return False, f"Processing load too high ({processing_fps:.1f} fps). Consider increasing frame interval to reduce load."
+        
+        # Storage duration validation
+        storage_duration = data.get("storage_duration", 30)
+        if storage_duration > 180:  # More than 6 months
+            return False, f"Storage duration ({storage_duration} days) exceeds recommended maximum of 180 days"
+        
+        # Video buffer validation
+        video_buffer = data.get("video_buffer", 2)
+        if video_buffer > min_time / 2:
+            return False, f"Video buffer ({video_buffer}s) should not exceed half of minimum packing time ({min_time/2:.1f}s)"
         
         return True, ""
     
     def get_timing_statistics(self) -> Dict[str, Any]:
         """
-        Get timing configuration statistics for monitoring.
+        Get enhanced timing configuration statistics for monitoring.
         
         Returns:
             Dict with timing statistics
@@ -255,28 +286,68 @@ class Step5TimingService:
         try:
             config = self.get_timing_config()
             
+            # Calculate performance metrics
+            processing_fps = config["frame_rate"] / max(1, config["frame_interval"])
+            processing_load_percent = (processing_fps / config["frame_rate"]) * 100
+            
+            # Categorize performance level
+            if processing_load_percent < 25:
+                performance_category = "low_load"
+            elif processing_load_percent < 50:
+                performance_category = "balanced"
+            elif processing_load_percent < 75:
+                performance_category = "high_accuracy"
+            else:
+                performance_category = "maximum_accuracy"
+            
             stats = {
                 "current_config": config,
                 "packing_time_range": {
                     "min": config["min_packing_time"],
                     "max": config["max_packing_time"],
-                    "range_seconds": config["max_packing_time"] - config["min_packing_time"]
+                    "range_seconds": config["max_packing_time"] - config["min_packing_time"],
+                    "gap_adequate": (config["max_packing_time"] - config["min_packing_time"]) >= 5
                 },
-                "performance_settings": {
+                "performance_metrics": {
                     "frame_rate": config["frame_rate"],
                     "frame_interval": config["frame_interval"],
-                    "frames_per_second_processed": config["frame_rate"] / max(1, config["frame_interval"])
+                    "processing_fps": round(processing_fps, 2),
+                    "processing_load_percent": round(processing_load_percent, 2),
+                    "performance_category": performance_category,
+                    "frames_skipped_percent": round(100 - processing_load_percent, 2)
                 },
                 "storage_settings": {
                     "storage_duration_days": config["storage_duration"],
                     "video_buffer_seconds": config["video_buffer"],
-                    "output_path": config["output_path"]
+                    "output_path": config["output_path"],
+                    "output_path_exists": os.path.exists(config["output_path"]) if config["output_path"] else False
+                },
+                "system_impact": {
+                    "daily_storage_reduction_percent": round(100 - processing_load_percent, 2),
+                    "estimated_daily_frames_processed": int(processing_fps * 86400),  # 24 hours
+                    "recommended_adjustments": []
                 }
             }
             
+            # Add recommendations based on analysis
+            recommendations = []
+            if processing_load_percent > 80:
+                recommendations.append("Consider increasing frame_interval to reduce processing load")
+            if processing_load_percent < 10:
+                recommendations.append("Consider decreasing frame_interval for better detection accuracy")
+            if config["video_buffer"] > config["min_packing_time"] / 2:
+                recommendations.append("Video buffer is quite large compared to minimum packing time")
+            if not stats["storage_settings"]["output_path_exists"]:
+                recommendations.append("Output directory does not exist and should be created")
+                
+            stats["system_impact"]["recommended_adjustments"] = recommendations
+            
             # Add validation status
-            is_valid, _ = validate_timing_config(config)
-            stats["validation_status"] = "valid" if is_valid else "invalid"
+            is_valid, validation_error = validate_timing_config(config)
+            stats["validation_status"] = {
+                "valid": is_valid,
+                "error": validation_error if not is_valid else None
+            }
             
             return stats
             
@@ -285,7 +356,7 @@ class Step5TimingService:
     
     def validate_timing_settings(self, data: Dict[str, Any]) -> Tuple[bool, str, Dict[str, Any]]:
         """
-        Validate timing settings without saving.
+        Enhanced validation for timing settings without saving.
         
         Args:
             data: Timing configuration data to validate
@@ -296,7 +367,9 @@ class Step5TimingService:
         validation_details = {
             "basic_validation": "pending",
             "business_rules": "pending",
-            "field_checks": {}
+            "field_checks": {},
+            "performance_analysis": {},
+            "recommendations": []
         }
         
         try:
@@ -316,22 +389,118 @@ class Step5TimingService:
                 validation_details["business_error"] = business_error
                 return False, business_error, validation_details
             
-            # Field-by-field validation details
-            for field in ["min_packing_time", "max_packing_time", "video_buffer", 
-                         "storage_duration", "frame_rate", "frame_interval"]:
+            # Enhanced field-by-field validation details
+            integer_fields = ["min_packing_time", "max_packing_time", "video_buffer", 
+                             "storage_duration", "frame_rate", "frame_interval"]
+            
+            for field in integer_fields:
                 if field in data:
                     value = data[field]
                     validation_details["field_checks"][field] = {
                         "value": value,
                         "type": type(value).__name__,
-                        "valid": isinstance(value, int) and value > 0
+                        "valid": isinstance(value, int) and value > 0,
+                        "range_check": self._check_field_range(field, value)
                     }
+            
+            # Performance analysis
+            frame_rate = data.get("frame_rate", 30)
+            frame_interval = data.get("frame_interval", 5)
+            if frame_rate and frame_interval:
+                processing_fps = frame_rate / max(1, frame_interval)
+                validation_details["performance_analysis"] = {
+                    "processing_fps": round(processing_fps, 2),
+                    "processing_load_percent": round((processing_fps / frame_rate) * 100, 2),
+                    "performance_level": self._categorize_performance(processing_fps, frame_rate)
+                }
+                
+                # Add performance-based recommendations
+                if processing_fps > 50:
+                    validation_details["recommendations"].append("High processing load - consider increasing frame interval")
+                elif processing_fps < 5:
+                    validation_details["recommendations"].append("Low processing rate - consider decreasing frame interval for better accuracy")
+            
+            # Path validation details
+            output_path = data.get("output_path")
+            if output_path:
+                path_valid, path_error = validate_output_path(output_path, create_if_missing=False)
+                validation_details["path_validation"] = {
+                    "valid": path_valid,
+                    "error": path_error if not path_valid else None,
+                    "exists": os.path.exists(output_path) if isinstance(output_path, str) else False
+                }
             
             return True, "All validations passed", validation_details
             
         except Exception as e:
             validation_details["exception"] = str(e)
             return False, f"Validation error: {str(e)}", validation_details
+    
+    def _check_field_range(self, field: str, value: Any) -> Dict[str, Any]:
+        """Helper method to check if field value is in valid range."""
+        ranges = {
+            'min_packing_time': (1, 300),
+            'max_packing_time': (10, 600),
+            'video_buffer': (0, 60),
+            'storage_duration': (1, 365),
+            'frame_rate': (1, 120),
+            'frame_interval': (1, 60)
+        }
+        
+        if field in ranges and isinstance(value, int):
+            min_val, max_val = ranges[field]
+            return {
+                "in_range": min_val <= value <= max_val,
+                "min": min_val,
+                "max": max_val,
+                "value": value
+            }
+        
+        return {"in_range": False, "error": "Unknown field or invalid type"}
+    
+    def _categorize_performance(self, processing_fps: float, frame_rate: int) -> str:
+        """Helper method to categorize performance level."""
+        load_percent = (processing_fps / frame_rate) * 100
+        
+        if load_percent < 25:
+            return "low_load"
+        elif load_percent < 50:
+            return "balanced"
+        elif load_percent < 75:
+            return "high_accuracy"
+        else:
+            return "maximum_accuracy"
+    
+    def create_output_directory(self, output_path: str) -> Tuple[bool, str]:
+        """
+        Create output directory with proper permissions.
+        
+        Args:
+            output_path: Path to create
+            
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        try:
+            # Sanitize path
+            clean_path = sanitize_input(output_path, 500)
+            
+            # Validate before creation
+            if not clean_path:
+                return False, "Output path cannot be empty"
+            
+            # Create directory
+            os.makedirs(clean_path, exist_ok=True)
+            
+            # Verify creation and permissions
+            path_valid, path_error = validate_output_path(clean_path, create_if_missing=False)
+            if not path_valid:
+                return False, path_error
+            
+            return True, f"Output directory created successfully: {clean_path}"
+            
+        except Exception as e:
+            return False, f"Failed to create output directory: {str(e)}"
 
 
 # Create singleton instance for import

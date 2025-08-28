@@ -110,13 +110,103 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   // NEW: Tree-based folder selection
   const [selectedTreeFolders, setSelectedTreeFolders] = useState<any[]>([]);
   
+  // UPSERT Pattern: Current active source state
+  const [currentActiveSource, setCurrentActiveSource] = useState<any>(null);
+  const [sourceStatistics, setSourceStatistics] = useState<any>(null);
+  
   // Session token stored in ref to avoid hooks order issues
   const driveSessionTokenRef = React.useRef<string>('');
   
   // Check Google Drive connection status on component mount
   React.useEffect(() => {
     checkDriveConnectionStatus();
+    loadCurrentVideoSourceState();
   }, []);
+
+  // UPSERT Pattern: Load current video source state on mount
+  const loadCurrentVideoSourceState = async () => {
+    try {
+      console.log('🔄 Loading current video source state...');
+      
+      const result = await stepConfigService.fetchVideoSourceState();
+      
+      if (result.success && result.data) {
+        const data = result.data;
+        
+        console.log('📊 Current video source state:', data);
+        
+        // Check if we have a current active source
+        if (data.current_source) {
+          const currentSource = data.current_source;
+          console.log(`✅ Found active source: ${currentSource.name} (Type: ${currentSource.source_type})`);
+          
+          // Set current active source state
+          setCurrentActiveSource(currentSource);
+          setSourceStatistics(data.statistics || null);
+          
+          // Set source type based on current source
+          const uiSourceType = currentSource.original_source_type || 
+            (currentSource.source_type === 'local' ? 'local_storage' : 'cloud_storage');
+          setSelectedSourceType(uiSourceType as 'local_storage' | 'cloud_storage');
+          
+          // Set input path
+          setInputPath(data.inputPath || '');
+          
+          // Set detected folders and selected cameras
+          if (data.detected_folders) {
+            setDetectedFolders(data.detected_folders);
+          }
+          if (data.selectedCameras) {
+            setSelectedCameras(data.selectedCameras);
+          }
+          
+          // Set tree folders for cloud storage
+          if (data.selected_tree_folders) {
+            setSelectedTreeFolders(data.selected_tree_folders);
+          }
+          
+          // Update step data
+          if (onStepChange) {
+            onStepChange('video_source', {
+              sourceType: uiSourceType,
+              inputPath: data.inputPath,
+              detectedFolders: data.detected_folders,
+              selectedCameras: data.selectedCameras,
+              selectedTreeFolders: data.selected_tree_folders,
+              currentSource: currentSource
+            });
+          }
+          
+          console.log(`🔄 Restored video source state: ${uiSourceType}`);
+          
+        } else {
+          // No current source - set default to local_storage
+          console.log('📍 No active source found - setting default to local storage');
+          setSelectedSourceType('local_storage');
+          
+          // Fallback to backward compatibility data
+          if (data.backward_compatibility) {
+            const compat = data.backward_compatibility;
+            if (compat.processing_config_input_path) {
+              setInputPath(compat.processing_config_input_path);
+              setSelectedCameras(compat.processing_config_selected_cameras || []);
+              console.log('📦 Using backward compatibility data');
+            }
+          }
+        }
+        
+      } else {
+        // No data at all - ensure default is local_storage
+        console.log('📍 No video source data found - setting default to local storage');
+        setSelectedSourceType('local_storage');
+      }
+      
+    } catch (error) {
+      console.error('❌ Error loading video source state:', error);
+      // On error, also default to local storage
+      setSelectedSourceType('local_storage');
+    }
+  };
 
   // NEW: Auto-scan subdirectories when input path changes (with debounce)
   React.useEffect(() => {
@@ -253,21 +343,62 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
     console.log(`📷 Camera selection updated: ${newSelection.join(', ')}`);
   };
 
-  // Save video source configuration to backend with debounce
+  // Save video source configuration to backend with debounce (UPSERT pattern)
   const saveVideoSourceConfig = React.useCallback(
-    debounceFunction(async (sourceType: string, path: string, folders: any[], cameras: string[]) => {
+    debounceFunction(async (sourceType: string, path: string, folders: any[], cameras: string[], treeFolders?: any[]) => {
       try {
-        console.log('💾 Saving video source configuration...');
+        console.log('💾 Saving video source configuration (UPSERT pattern)...');
+        console.log(`   Source Type: ${sourceType}`);
+        console.log(`   Input Path: ${path}`);
+        console.log(`   Selected Cameras: ${cameras.length}`);
+        console.log(`   Tree Folders: ${treeFolders ? treeFolders.length : 0}`);
         
-        const result = await stepConfigService.updateVideoSourceState({
+        // Validation: Don't save cloud storage with no folders selected
+        if (sourceType === 'cloud_storage') {
+          if (!treeFolders || treeFolders.length === 0) {
+            console.log('⚠️ Skipping save: Cloud storage requires at least one folder selected');
+            return;
+          }
+        }
+        
+        // Validation: Don't save local storage with no path or cameras
+        if (sourceType === 'local_storage') {
+          if (!path || !path.trim()) {
+            console.log('⚠️ Skipping save: Local storage requires input path');
+            return;
+          }
+          if (!cameras || cameras.length === 0) {
+            console.log('⚠️ Skipping save: Local storage requires at least one camera selected');
+            return;
+          }
+        }
+        
+        const payload = {
           sourceType: sourceType,
           inputPath: path,
           detectedFolders: folders,
-          selectedCameras: cameras
-        });
+          selectedCameras: cameras,
+          selected_tree_folders: treeFolders || []
+        };
+        
+        const result = await stepConfigService.updateVideoSourceState(payload);
         
         if (result.success) {
-          console.log('✅ Video source configuration saved successfully');
+          console.log('✅ Video source configuration saved successfully (UPSERT)');
+          
+          // Log UPSERT-specific response data
+          if (result.data.upsert_operation) {
+            console.log(`   🆔 Video Source ID: ${result.data.videoSourceId}`);
+            console.log(`   📝 Source Name: ${result.data.videoSourceName}`);
+            console.log(`   🔄 Single Source Mode: Active`);
+          }
+          
+          // Handle cloud storage response
+          if (sourceType === 'cloud_storage' && result.data.defaultSyncPath) {
+            console.log(`   ☁️ Default Sync Path: ${result.data.defaultSyncPath}`);
+            console.log(`   📁 Selected Tree Folders: ${result.data.selectedTreeFoldersCount || 0}`);
+          }
+          
         } else {
           console.error('❌ Failed to save video source configuration:', result.error);
         }
@@ -372,6 +503,11 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
         folderCount: folders.length
       });
     }
+    
+    // Auto-save cloud storage configuration (UPSERT pattern)
+    saveVideoSourceConfig('cloud_storage', '', [], [], folders);
+    
+    console.log(`☁️ Cloud folder selection updated: ${folders.length} folders selected`);
   };
 
   return (
@@ -381,15 +517,56 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
     >
       {/* Header */}
       <Text fontSize={adaptiveConfig.fontSize.header} fontWeight="700" color={textColor} mb={adaptiveConfig.spacing.section}>
-        📹 Step 3: Video Source Configuration
+        📹 Step 3: Video Source Configuration | Single Source Mode
       </Text>
+
+      {/* Current Active Source Indicator (UPSERT Pattern) */}
+      {currentActiveSource && (
+        <Box 
+          bg="green.50" 
+          border="1px solid" 
+          borderColor="green.200"
+          borderRadius="8px"
+          p="12px"
+          mb={adaptiveConfig.spacing.section}
+        >
+          <HStack justify="space-between" align="center">
+            <VStack align="start" spacing="2px">
+              <Text fontSize="xs" fontWeight="600" color="green.700">
+                🎯 Current Active Source
+              </Text>
+              <Text fontSize="sm" fontWeight="500" color="green.800">
+                {currentActiveSource.name} ({currentActiveSource.source_type === 'local' ? 'Local Storage' : 'Cloud Storage'})
+              </Text>
+              <Text fontSize="xs" color="green.600">
+                📁 Path: {currentActiveSource.path}
+              </Text>
+            </VStack>
+            <VStack align="end" spacing="2px">
+              <Text fontSize="xs" color="green.600">
+                📊 Cameras: {sourceStatistics?.cameras?.length || 0}
+              </Text>
+              <Text fontSize="xs" color="green.600">
+                ⏰ {new Date(currentActiveSource.created_at).toLocaleString()}
+              </Text>
+            </VStack>
+          </HStack>
+        </Box>
+      )}
 
       <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
         {/* Source Type Selection */}
         <Box>
-          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="8px">
-            🎥 Video Source Type
-          </Text>
+          <HStack justify="space-between" align="center" mb="8px">
+            <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor}>
+              🎥 Video Source Type
+            </Text>
+            {currentActiveSource && (
+              <Text fontSize="xs" color="orange.600" fontWeight="500">
+                💡 Selecting a new source will replace the current one
+              </Text>
+            )}
+          </HStack>
           <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} mb="12px">
             📁 Choose where your video files are located for processing
           </Text>
@@ -403,6 +580,8 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
               cursor="pointer"
               onClick={() => {
                 setSelectedSourceType('local_storage');
+                // Clear cloud storage state when switching to local
+                setSelectedTreeFolders([]);
                 onStepChange?.('video_source', { sourceType: 'local_storage' });
               }}
             >
@@ -420,6 +599,10 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
               cursor="pointer"
               onClick={() => {
                 setSelectedSourceType('cloud_storage');
+                // Clear local storage state when switching to cloud
+                setInputPath('');
+                setDetectedFolders([]);
+                setSelectedCameras([]);
                 onStepChange?.('video_source', { sourceType: 'cloud_storage' });
               }}
             >

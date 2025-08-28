@@ -17,8 +17,9 @@ import {
   ModalCloseButton
 } from '@chakra-ui/react';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import React from 'react';
+import { stepConfigService } from '@/services/stepConfigService';
 
 // Height breakpoints for adaptive behavior
 type HeightMode = 'compact' | 'normal' | 'spacious';
@@ -59,6 +60,14 @@ interface CanvasComponentProps {
   locationTimeLoading?: boolean;
 }
 
+// Camera interface
+interface Camera {
+  id: string;
+  name: string;
+  ip: string;
+  status: 'online' | 'offline';
+}
+
 // Step 4: Packing Area Canvas
 function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
   const { currentColors } = useColorTheme();
@@ -68,18 +77,119 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   const secondaryText = useColorModeValue('gray.600', 'gray.400');
   const cardBg = useColorModeValue('gray.50', 'navy.700');
   
-  // Mock camera list - will be replaced with actual data from step 4
-  const [availableCameras] = useState([
-    { id: '1', name: 'Camera 1 - Main Entrance', ip: '192.168.1.100', status: 'online' },
-    { id: '2', name: 'Camera 2 - Packing Area', ip: '192.168.1.101', status: 'online' },
-    { id: '3', name: 'Camera 3 - Storage Room', ip: '192.168.1.102', status: 'offline' },
-    { id: '4', name: 'Camera 4 - Loading Dock', ip: '192.168.1.103', status: 'online' }
-  ]);
+  // State for camera data from Step 3
+  const [availableCameras, setAvailableCameras] = useState<Camera[]>([]);
+  const [isLoadingCameras, setIsLoadingCameras] = useState(true);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   
   const [selectedCameras, setSelectedCameras] = useState<string[]>([]);
   const [showCameraPopup, setShowCameraPopup] = useState(false);
   const [selectedCameraForConfig, setSelectedCameraForConfig] = useState<string | null>(null);
   const [selectedPackingMethod, setSelectedPackingMethod] = useState<'traditional' | 'qr' | null>(null);
+  
+  // Single-camera workflow state
+  const [configuringCameraId, setConfiguringCameraId] = useState<string | null>(null);
+  const [camerasDisabled, setCamerasDisabled] = useState(false);
+  
+  // Helper function to check if a camera is currently being configured
+  const isCameraConfiguring = (cameraId: string): boolean => {
+    return configuringCameraId === cameraId;
+  };
+  
+  // Helper function to check if a camera should be disabled
+  const isCameraDisabled = (cameraId: string): boolean => {
+    return camerasDisabled && configuringCameraId !== cameraId;
+  };
+  
+  // Function to cancel camera configuration
+  const cancelCameraConfiguration = () => {
+    console.log('🚫 Cancelling camera configuration');
+    setConfiguringCameraId(null);
+    setCamerasDisabled(false);
+    setShowCameraPopup(false);
+    setSelectedCameraForConfig(null);
+    // Keep selected cameras as they were
+  };
+  
+  // Function to complete camera configuration
+  const completeCameraConfiguration = () => {
+    console.log('✅ Completing camera configuration');
+    setConfiguringCameraId(null);
+    setCamerasDisabled(false);
+    setShowCameraPopup(false);
+    setSelectedCameraForConfig(null);
+  };
+  
+  // Load camera data from processing_config table on component mount
+  useEffect(() => {
+    const loadCamerasFromProcessingConfig = async () => {
+      try {
+        setIsLoadingCameras(true);
+        setCameraError(null);
+        
+        console.log('🔍 PackingAreaCanvas - Fetching cameras from processing_config...');
+        const response = await stepConfigService.fetchProcessingConfigCameras();
+        
+        if (response.success && response.data.selectedCameras && response.data.selectedCameras.length > 0) {
+          // Transform selectedCameras into availableCameras format
+          const transformedCameras: Camera[] = response.data.selectedCameras.map((cameraName, index) => ({
+            id: cameraName, // Use camera name as ID
+            name: `Camera - ${cameraName}`, // Add "Camera - " prefix
+            ip: `192.168.1.${100 + index}`, // Generate mock IP based on index
+            status: 'online' as const // Default to online
+          }));
+          
+          console.log('✅ PackingAreaCanvas - Transformed cameras from processing_config:', transformedCameras);
+          setAvailableCameras(transformedCameras);
+        } else {
+          // No cameras found in processing_config
+          console.log('⚠️ PackingAreaCanvas - No cameras found in processing_config');
+          setAvailableCameras([]);
+        }
+      } catch (error) {
+        console.error('❌ PackingAreaCanvas - Error loading cameras:', error);
+        setCameraError('Failed to load cameras from processing_config. Please configure your system first.');
+        setAvailableCameras([]);
+      } finally {
+        setIsLoadingCameras(false);
+      }
+    };
+    
+    loadCamerasFromProcessingConfig();
+  }, []);
+  
+  // Retry function for error state
+  const retryCameraLoad = () => {
+    const loadCamerasFromProcessingConfig = async () => {
+      try {
+        setIsLoadingCameras(true);
+        setCameraError(null);
+        
+        const response = await stepConfigService.fetchProcessingConfigCameras();
+        
+        if (response.success && response.data.selectedCameras && response.data.selectedCameras.length > 0) {
+          const transformedCameras: Camera[] = response.data.selectedCameras.map((cameraName, index) => ({
+            id: cameraName,
+            name: `Camera - ${cameraName}`,
+            ip: `192.168.1.${100 + index}`,
+            status: 'online' as const
+          }));
+          
+          setAvailableCameras(transformedCameras);
+        } else {
+          setAvailableCameras([]);
+        }
+      } catch (error) {
+        console.error('❌ PackingAreaCanvas - Error loading cameras:', error);
+        setCameraError('Failed to load cameras from processing_config. Please configure your system first.');
+        setAvailableCameras([]);
+      } finally {
+        setIsLoadingCameras(false);
+      }
+    };
+    
+    loadCamerasFromProcessingConfig();
+  };
   
   // Default input path for traditional method
   const getDefaultInputPath = () => {
@@ -114,57 +224,159 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
           </Text>
           <Box bg={cardBg} p="16px" borderRadius="12px">
             <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} mb="12px">
-              Choose cameras from your video sources to monitor for packing area detection
+              Choose cameras from processing_config to monitor for packing area detection
             </Text>
-            <VStack spacing="8px" align="stretch">
-              {availableCameras.map((camera) => (
-                <Flex
-                  key={camera.id}
-                  align="center"
-                  p="8px"
-                  borderRadius="8px"
-                  border="1px solid"
-                  borderColor={borderColor}
-                  bg={bgColor}
+            
+            {/* Loading State */}
+            {isLoadingCameras && (
+              <VStack spacing="16px" py="20px">
+                <Text fontSize="24px">⏳</Text>
+                <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText}>
+                  Loading cameras from processing_config...
+                </Text>
+              </VStack>
+            )}
+            
+            {/* Error State */}
+            {cameraError && !isLoadingCameras && (
+              <VStack spacing="16px" py="20px">
+                <Text fontSize="24px">⚠️</Text>
+                <Text fontSize={adaptiveConfig.fontSize.body} color="red.500" textAlign="center">
+                  {cameraError}
+                </Text>
+                <Button 
+                  size="sm" 
+                  colorScheme="brand" 
+                  onClick={retryCameraLoad}
                 >
-                  <Checkbox
-                    isChecked={selectedCameras.includes(camera.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        // Add camera to selection and open popup for configuration
-                        setSelectedCameras(prev => [...prev, camera.id]);
-                        setSelectedCameraForConfig(camera.id);
-                        setShowCameraPopup(true);
-                      } else {
-                        // Remove camera from selection
-                        setSelectedCameras(prev => prev.filter(id => id !== camera.id));
-                      }
-                      onStepChange?.('packing_area', { selectedCameras });
-                    }}
-                    colorScheme="brand"
-                    me="12px"
-                  />
-                  <Box flex="1">
-                    <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor}>
-                      {camera.name}
+                  Retry
+                </Button>
+              </VStack>
+            )}
+            
+            {/* Empty State */}
+            {!isLoadingCameras && !cameraError && availableCameras.length === 0 && (
+              <VStack spacing="16px" py="20px">
+                <Text fontSize="24px">📹</Text>
+                <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText} textAlign="center">
+                  No cameras found in processing_config
+                </Text>
+                <Text fontSize={adaptiveConfig.fontSize.small} color="blue.500" textAlign="center">
+                  Please configure your system and select cameras first
+                </Text>
+              </VStack>
+            )}
+            
+            {/* Configuration Status Message */}
+            {configuringCameraId && (
+              <Box 
+                bg="orange.50" 
+                border="2px solid" 
+                borderColor="orange.300" 
+                borderRadius="12px" 
+                p="12px" 
+                mb="16px"
+              >
+                <Flex align="center" justify="space-between">
+                  <HStack spacing="8px">
+                    <Text fontSize="16px">🔧</Text>
+                    <Text fontSize={adaptiveConfig.fontSize.small} color="orange.700" fontWeight="500">
+                      Configuring {availableCameras.find(c => c.id === configuringCameraId)?.name} - Other cameras temporarily disabled
                     </Text>
-                    <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-                      {camera.ip} • Status: {camera.status}
-                    </Text>
-                  </Box>
-                  <Box
-                    w="8px"
-                    h="8px"
-                    borderRadius="full"
-                    bg={camera.status === 'online' ? 'green.400' : 'red.400'}
-                    flexShrink={0}
-                  />
+                  </HStack>
+                  <Button 
+                    size="xs" 
+                    colorScheme="orange" 
+                    variant="outline"
+                    onClick={cancelCameraConfiguration}
+                  >
+                    Cancel Configuration
+                  </Button>
                 </Flex>
-              ))}
-            </VStack>
-            <Text fontSize={adaptiveConfig.fontSize.small} color="blue.500" mt="12px" fontStyle="italic">
-              📊 Selected: {selectedCameras.length} camera(s) for detection monitoring
-            </Text>
+              </Box>
+            )}
+            
+            {/* Success State - Display Cameras */}
+            {!isLoadingCameras && !cameraError && availableCameras.length > 0 && (
+              <>
+                <VStack spacing="8px" align="stretch">
+                  {availableCameras.map((camera) => {
+                    const isDisabled = isCameraDisabled(camera.id);
+                    const isConfiguring = isCameraConfiguring(camera.id);
+                    
+                    return (
+                      <Flex
+                        key={camera.id}
+                        align="center"
+                        p="8px"
+                        borderRadius="8px"
+                        border="1px solid"
+                        borderColor={borderColor}
+                        bg={bgColor}
+                        opacity={isDisabled ? 0.5 : 1}
+                        cursor={isDisabled ? 'not-allowed' : 'default'}
+                        transition="opacity 0.2s ease"
+                      >
+                        <Checkbox
+                          isChecked={selectedCameras.includes(camera.id)}
+                          isDisabled={isDisabled}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              // Single camera workflow: disable others when selecting one
+                              console.log(`🔧 Starting configuration for camera: ${camera.id}`);
+                              setSelectedCameras(prev => [...prev, camera.id]);
+                              setSelectedCameraForConfig(camera.id);
+                              setConfiguringCameraId(camera.id);
+                              setCamerasDisabled(true);
+                              setShowCameraPopup(true);
+                            } else {
+                              // Only allow unchecking if not currently configuring this camera
+                              if (!isConfiguring) {
+                                setSelectedCameras(prev => prev.filter(id => id !== camera.id));
+                              }
+                            }
+                            onStepChange?.('packing_area', { selectedCameras });
+                          }}
+                          colorScheme="brand"
+                          me="12px"
+                        />
+                        <Box flex="1">
+                          <Flex align="center" gap="8px">
+                            <Text 
+                              fontSize={adaptiveConfig.fontSize.body} 
+                              fontWeight="600" 
+                              color={isDisabled ? secondaryText : textColor}
+                            >
+                              {camera.name}
+                            </Text>
+                            {isConfiguring && (
+                              <Text fontSize="12px" color="orange.500">⚙️</Text>
+                            )}
+                          </Flex>
+                          <Text 
+                            fontSize={adaptiveConfig.fontSize.small} 
+                            color={isDisabled ? 'gray.400' : secondaryText}
+                          >
+                            {camera.ip} • Status: {camera.status}
+                            {isDisabled && ' (Temporarily disabled)'}
+                          </Text>
+                        </Box>
+                        <Box
+                          w="8px"
+                          h="8px"
+                          borderRadius="full"
+                          bg={camera.status === 'online' ? (isDisabled ? 'gray.300' : 'green.400') : 'red.400'}
+                          flexShrink={0}
+                        />
+                      </Flex>
+                    );
+                  })}
+                </VStack>
+                <Text fontSize={adaptiveConfig.fontSize.small} color="blue.500" mt="12px" fontStyle="italic">
+                  📊 Selected: {selectedCameras.length} camera(s) for detection monitoring
+                </Text>
+              </>
+            )}
           </Box>
         </Box>
         
@@ -180,7 +392,7 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
             }}
           >
             <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="8px">
-              📂 Traditional Video Input Directory
+              📂 Sample Video for Traditional Detection Setup
             </Text>
             <Box bg={cardBg} p="16px" borderRadius="12px" border="2px solid" borderColor="orange.300">
               <VStack spacing="8px" align="stretch" mb="12px">
@@ -423,7 +635,7 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
             }}
           >
             <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="8px">
-              📂 QR Code Video Input Directory
+              📂 Sample Video for QR Detection Setup
             </Text>
             <Box bg={cardBg} p="16px" borderRadius="12px" border="2px solid" borderColor="blue.300">
               <VStack spacing="8px" align="stretch" mb="12px">
@@ -552,7 +764,7 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
       {/* Camera Configuration Popup */}
       <Modal 
         isOpen={showCameraPopup} 
-        onClose={() => setShowCameraPopup(false)}
+        onClose={cancelCameraConfiguration}
         size="6xl"
         isCentered
       >
@@ -574,8 +786,11 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 transition="all 0.2s ease"
                 onClick={() => {
                   setSelectedPackingMethod('traditional');
+                  completeCameraConfiguration(); // Complete configuration and re-enable cameras
                   onStepChange?.('packing_area', { 
-                    packingMethod: 'traditional'
+                    packingMethod: 'traditional',
+                    selectedCameras,
+                    configuredCamera: configuringCameraId
                   });
                 }}
               >
@@ -628,9 +843,11 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 position="relative"
                 onClick={() => {
                   setSelectedPackingMethod('qr');
-                  setShowCameraPopup(false); // Auto close popup
+                  completeCameraConfiguration(); // Complete configuration and re-enable cameras
                   onStepChange?.('packing_area', { 
-                    packingMethod: 'qr'
+                    packingMethod: 'qr',
+                    selectedCameras,
+                    configuredCamera: configuringCameraId
                   });
                 }}
               >

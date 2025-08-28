@@ -7,6 +7,7 @@ used across the step-based configuration system.
 
 import re
 import json
+import os
 from typing import List, Dict, Any, Optional, Union, Tuple
 
 
@@ -184,9 +185,64 @@ def validate_packing_area_config(data: Dict[str, Any]) -> Tuple[bool, str]:
     return True, ""
 
 
+def validate_output_path(output_path: str, create_if_missing: bool = False) -> Tuple[bool, str]:
+    """
+    Enhanced validation for output path with directory creation and permissions check.
+    
+    Args:
+        output_path: Path to validate
+        create_if_missing: Whether to create directory if it doesn't exist
+        
+    Returns:
+        Tuple of (is_valid: bool, error_message: str)
+    """
+    if not output_path or not isinstance(output_path, str):
+        return False, "Output path must be a non-empty string"
+    
+    output_path = output_path.strip()
+    
+    if not output_path:
+        return False, "Output path cannot be empty"
+    
+    # Check for invalid characters
+    if any(char in output_path for char in ['<', '>', ':', '"', '|', '?', '*']):
+        return False, "Output path contains invalid characters"
+    
+    # Check if path is too long (Windows MAX_PATH limit)
+    if len(output_path) > 255:
+        return False, "Output path is too long (max 255 characters)"
+    
+    # Check if it's an absolute path
+    if not os.path.isabs(output_path):
+        return False, "Output path must be an absolute path"
+    
+    try:
+        if create_if_missing:
+            # Try to create directory if it doesn't exist
+            os.makedirs(output_path, exist_ok=True)
+        
+        # Check if path exists and is a directory
+        if not os.path.exists(output_path):
+            return False, f"Output directory does not exist: {output_path}"
+        
+        if not os.path.isdir(output_path):
+            return False, f"Output path is not a directory: {output_path}"
+        
+        # Check write permissions
+        if not os.access(output_path, os.W_OK):
+            return False, f"Output directory is not writable: {output_path}"
+            
+    except OSError as e:
+        return False, f"Cannot access output directory: {str(e)}"
+    except Exception as e:
+        return False, f"Output path validation error: {str(e)}"
+    
+    return True, ""
+
+
 def validate_timing_config(data: Dict[str, Any]) -> Tuple[bool, str]:
     """
-    Validate timing and storage configuration data.
+    Enhanced validation for timing and storage configuration data.
     
     Args:
         data: Timing configuration data
@@ -194,32 +250,59 @@ def validate_timing_config(data: Dict[str, Any]) -> Tuple[bool, str]:
     Returns:
         Tuple of (is_valid: bool, error_message: str)
     """
-    # Validate integer fields
+    # Validate integer fields with enhanced ranges and constraints
     integer_fields = {
         'min_packing_time': (1, 300, "Minimum packing time must be between 1 and 300 seconds"),
         'max_packing_time': (10, 600, "Maximum packing time must be between 10 and 600 seconds"), 
         'video_buffer': (0, 60, "Video buffer must be between 0 and 60 seconds"),
         'storage_duration': (1, 365, "Storage duration must be between 1 and 365 days"),
-        'frame_rate': (1, 60, "Frame rate must be between 1 and 60 fps"),
-        'frame_interval': (1, 30, "Frame interval must be between 1 and 30 seconds")
+        'frame_rate': (1, 120, "Frame rate must be between 1 and 120 fps"),
+        'frame_interval': (1, 60, "Frame interval must be between 1 and 60 seconds")
     }
     
     for field, (min_val, max_val, error_msg) in integer_fields.items():
         if field in data:
             value = data[field]
-            if not isinstance(value, int) or value < min_val or value > max_val:
+            
+            # Type validation
+            if not isinstance(value, int):
+                return False, f"{field.replace('_', ' ').title()} must be an integer"
+            
+            # Range validation  
+            if value < min_val or value > max_val:
                 return False, error_msg
     
-    # Validate that min_packing_time < max_packing_time
+    # Cross-field validation: min_packing_time < max_packing_time
     min_time = data.get('min_packing_time')
     max_time = data.get('max_packing_time')
-    if min_time and max_time and min_time >= max_time:
-        return False, "Minimum packing time must be less than maximum packing time"
+    if min_time is not None and max_time is not None:
+        if min_time >= max_time:
+            return False, "Minimum packing time must be less than maximum packing time"
+        
+        # Ensure reasonable gap between min and max
+        if (max_time - min_time) < 5:
+            return False, "Maximum packing time must be at least 5 seconds greater than minimum packing time"
     
-    # Validate output path if provided
+    # Cross-field validation: frame_interval <= frame_rate
+    frame_rate = data.get('frame_rate')
+    frame_interval = data.get('frame_interval')
+    if frame_rate is not None and frame_interval is not None:
+        if frame_interval > frame_rate:
+            return False, "Frame interval cannot be greater than frame rate"
+    
+    # Enhanced output path validation
     output_path = data.get('output_path')
-    if output_path and not isinstance(output_path, str):
-        return False, "Output path must be a string"
+    if output_path is not None:
+        path_valid, path_error = validate_output_path(output_path, create_if_missing=False)
+        if not path_valid:
+            return False, path_error
+    
+    # Performance validation: warn about extreme settings
+    if frame_rate is not None and frame_interval is not None:
+        processing_load = (frame_rate / max(1, frame_interval))
+        if processing_load > 30:  # Processing more than 30 fps
+            # This is a warning, not an error, so we'll allow it but could log
+            pass
     
     return True, ""
 
@@ -282,3 +365,35 @@ def validate_json_field(value: Any, field_name: str) -> Tuple[bool, str, Any]:
             return True, "", value
     except (json.JSONDecodeError, TypeError) as e:
         return False, f"Invalid JSON format for {field_name}: {str(e)}", None
+
+
+def validate_numeric_range(value: Any, field_name: str, min_val: Optional[float] = None, 
+                         max_val: Optional[float] = None, 
+                         allow_float: bool = False) -> Tuple[bool, str]:
+    """
+    Enhanced numeric validation with float support.
+    
+    Args:
+        value: Value to validate
+        field_name: Name of field for error messages
+        min_val: Minimum allowed value
+        max_val: Maximum allowed value
+        allow_float: Whether to allow float values
+        
+    Returns:
+        Tuple of (is_valid: bool, error_message: str)
+    """
+    if allow_float:
+        if not isinstance(value, (int, float)):
+            return False, f"{field_name} must be a number"
+    else:
+        if not isinstance(value, int):
+            return False, f"{field_name} must be an integer"
+    
+    if min_val is not None and value < min_val:
+        return False, f"{field_name} must be at least {min_val}"
+    
+    if max_val is not None and value > max_val:
+        return False, f"{field_name} must be at most {max_val}"
+    
+    return True, ""

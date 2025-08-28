@@ -1,7 +1,8 @@
 import React from 'react';
 import { Box, Flex, Text, useColorModeValue, Icon } from '@chakra-ui/react';
-import { MdAutoAwesome, MdPerson } from 'react-icons/md';
+import { MdPerson } from 'react-icons/md';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
+import { VPackIcon } from '@/components/icons/VPackIcon';
 
 interface ChatMessageProps {
   content: string;
@@ -58,24 +59,12 @@ const ChatMessage = ({ content, type, timestamp }: ChatMessageProps) => {
 
   return (
     <Flex w="100%" mb="16px" align="flex-start">
-      <Flex
-        borderRadius="full"
-        justify="center"
-        align="center"
-        bg={currentColors.gradient}
-        me="12px"
-        h="32px"
-        minH="32px"
-        minW="32px"
-        flexShrink={0}
-      >
-        <Icon
-          as={MdAutoAwesome}
-          width="16px"
-          height="16px"
-          color="white"
-        />
-      </Flex>
+      {/* VPackIcon directly as bot avatar without circular container */}
+      <VPackIcon 
+        size="30px" 
+        collapsed={false}
+      />
+      <Box me="12px" />  {/* Spacer for proper alignment */}
       <Box
         bg={botBubbleBg}
         borderRadius="16px"

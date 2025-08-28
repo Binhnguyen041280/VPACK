@@ -327,6 +327,80 @@ class StepConfigService {
   }
 
   /**
+   * Fetch processing_config selected_cameras for Step 4 Packing Area Canvas
+   * This specifically gets the cameras from processing_config table
+   */
+  async fetchProcessingConfigCameras(): Promise<{
+    success: boolean;
+    data: {
+      selectedCameras?: string[];
+      inputPath?: string;
+      cameraCount?: number;
+    };
+    message?: string;
+    error?: string;
+  }> {
+    try {
+      console.log('🔍 StepConfigService - Fetching cameras from processing_config...');
+      
+      const response = await fetch(`${this.baseUrl}/step/video-source`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('📡 StepConfigService - Raw response:', result);
+
+      if (result.success && result.data && result.data.backward_compatibility) {
+        const processingConfig = result.data.backward_compatibility;
+        const selectedCameras = processingConfig.processing_config_selected_cameras || [];
+        const inputPath = processingConfig.processing_config_input_path || '';
+        
+        console.log('✅ StepConfigService - Processing config cameras:', selectedCameras);
+        
+        return {
+          success: true,
+          data: {
+            selectedCameras,
+            inputPath,
+            cameraCount: selectedCameras.length
+          },
+          message: 'Successfully fetched cameras from processing_config'
+        };
+      } else {
+        console.log('⚠️ StepConfigService - No processing_config data found');
+        return {
+          success: true,
+          data: {
+            selectedCameras: [],
+            inputPath: '',
+            cameraCount: 0
+          },
+          message: 'No processing_config data available'
+        };
+      }
+    } catch (error) {
+      console.error('❌ StepConfigService - Error fetching processing_config cameras:', error);
+      return {
+        success: false,
+        data: {
+          selectedCameras: [],
+          inputPath: '',
+          cameraCount: 0
+        },
+        error: `Failed to fetch processing_config cameras: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  /**
    * Update video source configuration if changed (UPSERT pattern)
    */
   async updateVideoSourceState(videoSourceData: {
