@@ -86,6 +86,27 @@ export default function Chat(props: { apiKeyApp: string }) {
       to_time: string;
     };
     locationTimeLoading: boolean;
+    // Step 3 state
+    videoSource?: {
+      sourceType: 'local_storage' | 'cloud_storage';
+      inputPath?: string;
+      detectedFolders?: { name: string; path: string }[];
+      selectedCameras?: string[];
+      selectedTreeFolders?: any[];  // For cloud storage
+      currentSource?: any;  // Current active source info
+    };
+    videoSourceLoading?: boolean;
+    // Step 5 state
+    timingStorage: {
+      min_packing_time: number;
+      max_packing_time: number;
+      video_buffer: number;
+      storage_duration: number;
+      frame_rate: number;
+      frame_interval: number;
+      output_path: string;
+    };
+    timingStorageLoading: boolean;
   }>({
     brandName: 'Alan_go',
     isLoading: false,
@@ -98,7 +119,21 @@ export default function Chat(props: { apiKeyApp: string }) {
       from_time: '07:00',
       to_time: '23:00'
     },
-    locationTimeLoading: false
+    locationTimeLoading: false,
+    // Step 3 defaults
+    videoSource: undefined,
+    videoSourceLoading: false,
+    // Step 5 defaults - matching backend defaults
+    timingStorage: {
+      min_packing_time: 10,
+      max_packing_time: 120,
+      video_buffer: 2,
+      storage_duration: 30,
+      frame_rate: 30,
+      frame_interval: 5,
+      output_path: "/default/output"
+    },
+    timingStorageLoading: false
   });
   // Step completion tracking for 5 steps - All start as completed with defaults
   const [stepCompleted, setStepCompleted] = useState<{[key: string]: boolean}>({
@@ -282,7 +317,8 @@ export default function Chat(props: { apiKeyApp: string }) {
         return '⏱️ Step 5: Timing & File Storage\n\nFinal step! Configure timing settings and file storage.\n\nSet up buffer times, packing time limits, storage paths, and retention policies.\n\n🚀 Timing and storage settings are ready for configuration.';
       
       case 'timing':
-        return '✅ Step 5 completed. Timing & storage settings saved.\n\n🎉 All configuration completed!\n\nAll 5 steps finished with your settings. Ready to start processing.';
+        // For Step 5, always use async API call - return flag to trigger async handling
+        return 'ASYNC_SUBMIT_TIMING_DEFAULT';
       
       default:
         return 'Configuration step completed.';
@@ -591,6 +627,29 @@ export default function Chat(props: { apiKeyApp: string }) {
           setMessages(prev => [...prev, errorMessage]);
           setLoading(false);
         });
+    } else if (botResponse === 'ASYNC_SUBMIT_TIMING_DEFAULT') {
+      // Empty submit for timing/storage - save current canvas state
+      handleTimingSubmitDefault()
+        .then(response => {
+          const botMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: response,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, botMessage]);
+          setLoading(false);
+        })
+        .catch(error => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ Error: ${error.message || 'Failed to save timing/storage configuration'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setLoading(false);
+        });
     } else if (configStep === 'video_source' && inputCode.trim().length > 0) {
       // User entered video source path - treat as input path and trigger save
       const inputPath = inputCode.trim();
@@ -633,7 +692,8 @@ export default function Chat(props: { apiKeyApp: string }) {
             botResponse === 'ASYNC_CONTINUE_BRANDNAME_DEFAULT' ||
             botResponse === 'ASYNC_SUBMIT_LOCATION_TIME_DEFAULT' ||
             botResponse === 'ASYNC_CONTINUE_LOCATION_TIME_DEFAULT' ||
-            botResponse === 'ASYNC_SUBMIT_VIDEO_SOURCE_DEFAULT') {
+            botResponse === 'ASYNC_SUBMIT_VIDEO_SOURCE_DEFAULT' ||
+            botResponse === 'ASYNC_SUBMIT_TIMING_DEFAULT') {
           setLoading(false);
           return;
         }
@@ -1059,11 +1119,38 @@ export default function Chat(props: { apiKeyApp: string }) {
     }
   };
 
+  // Load initial timing/storage from database (Chat controller)
+  const loadTimingStorageState = async () => {
+    try {
+      setCanvasState(prev => ({ ...prev, timingStorageLoading: true }));
+      const result = await stepConfigService.fetchTimingStorageState();
+      if (result.success) {
+        setCanvasState(prev => ({
+          ...prev,
+          timingStorage: {
+            min_packing_time: result.data.min_packing_time,
+            max_packing_time: result.data.max_packing_time,
+            video_buffer: result.data.video_buffer,
+            storage_duration: result.data.storage_duration,
+            frame_rate: result.data.frame_rate,
+            frame_interval: result.data.frame_interval,
+            output_path: result.data.output_path
+          },
+          timingStorageLoading: false
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading timing-storage:', error);
+      setCanvasState(prev => ({ ...prev, timingStorageLoading: false }));
+    }
+  };
+
   // Initialize step data when component mounts
   useEffect(() => {
     if (isAuthenticated) {
       loadBrandnameState();
       loadLocationTimeState();
+      loadTimingStorageState();
     }
   }, [isAuthenticated]);
 
@@ -1071,6 +1158,13 @@ export default function Chat(props: { apiKeyApp: string }) {
   useEffect(() => {
     if (configStep === 'location_time') {
       loadLocationTimeState();
+    }
+  }, [configStep]);
+
+  // Load Step 5 data when switching to timing step
+  useEffect(() => {
+    if (configStep === 'timing') {
+      loadTimingStorageState();
     }
   }, [configStep]);
 
@@ -1132,7 +1226,21 @@ export default function Chat(props: { apiKeyApp: string }) {
           sourceType: data.sourceType || prev.videoSource?.sourceType || 'local_storage',
           inputPath: data.inputPath || prev.videoSource?.inputPath || '',
           detectedFolders: data.detectedFolders || prev.videoSource?.detectedFolders || [],
-          selectedCameras: data.selectedCameras || prev.videoSource?.selectedCameras || []
+          selectedCameras: data.selectedCameras || prev.videoSource?.selectedCameras || [],
+          selectedTreeFolders: data.selectedTreeFolders || prev.videoSource?.selectedTreeFolders || [],
+          currentSource: data.currentSource || prev.videoSource?.currentSource
+        }
+      }));
+    }
+
+    // Update Canvas state in real-time for Step 5 timing
+    if (stepName === 'timing' && data) {
+      console.log('🔄 Step 5 Canvas Change:', data);
+      setCanvasState(prev => ({
+        ...prev,
+        timingStorage: {
+          ...prev.timingStorage,
+          ...data // Direct field mapping for timing fields
         }
       }));
     }
@@ -1276,6 +1384,7 @@ export default function Chat(props: { apiKeyApp: string }) {
     inputPath?: string;
     detectedFolders?: { name: string; path: string }[];
     selectedCameras?: string[];
+    selectedTreeFolders?: any[];  // For cloud storage
   }): Promise<string> => {
     try {
       // Show loading state on Canvas
@@ -1300,8 +1409,19 @@ export default function Chat(props: { apiKeyApp: string }) {
         throw new Error('Input path is required for local storage');
       }
       
+      // Build payload with all required fields for UPSERT
+      const payloadToSend = {
+        sourceType: dataToSubmit.sourceType,
+        inputPath: dataToSubmit.inputPath || '',
+        detectedFolders: dataToSubmit.detectedFolders || [],
+        selectedCameras: dataToSubmit.selectedCameras || [],
+        selected_tree_folders: dataToSubmit.selectedTreeFolders || []  // For cloud storage
+      };
+      
+      console.log('🔍 Step 3 Submit - Full payload:', JSON.stringify(payloadToSend, null, 2));
+      
       // Call the step config service
-      const result = await stepConfigService.updateVideoSourceState(dataToSubmit);
+      const result = await stepConfigService.updateVideoSourceState(payloadToSend);
       
       console.log('✅ Step 3 Submit - API Result:', result);
       
@@ -1313,7 +1433,9 @@ export default function Chat(props: { apiKeyApp: string }) {
             sourceType: dataToSubmit.sourceType,
             inputPath: dataToSubmit.inputPath || '',
             detectedFolders: dataToSubmit.detectedFolders || [],
-            selectedCameras: dataToSubmit.selectedCameras || []
+            selectedCameras: dataToSubmit.selectedCameras || [],
+            selectedTreeFolders: dataToSubmit.selectedTreeFolders || [],
+            currentSource: dataToSubmit.currentSource
           },
           videoSourceLoading: false
         }));
@@ -1324,7 +1446,26 @@ export default function Chat(props: { apiKeyApp: string }) {
         setHighestStepReached(prev => Math.max(prev, 4));
         
         if (result.data.changed) {
-          return `✅ Video source configuration updated successfully\n\n📂 Source Type: ${dataToSubmit.sourceType}\n📁 Input Path: ${dataToSubmit.inputPath || 'Not specified'}\n📷 Selected Cameras: ${dataToSubmit.selectedCameras?.join(', ') || 'None'}\n\n🎯 Configuration saved to database ✓\n\n📦 Step 4: Packing Area Detection\n\nDefine the detection zones for monitoring.\n\nSet up areas to monitor and configure detection zones for optimal coverage.\n\n🎯 Detection zones are ready for customization.`;
+          // Build success message based on source type
+          let successMessage = `✅ Video source configuration updated successfully\n\n📂 Source Type: ${dataToSubmit.sourceType}`;
+          
+          if (dataToSubmit.sourceType === 'local_storage') {
+            successMessage += `\n📁 Input Path: ${dataToSubmit.inputPath || 'Not specified'}`;
+            successMessage += `\n📷 Selected Cameras: ${dataToSubmit.selectedCameras?.join(', ') || 'None'}`;
+          } else if (dataToSubmit.sourceType === 'cloud_storage') {
+            const folderCount = dataToSubmit.selectedTreeFolders?.length || 0;
+            successMessage += `\n☁️ Google Drive Folders: ${folderCount} selected`;
+            successMessage += `\n📁 Sync Path: ${result.data.defaultSyncPath || 'Default'}`;
+          }
+          
+          successMessage += `\n\n🎯 Configuration saved to database ✓`;
+          if (result.data.upsert_operation) {
+            successMessage += `\n🔄 Single Source Mode: Active (ID: ${result.data.videoSourceId})`;
+          }
+          
+          successMessage += `\n\n📦 Step 4: Packing Area Detection\n\nDefine the detection zones for monitoring.\n\nSet up areas to monitor and configure detection zones for optimal coverage.\n\n🎯 Detection zones are ready for customization.`;
+          
+          return successMessage;
         } else {
           return `✅ Video source configuration confirmed (no changes)\n\n📂 Current settings validated ✓\n\n📦 Step 4: Packing Area Detection\n\nDefine the detection zones for monitoring.\n\nSet up areas to monitor and configure detection zones for optimal coverage.\n\n🎯 Detection zones are ready for customization.`;
         }
@@ -1341,6 +1482,77 @@ export default function Chat(props: { apiKeyApp: string }) {
 
   const handleVideoSourceSubmitDefault = async (): Promise<string> => {
     return await handleVideoSourceSubmit();
+  };
+
+  // Step 5: Timing/Storage Submit Handler
+  const handleTimingSubmit = async (timingData?: {
+    min_packing_time?: number;
+    max_packing_time?: number;
+    video_buffer?: number;
+    storage_duration?: number;
+    frame_rate?: number;
+    frame_interval?: number;
+    output_path?: string;
+  }): Promise<string> => {
+    try {
+      // Show loading state on Canvas
+      setCanvasState(prev => ({ ...prev, timingStorageLoading: true }));
+      
+      // Use provided data or current Canvas state
+      const dataToSubmit = timingData || canvasState.timingStorage;
+      
+      console.log('🔄 Step 5 Submit - Data to submit:', dataToSubmit);
+      
+      const result = await stepConfigService.updateTimingStorageState(dataToSubmit);
+      
+      console.log('✅ Step 5 Submit - API Result:', result);
+      
+      if (result.success) {
+        // Update Canvas state (Chat controls Canvas)
+        setCanvasState(prev => ({
+          ...prev,
+          timingStorage: {
+            min_packing_time: result.data.min_packing_time,
+            max_packing_time: result.data.max_packing_time,
+            video_buffer: result.data.video_buffer,
+            storage_duration: result.data.storage_duration,
+            frame_rate: result.data.frame_rate,
+            frame_interval: result.data.frame_interval,
+            output_path: result.data.output_path
+          },
+          timingStorageLoading: false
+        }));
+        
+        // Update step completion - FINAL STEP!
+        setStepCompleted(prev => ({ ...prev, timing: true }));
+
+        // Show different message based on whether data was changed
+        if (result.data.changed) {
+          return `✅ Timing & Storage configuration updated successfully!\n\n🎉 All Configuration Completed!\n\nAll 5 steps have been completed with your settings:\n• Step 1: Brand name configured\n• Step 2: Location & time setup\n• Step 3: Video source selected\n• Step 4: Packing area defined\n• Step 5: Timing & storage configured\n\n🚀 Your V.PACK system is ready to start processing videos!`;
+        } else {
+          return `✅ Timing & Storage configuration confirmed (no changes)\n\n🎉 All Configuration Completed!\n\nAll 5 steps have been completed with your settings:\n• Step 1: Brand name configured\n• Step 2: Location & time setup\n• Step 3: Video source selected\n• Step 4: Packing area defined\n• Step 5: Timing & storage configured\n\n🚀 Your V.PACK system is ready to start processing videos!`;
+        }
+      } else {
+        // Hide loading state on error
+        setCanvasState(prev => ({ ...prev, timingStorageLoading: false }));
+        return `❌ Failed to update timing/storage configuration: ${result.error || result.message || 'Unknown error'}`;
+      }
+    } catch (error) {
+      // Hide loading state on error
+      setCanvasState(prev => ({ ...prev, timingStorageLoading: false }));
+      console.error('Error submitting timing/storage:', error);
+      return `❌ Failed to update timing/storage configuration: ${error instanceof Error ? error.message : 'Network error'}`;
+    }
+  };
+
+  // Handle Step 5 Submit with default value (empty submit)
+  const handleTimingSubmitDefault = async (): Promise<string> => {
+    return await handleTimingSubmit();
+  };
+
+  // Handle Step 5 Continue with default value
+  const handleTimingContinueDefault = async (): Promise<string> => {
+    return await handleTimingSubmit();
   };
 
   return (
@@ -1636,6 +1848,8 @@ export default function Chat(props: { apiKeyApp: string }) {
                 isLoading={canvasState.isLoading}
                 locationTimeData={canvasState.locationTime}
                 locationTimeLoading={canvasState.locationTimeLoading}
+                timingStorageData={canvasState.timingStorage}
+                timingStorageLoading={canvasState.timingStorageLoading}
               />
             </Box>
           </Flex>

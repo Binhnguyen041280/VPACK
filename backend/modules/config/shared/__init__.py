@@ -21,6 +21,7 @@ from .validation import (
     validate_video_source_config,
     validate_packing_area_config,
     validate_timing_config,
+    validate_output_path,
     sanitize_input
 )
 
@@ -51,6 +52,7 @@ __all__ = [
     'validate_video_source_config',
     'validate_packing_area_config',
     'validate_timing_config',
+    'validate_output_path',
     'sanitize_input',
     
     # Error handling

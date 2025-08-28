@@ -51,10 +51,21 @@ interface CanvasComponentProps {
     to_time: string;
   };
   locationTimeLoading?: boolean;
+  // Step 5 props
+  timingStorageData?: {
+    min_packing_time: number;
+    max_packing_time: number;
+    video_buffer: number;
+    storage_duration: number;
+    frame_rate: number;
+    frame_interval: number;
+    output_path: string;
+  };
+  timingStorageLoading?: boolean;
 }
 
 // Step 5: Timing & File Storage Canvas 
-function TimingCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
+function TimingCanvas({ adaptiveConfig, onStepChange, timingStorageData, timingStorageLoading }: CanvasComponentProps) {
   const { currentColors } = useColorTheme();
   const bgColor = useColorModeValue('white', 'navy.800');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
@@ -62,19 +73,23 @@ function TimingCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
   const secondaryText = useColorModeValue('gray.600', 'gray.400');
   const cardBg = useColorModeValue('gray.50', 'navy.700');
   
-  // Local state for storage path - Default based on OS
-  const getDefaultPath = () => {
-    const platform = navigator.platform.toLowerCase();
-    if (platform.includes('win')) {
-      return 'C:\\Users\\%USERNAME%\\Videos\\VTrack';
-    } else if (platform.includes('mac')) {
-      return '/Users/%USER%/Movies/VTrack';
-    } else {
-      return '/home/%USER%/Videos/VTrack';
+  // Use controlled state from props with fallback defaults
+  const currentData = timingStorageData || {
+    min_packing_time: 10,
+    max_packing_time: 120,
+    video_buffer: 2,
+    storage_duration: 30,
+    frame_rate: 30,
+    frame_interval: 5,
+    output_path: "/default/output"
+  };
+
+  // Change handlers to notify parent component
+  const handleFieldChange = (field: string, value: any) => {
+    if (onStepChange) {
+      onStepChange('timing', { [field]: value });
     }
   };
-  
-  const [storagePath, setStoragePath] = useState(getDefaultPath());
 
   return (
     <Box
@@ -102,27 +117,20 @@ function TimingCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
               </Text>
             </VStack>
             <Input
-              value={storagePath}
+              value={currentData.output_path}
               placeholder="Copy and paste folder path here..."
               size="sm"
               borderColor={borderColor}
               _focus={{ borderColor: currentColors.brand500 }}
               bg={bgColor}
               mb="12px"
+              onChange={(e) => handleFieldChange('output_path', e.target.value)}
               onFocus={(e) => {
-                // Clear input when user clicks to enter new path
-                if (storagePath === getDefaultPath()) {
-                  setStoragePath('');
-                }
                 e.target.select(); // Select all text for easy replacement
-              }}
-              onChange={(e) => {
-                setStoragePath(e.target.value);
-                onStepChange?.('timing', { storagePath: e.target.value });
               }}
             />
             <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              📋 Output folder: {storagePath}
+              📋 Output folder: {currentData.output_path}
             </Text>
           </Box>
         </Box>
@@ -138,18 +146,15 @@ function TimingCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
             </Text>
             <HStack spacing="8px">
               <Input
+                value={currentData.storage_duration}
                 placeholder="30"
                 size="sm"
                 w="60px"
                 borderColor={borderColor}
                 _focus={{ borderColor: currentColors.brand500 }}
-                onChange={(e) => onStepChange?.('timing', { retention: e.target.value })}
+                onChange={(e) => handleFieldChange('storage_duration', parseInt(e.target.value) || 30)}
               />
-              <Select size="sm" borderColor={borderColor} onChange={(e) => onStepChange?.('timing', { retentionUnit: e.target.value })}>
-                <option value="days">Days</option>
-                <option value="weeks">Weeks</option>
-                <option value="months">Months</option>
-              </Select>
+              <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText}>days</Text>
             </HStack>
           </Box>
         </Box>
@@ -165,12 +170,13 @@ function TimingCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
             </Text>
             <HStack spacing="8px" mb="8px">
               <Input
-                placeholder="5"
+                value={currentData.video_buffer}
+                placeholder="2"
                 size="sm"
                 w="60px"
                 borderColor={borderColor}
                 _focus={{ borderColor: currentColors.brand500 }}
-                onChange={(e) => onStepChange?.('timing', { eventBuffer: e.target.value })}
+                onChange={(e) => handleFieldChange('video_buffer', parseInt(e.target.value) || 2)}
               />
               <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText}>seconds before and after detection</Text>
             </HStack>
@@ -192,12 +198,13 @@ function TimingCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
               </Text>
               <HStack spacing="8px" mb="8px">
                 <Input
-                  placeholder="30"
+                  value={currentData.min_packing_time}
+                  placeholder="10"
                   size="sm"
                   w="60px"
                   borderColor={borderColor}
                   _focus={{ borderColor: currentColors.brand500 }}
-                  onChange={(e) => onStepChange?.('timing', { minPackingTime: e.target.value })}
+                  onChange={(e) => handleFieldChange('min_packing_time', parseInt(e.target.value) || 10)}
                 />
                 <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText}>seconds</Text>
               </HStack>
@@ -212,17 +219,68 @@ function TimingCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
               </Text>
               <HStack spacing="8px" mb="8px">
                 <Input
-                  placeholder="300"
+                  value={currentData.max_packing_time}
+                  placeholder="120"
                   size="sm"
                   w="60px"
                   borderColor={borderColor}
                   _focus={{ borderColor: currentColors.brand500 }}
-                  onChange={(e) => onStepChange?.('timing', { maxPackingTime: e.target.value })}
+                  onChange={(e) => handleFieldChange('max_packing_time', parseInt(e.target.value) || 120)}
                 />
                 <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText}>seconds</Text>
               </HStack>
               <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} fontStyle="italic">
                 🐌 Slowest packing acceptable
+              </Text>
+            </Box>
+          </SimpleGrid>
+        </Box>
+
+        {/* Performance Settings */}
+        <Box>
+          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
+            ⚡ Performance Settings
+          </Text>
+          <SimpleGrid columns={2} spacing="12px">
+            <Box bg={cardBg} p="16px" borderRadius="12px">
+              <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} mb="8px">
+                Frame Rate:
+              </Text>
+              <HStack spacing="8px" mb="8px">
+                <Input
+                  value={currentData.frame_rate}
+                  placeholder="30"
+                  size="sm"
+                  w="60px"
+                  borderColor={borderColor}
+                  _focus={{ borderColor: currentColors.brand500 }}
+                  onChange={(e) => handleFieldChange('frame_rate', parseInt(e.target.value) || 30)}
+                />
+                <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText}>fps</Text>
+              </HStack>
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} fontStyle="italic">
+                📹 Processing frame rate
+              </Text>
+            </Box>
+            
+            <Box bg={cardBg} p="16px" borderRadius="12px">
+              <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} mb="8px">
+                Frame Interval:
+              </Text>
+              <HStack spacing="8px" mb="8px">
+                <Input
+                  value={currentData.frame_interval}
+                  placeholder="5"
+                  size="sm"
+                  w="60px"
+                  borderColor={borderColor}
+                  _focus={{ borderColor: currentColors.brand500 }}
+                  onChange={(e) => handleFieldChange('frame_interval', parseInt(e.target.value) || 5)}
+                />
+                <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText}>frames</Text>
+              </HStack>
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} fontStyle="italic">
+                🎯 Skip frames for performance
               </Text>
             </Box>
           </SimpleGrid>

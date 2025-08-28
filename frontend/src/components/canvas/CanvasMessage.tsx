@@ -29,6 +29,17 @@ interface CanvasMessageProps {
     to_time: string;
   };
   locationTimeLoading?: boolean;
+  // Step 5 state
+  timingStorageData?: {
+    min_packing_time: number;
+    max_packing_time: number;
+    video_buffer: number;
+    storage_duration: number;
+    frame_rate: number;
+    frame_interval: number;
+    output_path: string;
+  };
+  timingStorageLoading?: boolean;
 }
 
 // Height breakpoints for adaptive behavior
@@ -50,7 +61,11 @@ interface AdaptiveConfig {
   showOptional: boolean;
 }
 
-export default function CanvasMessage({ configStep, onStepChange, brandName, isLoading, locationTimeData, locationTimeLoading }: CanvasMessageProps) {
+export default function CanvasMessage({ 
+  configStep, onStepChange, brandName, isLoading, 
+  locationTimeData, locationTimeLoading,
+  timingStorageData, timingStorageLoading 
+}: CanvasMessageProps) {
   const { currentColors } = useColorTheme();
   const bgColor = useColorModeValue('white', 'navy.800');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
@@ -137,7 +152,7 @@ export default function CanvasMessage({ configStep, onStepChange, brandName, isL
       case 'packing_area':
         return <PackingAreaCanvas {...commonProps} />;
       case 'timing':
-        return <TimingCanvas {...commonProps} />;
+        return <TimingCanvas {...commonProps} timingStorageData={timingStorageData} timingStorageLoading={timingStorageLoading} />;
       default:
         return <BrandnameCanvas {...commonProps} brandName={brandName} isLoading={isLoading} />;
     }
