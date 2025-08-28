@@ -612,6 +612,25 @@ def migrate_to_global_timezone():
         print(f"❌ {error_msg}")
         return jsonify({"error": error_msg}), 500
 
+# Register step-based modular routes
+from .steps import (
+    step1_bp, step2_bp, step3_bp, step4_bp, step5_bp
+)
+
+# Register all step blueprints with the main config routes blueprint
+config_routes_bp.register_blueprint(step1_bp)
+config_routes_bp.register_blueprint(step2_bp)
+config_routes_bp.register_blueprint(step3_bp)
+config_routes_bp.register_blueprint(step4_bp)
+config_routes_bp.register_blueprint(step5_bp)
+
+print("✅ V.PACK Modular Config Routes Registered:")
+print("   - Step 1: /step/brandname (GET, PUT)")
+print("   - Step 2: /step/location-time (GET, PUT)")
+print("   - Step 3: /step/video-source (GET, PUT)")
+print("   - Step 4: /step/packing-area (GET, PUT)")
+print("   - Step 5: /step/timing (GET, PUT)")
+
 # Step 1 Brandname Configuration Endpoints
 @config_routes_bp.route('/step/brandname', methods=['GET'])
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
@@ -986,49 +1005,113 @@ def update_step_location_time():
 @config_routes_bp.route('/step/video-source', methods=['GET'])
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def get_step_video_source():
-    """Get current video source configuration for Step 3."""
+    """Get current video source configuration for Step 3 using UPSERT pattern."""
     try:
-        with safe_db_connection() as conn:
-            cursor = conn.cursor()
+        from modules.video_sources.video_source_repository import get_active_source, get_source_statistics
+        
+        # Get active video source using new repository
+        active_source = get_active_source()
+        source_stats = get_source_statistics()
+        
+        # Build response based on active source
+        if active_source:
+            config = active_source.get('config', {})
             
-            # Get active video sources
-            path_manager = PathManager()
-            active_sources = path_manager.get_all_active_sources()
+            # Extract configuration data
+            selected_cameras = config.get('selected_cameras', [])
+            camera_paths = config.get('camera_paths', {})
+            detected_folders = config.get('detected_folders', [])
+            selected_tree_folders = config.get('selected_tree_folders', [])
+            original_source_type = config.get('original_source_type', active_source['source_type'])
             
-            # Get processing config for selected cameras
-            cursor.execute("SELECT input_path, selected_cameras, camera_paths FROM processing_config WHERE id = 1")
-            row = cursor.fetchone()
-            
-            if row:
-                input_path, selected_cameras_json, camera_paths_json = row
-                selected_cameras = json.loads(selected_cameras_json) if selected_cameras_json else []
-                camera_paths = json.loads(camera_paths_json) if camera_paths_json else {}
-            else:
-                input_path, selected_cameras, camera_paths = "", [], {}
-            
-            # Build response
             video_source_data = {
-                "active_sources": active_sources,
-                "input_path": input_path or "",
+                "current_source": {
+                    "id": active_source['id'],
+                    "source_type": active_source['source_type'],
+                    "name": active_source['name'],
+                    "path": active_source['path'],
+                    "created_at": active_source['created_at'],
+                    "original_source_type": original_source_type
+                },
+                "input_path": active_source['path'],
                 "selected_cameras": selected_cameras,
-                "camera_paths": camera_paths
+                "camera_paths": camera_paths,
+                "detected_folders": detected_folders,
+                "selected_tree_folders": selected_tree_folders,
+                "camera_count": len(selected_cameras),
+                "statistics": source_stats,
+                "single_source_mode": True  # Flag to indicate single source architecture
             }
             
-            return jsonify({
-                "success": True,
-                "data": video_source_data
-            }), 200
+            print(f"✅ Retrieved active source: {active_source['name']} (Type: {active_source['source_type']})")
+            
+        else:
+            # No active source - return defaults
+            video_source_data = {
+                "current_source": None,
+                "input_path": "",
+                "selected_cameras": [],
+                "camera_paths": {},
+                "detected_folders": [],
+                "selected_tree_folders": [],
+                "camera_count": 0,
+                "statistics": {"error": "No active source found"},
+                "single_source_mode": True
+            }
+            
+            print("⚠️ No active video source found")
+        
+        # Get processing config for backward compatibility
+        try:
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT input_path, selected_cameras, camera_paths FROM processing_config WHERE id = 1")
+                row = cursor.fetchone()
+                
+                if row:
+                    proc_input_path, proc_selected_cameras_json, proc_camera_paths_json = row
+                    proc_selected_cameras = json.loads(proc_selected_cameras_json) if proc_selected_cameras_json else []
+                    proc_camera_paths = json.loads(proc_camera_paths_json) if proc_camera_paths_json else {}
+                    
+                    # Add backward compatibility data
+                    video_source_data["backward_compatibility"] = {
+                        "processing_config_input_path": proc_input_path or "",
+                        "processing_config_selected_cameras": proc_selected_cameras,
+                        "processing_config_camera_paths": proc_camera_paths
+                    }
+                    
+                    # Use processing_config data as fallback if no active source
+                    if not active_source and proc_input_path:
+                        video_source_data["input_path"] = proc_input_path
+                        video_source_data["selected_cameras"] = proc_selected_cameras
+                        video_source_data["camera_paths"] = proc_camera_paths
+                        video_source_data["camera_count"] = len(proc_selected_cameras)
+                        
+                        print("📦 Using processing_config as fallback data")
+                        
+        except Exception as compat_error:
+            print(f"⚠️ Backward compatibility query warning: {compat_error}")
+            video_source_data["backward_compatibility"] = {"error": str(compat_error)}
+        
+        return jsonify({
+            "success": True,
+            "data": video_source_data
+        }), 200
             
     except Exception as e:
         error_msg = f"Failed to get video source configuration: {str(e)}"
         print(f"❌ Get video source error: {error_msg}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": error_msg}), 500
 
 @config_routes_bp.route('/step/video-source', methods=['PUT'])
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def update_step_video_source():
-    """Update video source configuration for Step 3 with selected cameras."""
+    """Update video source configuration for Step 3 using UPSERT pattern."""
     try:
+        from modules.video_sources.video_source_repository import upsert_video_source
+        
         data = request.json
         if not data:
             return jsonify({"error": "Request data is required"}), 400
@@ -1037,30 +1120,134 @@ def update_step_video_source():
         input_path = data.get('inputPath', '').strip()
         detected_folders = data.get('detectedFolders', [])
         selected_cameras = data.get('selectedCameras', [])
+        selected_tree_folders = data.get('selected_tree_folders', [])  # For cloud storage
         
-        print(f"=== UPDATE VIDEO SOURCE STEP 3 ===")
+        print(f"=== UPDATE VIDEO SOURCE STEP 3 (UPSERT Pattern) ===")
         print(f"Source Type: {source_type}")
         print(f"Input Path: {input_path}")
         print(f"Detected Folders: {len(detected_folders)} folders")
         print(f"Selected Cameras: {selected_cameras}")
+        print(f"Selected Tree Folders: {len(selected_tree_folders)} folders")
         
-        # Validation for local storage
-        if source_type == 'local_storage':
+        # Map source type to database format
+        db_source_type = 'local' if source_type == 'local_storage' else 'cloud' if source_type == 'cloud_storage' else source_type
+        
+        # Validation
+        if db_source_type == 'local':
             if not input_path:
                 return jsonify({"error": "Input path is required for local storage"}), 400
             if not selected_cameras:
                 return jsonify({"error": "At least one camera must be selected"}), 400
+        elif db_source_type == 'cloud':
+            if not selected_tree_folders:
+                return jsonify({"error": "At least one folder must be selected for cloud storage"}), 400
         
-        # Build camera_paths mapping from detected folders and selected cameras
+        # Build camera_paths mapping for both local and cloud
         camera_paths = {}
-        if source_type == 'local_storage' and detected_folders:
+        actual_selected_cameras = selected_cameras.copy()  # Start with provided cameras
+        processing_input_path = input_path  # Default to original input_path, will be overridden for cloud
+        
+        if db_source_type == 'local' and detected_folders:
+            # Local storage: build camera_paths from detected_folders
             for folder in detected_folders:
                 if folder.get('name') in selected_cameras:
                     camera_paths[folder['name']] = folder['path']
         
-        print(f"Camera Paths Mapping: {camera_paths}")
+        elif db_source_type == 'cloud' and selected_tree_folders:
+            # Cloud storage: convert selected_tree_folders to selected_cameras format
+            print("🔄 Converting cloud folders to camera format...")
+            actual_selected_cameras = []  # Reset for cloud
+            
+            # FIXED: Create separate camera_paths for video_sources vs processing_config
+            video_sources_camera_paths = {}  # Google Drive folder IDs for download
+            processing_config_camera_paths = {}  # Local sync paths for processing
+            
+            # Build temporary source name for working path calculation
+            temp_source_name = f"CloudStorage_{int(datetime.now().timestamp())}"
+            
+            # Determine input path for cloud storage first
+            if selected_tree_folders and len(selected_tree_folders) > 0:
+                temp_input_path = selected_tree_folders[0].get('path', '')
+            else:
+                temp_input_path = "google_drive://"
+            
+            # Get working path for cloud storage
+            working_path = get_working_path_for_source(db_source_type, temp_source_name, temp_input_path)
+            processing_input_path = working_path  # FIXED: Use working_path for processing_config.input_path
+            print(f"☁️ Working path for cloud storage: {working_path}")
+            print(f"🔧 Processing input path set to: {processing_input_path}")
+            
+            for folder in selected_tree_folders:
+                folder_name = folder.get('name', '')
+                folder_path = folder.get('path', '')  # Google Drive path
+                folder_id = folder.get('id', '')  # Google Drive folder ID
+                
+                if folder_name:
+                    actual_selected_cameras.append(folder_name)
+                    
+                    # For video_sources: use Google Drive folder ID (for download API)
+                    video_sources_camera_paths[folder_name] = folder_id if folder_id else folder_path
+                    
+                    # For processing_config: use local sync path (for processing logic)
+                    local_camera_path = os.path.join(working_path, folder_name)
+                    processing_config_camera_paths[folder_name] = local_camera_path
+                    
+                    print(f"📁 Cloud camera mapping:")
+                    print(f"   - Name: {folder_name}")
+                    print(f"   - Video Sources (Google Drive): {video_sources_camera_paths[folder_name]}")
+                    print(f"   - Processing Config (Local): {local_camera_path}")
+            
+            # For backward compatibility, set camera_paths to processing_config format
+            camera_paths = processing_config_camera_paths
         
-        # Update database with selected camera information
+        # Build source data for UPSERT
+        if db_source_type == 'cloud' and 'temp_source_name' in locals():
+            source_name = temp_source_name  # Use the same name used for working_path calculation
+        else:
+            source_name = f"{'LocalStorage' if db_source_type == 'local' else 'CloudStorage'}_{int(datetime.now().timestamp())}"
+        
+        # Set path based on source type
+        if db_source_type == 'cloud':
+            # For cloud: use the temp_input_path we already determined
+            if 'temp_input_path' in locals():
+                actual_input_path = temp_input_path
+                print(f"☁️ Using Google Drive path: {actual_input_path}")
+            else:
+                actual_input_path = "google_drive://"  # Fallback
+        else:
+            actual_input_path = input_path
+        
+        # FIXED: Use appropriate camera_paths for video_sources table
+        video_sources_config_camera_paths = video_sources_camera_paths if db_source_type == 'cloud' and 'video_sources_camera_paths' in locals() else camera_paths
+        
+        source_data = {
+            'source_type': db_source_type,
+            'name': source_name,
+            'path': actual_input_path,
+            'config': {
+                'selected_cameras': actual_selected_cameras,  # Use converted cameras for cloud
+                'camera_paths': video_sources_config_camera_paths,  # FIXED: Use Google Drive folder IDs for cloud
+                'detected_folders': detected_folders,
+                'selected_tree_folders': selected_tree_folders,  # Keep original tree data
+                'original_source_type': source_type  # Keep original for reference
+            }
+        }
+        
+        print(f"UPSERT Source Data: {json.dumps(source_data, indent=2)}")
+        
+        # FIXED: Debug log to verify correct data separation
+        if db_source_type == 'cloud':
+            print("🔧 FIXED - Data Mapping Verification:")
+            print(f"✅ Video Sources camera_paths (Google Drive): {video_sources_config_camera_paths}")
+            print(f"✅ Processing Config camera_paths (Local): {camera_paths}")
+        
+        # Execute UPSERT operation
+        new_source_id = upsert_video_source(source_data)
+        
+        if new_source_id is None:
+            return jsonify({"error": "Failed to create/update video source"}), 500
+        
+        # Update processing_config for backward compatibility
         try:
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
@@ -1092,88 +1279,68 @@ def update_step_video_source():
                         COALESCE((SELECT db_path FROM processing_config WHERE id = 1), ''),
                         COALESCE((SELECT run_default_on_start FROM processing_config WHERE id = 1), 1)
                     )
-                """, (input_path, json.dumps(selected_cameras), json.dumps(camera_paths)))
+                """, (processing_input_path, 
+                      json.dumps(actual_selected_cameras), 
+                      json.dumps(camera_paths)))  # FIXED: Use processing_input_path (local sync path for cloud)
                 
                 conn.commit()
-                print("✅ Processing config updated with camera selection")
+                print("✅ Processing config updated for backward compatibility")
+                print(f"🔧 FIXED: processing_config.input_path = {processing_input_path}")
                 
-                # ENHANCED: Also create/update video_sources table for Step 3 integration
-                if source_type == 'local_storage':
-                    # Create or update video source record
-                    source_name = f"LocalStorage_{int(datetime.now().timestamp())}"
-                    
-                    # First, deactivate all existing sources
-                    cursor.execute("UPDATE video_sources SET active = 0")
-                    
-                    # Insert new video source
-                    cursor.execute("""
-                        INSERT INTO video_sources (
-                            source_type, name, path, config, active, created_at
-                        ) VALUES (?, ?, ?, ?, ?, ?)
-                    """, (
-                        'local',  # source_type for local storage
-                        source_name,
-                        input_path,
-                        json.dumps({
-                            'selected_cameras': selected_cameras,
-                            'camera_paths': camera_paths,
-                            'detected_folders': detected_folders
-                        }),
-                        1,  # active
-                        datetime.now().isoformat()
-                    ))
-                    
-                    video_source_id = cursor.lastrowid
-                    print(f"✅ Video source created: {source_name} (ID: {video_source_id})")
-                    
-                    # Validate camera directories if available
-                    if camera_paths:
-                        try:
-                            for camera_name, camera_path in camera_paths.items():
-                                if os.path.exists(camera_path) and os.path.isdir(camera_path):
-                                    print(f"✅ Camera directory validated: {camera_name} -> {camera_path}")
-                                else:
-                                    print(f"⚠️ Camera directory not found: {camera_name} -> {camera_path}")
-                        except Exception as dir_error:
-                            print(f"⚠️ Directory validation error: {dir_error}")
-                    
-                    # Final commit for all changes
-                    conn.commit()
-                    
-                    return jsonify({
-                        "success": True,
-                        "data": {
-                            "sourceType": source_type,
-                            "inputPath": input_path,
-                            "selectedCameras": selected_cameras,
-                            "cameraPathsCount": len(camera_paths),
-                            "videoSourceId": video_source_id,
-                            "videoSourceName": source_name,
-                            "changed": True
-                        },
-                        "message": "Video source configuration updated successfully"
-                    }), 200
+                # Debug: Verify what was actually saved
+                cursor.execute("SELECT input_path FROM processing_config WHERE id = 1")
+                saved_path = cursor.fetchone()
+                if saved_path:
+                    print(f"✅ Verified saved input_path: {saved_path[0]}")
+                    if '/My Drive/' in saved_path[0]:
+                        print("❌ ERROR: Still contains Google Drive path!")
+                    else:
+                        print("✅ SUCCESS: Contains local filesystem path")
                 
-                else:
-                    # Non-local storage types (cloud, etc.)
-                    return jsonify({
-                        "success": True,
-                        "data": {
-                            "sourceType": source_type,
-                            "inputPath": input_path,
-                            "selectedCameras": selected_cameras,
-                            "cameraPathsCount": len(camera_paths),
-                            "changed": True
-                        },
-                        "message": "Video source configuration updated successfully"
-                    }), 200
-                
-        except Exception as db_error:
-            error_msg = f"Database update failed: {str(db_error)}"
-            print(f"❌ Database error: {error_msg}")
-            return jsonify({"error": error_msg}), 500
+        except Exception as compat_error:
+            print(f"⚠️ Backward compatibility update warning: {compat_error}")
+            # Don't fail the entire operation for this
+        
+        # Validate paths for local storage
+        if db_source_type == 'local' and camera_paths:
+            try:
+                for camera_name, camera_path in camera_paths.items():
+                    if os.path.exists(camera_path) and os.path.isdir(camera_path):
+                        print(f"✅ Camera directory validated: {camera_name} -> {camera_path}")
+                    else:
+                        print(f"⚠️ Camera directory not found: {camera_name} -> {camera_path}")
+            except Exception as dir_error:
+                print(f"⚠️ Directory validation error: {dir_error}")
+        
+        # Build successful response
+        response_data = {
+            "success": True,
+            "data": {
+                "sourceType": source_type,
+                "inputPath": actual_input_path,
+                "selectedCameras": actual_selected_cameras,  # Use converted cameras
+                "cameraPathsCount": len(camera_paths),
+                "videoSourceId": new_source_id,
+                "videoSourceName": source_name,
+                "changed": True,
+                "upsert_operation": True  # Flag to indicate UPSERT was used
+            },
+            "message": f"Video source configuration updated successfully using UPSERT pattern (ID: {new_source_id})"
+        }
+        
+        # Add cloud-specific response data
+        if db_source_type == 'cloud':
+            response_data["data"]["selectedTreeFoldersCount"] = len(selected_tree_folders)
+            response_data["data"]["convertedFromFolders"] = True  # Indicate conversion happened
+            response_data["data"]["googleDrivePaths"] = camera_paths  # Show Google Drive paths
+            response_data["data"]["originalTreeFolders"] = selected_tree_folders  # Keep original data
+        
+        print(f"✅ UPSERT operation completed successfully: ID={new_source_id}")
+        return jsonify(response_data), 200
             
     except Exception as e:
         error_msg = f"Failed to update video source configuration: {str(e)}"
         print(f"❌ Update video source error: {error_msg}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": error_msg}), 500
