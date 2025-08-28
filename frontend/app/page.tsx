@@ -272,10 +272,8 @@ export default function Chat(props: { apiKeyApp: string }) {
         return 'ASYNC_SUBMIT_LOCATION_TIME_DEFAULT';
       
       case 'video_source':
-        // Auto-advance to next step
-        setConfigStep('packing_area');
-        setHighestStepReached(prev => Math.max(prev, 4));
-        return '📦 Step 4: Packing Area Detection\n\nDefine the detection zones for monitoring.\n\nSet up areas to monitor and configure detection zones for optimal coverage.\n\n🎯 Detection zones are ready for customization.';
+        // For Step 3, always use async API call - return flag to trigger async handling
+        return 'ASYNC_SUBMIT_VIDEO_SOURCE_DEFAULT';
       
       case 'packing_area':
         // Auto-advance to next step
@@ -570,6 +568,62 @@ export default function Chat(props: { apiKeyApp: string }) {
           setMessages(prev => [...prev, errorMessage]);
           setLoading(false);
         });
+    } else if (botResponse === 'ASYNC_SUBMIT_VIDEO_SOURCE_DEFAULT') {
+      // Empty submit for video source - save current canvas state
+      handleVideoSourceSubmitDefault()
+        .then(response => {
+          const botMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: response,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, botMessage]);
+          setLoading(false);
+        })
+        .catch(error => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ Error: ${error.message || 'Failed to save video source configuration'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setLoading(false);
+        });
+    } else if (configStep === 'video_source' && inputCode.trim().length > 0) {
+      // User entered video source path - treat as input path and trigger save
+      const inputPath = inputCode.trim();
+      
+      // Create video source data from input
+      const videoSourceData = {
+        sourceType: 'local_storage' as const,
+        inputPath: inputPath,
+        detectedFolders: canvasState.videoSource?.detectedFolders || [],
+        selectedCameras: canvasState.videoSource?.selectedCameras || []
+      };
+      
+      handleVideoSourceSubmit(videoSourceData)
+        .then(response => {
+          const botMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: response,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, botMessage]);
+          setLoading(false);
+        })
+        .catch(error => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ Error: ${error.message || 'Failed to save video source configuration'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setLoading(false);
+        });
     } else {
       // Handle other responses synchronously
       setTimeout(() => {
@@ -578,7 +632,8 @@ export default function Chat(props: { apiKeyApp: string }) {
             botResponse === 'ASYNC_SUBMIT_BRANDNAME_DEFAULT' || 
             botResponse === 'ASYNC_CONTINUE_BRANDNAME_DEFAULT' ||
             botResponse === 'ASYNC_SUBMIT_LOCATION_TIME_DEFAULT' ||
-            botResponse === 'ASYNC_CONTINUE_LOCATION_TIME_DEFAULT') {
+            botResponse === 'ASYNC_CONTINUE_LOCATION_TIME_DEFAULT' ||
+            botResponse === 'ASYNC_SUBMIT_VIDEO_SOURCE_DEFAULT') {
           setLoading(false);
           return;
         }
@@ -1068,6 +1123,20 @@ export default function Chat(props: { apiKeyApp: string }) {
       });
     }
 
+    // Update Canvas state in real-time for Step 3 video_source
+    if (stepName === 'video_source' && data) {
+      console.log('🔄 Step 3 Canvas Change:', data);
+      setCanvasState(prev => ({
+        ...prev,
+        videoSource: {
+          sourceType: data.sourceType || prev.videoSource?.sourceType || 'local_storage',
+          inputPath: data.inputPath || prev.videoSource?.inputPath || '',
+          detectedFolders: data.detectedFolders || prev.videoSource?.detectedFolders || [],
+          selectedCameras: data.selectedCameras || prev.videoSource?.selectedCameras || []
+        }
+      }));
+    }
+
     // Mark step as incomplete when modified - requires Submit
     // No intermediate message - user will Submit directly
     setStepCompleted(prev => ({ ...prev, [stepName]: false }));
@@ -1199,6 +1268,79 @@ export default function Chat(props: { apiKeyApp: string }) {
   // Handle Step 2 Continue with default value
   const handleLocationTimeContinueDefault = async (): Promise<string> => {
     return await handleLocationTimeSubmit();
+  };
+
+  // Step 3: Video Source Submit Handler
+  const handleVideoSourceSubmit = async (videoSourceData?: {
+    sourceType: 'local_storage' | 'cloud_storage';
+    inputPath?: string;
+    detectedFolders?: { name: string; path: string }[];
+    selectedCameras?: string[];
+  }): Promise<string> => {
+    try {
+      // Show loading state on Canvas
+      setCanvasState(prev => ({ ...prev, videoSourceLoading: true }));
+      
+      // Use provided data or current Canvas state
+      const dataToSubmit = videoSourceData || canvasState.videoSource;
+      
+      console.log('🔄 Step 3 Submit - Data to submit:', dataToSubmit);
+      
+      // Handle case where no video source data is configured yet
+      if (!dataToSubmit || !dataToSubmit.sourceType) {
+        // No configuration yet - just advance to next step with defaults
+        setConfigStep('packing_area');
+        setHighestStepReached(prev => Math.max(prev, 4));
+        setCanvasState(prev => ({ ...prev, videoSourceLoading: false }));
+        return '📦 Step 4: Packing Area Detection\n\nDefine the detection zones for monitoring.\n\nSet up areas to monitor and configure detection zones for optimal coverage.\n\n🎯 Detection zones are ready for customization.';
+      }
+      
+      // Validate required data for local storage
+      if (dataToSubmit.sourceType === 'local_storage' && !dataToSubmit.inputPath) {
+        throw new Error('Input path is required for local storage');
+      }
+      
+      // Call the step config service
+      const result = await stepConfigService.updateVideoSourceState(dataToSubmit);
+      
+      console.log('✅ Step 3 Submit - API Result:', result);
+      
+      if (result.success) {
+        // Update Canvas state (Chat controls Canvas)
+        setCanvasState(prev => ({
+          ...prev,
+          videoSource: {
+            sourceType: dataToSubmit.sourceType,
+            inputPath: dataToSubmit.inputPath || '',
+            detectedFolders: dataToSubmit.detectedFolders || [],
+            selectedCameras: dataToSubmit.selectedCameras || []
+          },
+          videoSourceLoading: false
+        }));
+        
+        // Mark step as completed and advance to next step
+        setStepCompleted(prev => ({ ...prev, video_source: true }));
+        setConfigStep('packing_area');
+        setHighestStepReached(prev => Math.max(prev, 4));
+        
+        if (result.data.changed) {
+          return `✅ Video source configuration updated successfully\n\n📂 Source Type: ${dataToSubmit.sourceType}\n📁 Input Path: ${dataToSubmit.inputPath || 'Not specified'}\n📷 Selected Cameras: ${dataToSubmit.selectedCameras?.join(', ') || 'None'}\n\n🎯 Configuration saved to database ✓\n\n📦 Step 4: Packing Area Detection\n\nDefine the detection zones for monitoring.\n\nSet up areas to monitor and configure detection zones for optimal coverage.\n\n🎯 Detection zones are ready for customization.`;
+        } else {
+          return `✅ Video source configuration confirmed (no changes)\n\n📂 Current settings validated ✓\n\n📦 Step 4: Packing Area Detection\n\nDefine the detection zones for monitoring.\n\nSet up areas to monitor and configure detection zones for optimal coverage.\n\n🎯 Detection zones are ready for customization.`;
+        }
+      } else {
+        throw new Error(result.error || 'Failed to save video source configuration');
+      }
+      
+    } catch (error) {
+      console.error('❌ Step 3 Submit Error:', error);
+      setCanvasState(prev => ({ ...prev, videoSourceLoading: false }));
+      return `❌ Error saving video source configuration: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease check your settings and try again.`;
+    }
+  };
+
+  const handleVideoSourceSubmitDefault = async (): Promise<string> => {
+    return await handleVideoSourceSubmit();
   };
 
   return (

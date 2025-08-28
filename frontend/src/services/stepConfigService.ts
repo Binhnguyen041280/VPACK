@@ -28,6 +28,21 @@ interface LocationTimeResponse {
   error?: string;
 }
 
+interface VideoSourceResponse {
+  success: boolean;
+  data: {
+    sourceType?: string;
+    inputPath?: string;
+    selectedCameras?: string[];
+    cameraPathsCount?: number;
+    changed?: boolean;
+    active_sources?: any[];
+    camera_paths?: { [key: string]: string };
+  };
+  message?: string;
+  error?: string;
+}
+
 class StepConfigService {
   private baseUrl = 'http://localhost:8080/api/config';
 
@@ -134,6 +149,60 @@ class StepConfigService {
       return await response.json();
     } catch (error) {
       console.error('Error updating location-time state:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch current video source configuration from backend
+   */
+  async fetchVideoSourceState(): Promise<VideoSourceResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/step/video-source`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching video source state:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update video source configuration if changed
+   */
+  async updateVideoSourceState(videoSourceData: {
+    sourceType: string;
+    inputPath?: string;
+    detectedFolders?: { name: string; path: string }[];
+    selectedCameras?: string[];
+  }): Promise<VideoSourceResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/step/video-source`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(videoSourceData),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error updating video source state:', error);
       throw error;
     }
   }

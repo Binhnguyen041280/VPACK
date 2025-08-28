@@ -8,7 +8,8 @@ from ..utils import (
     get_working_path_for_source,
     detect_camera_folders,
     has_video_files,
-    extract_cameras_from_cloud_folders
+    extract_cameras_from_cloud_folders,
+    scan_subdirectories_as_cameras
 )
 
 source_routes_bp = Blueprint('source_routes', __name__)
@@ -401,3 +402,58 @@ def toggle_source_status(source_id):
             
     except Exception as e:
         return jsonify({"error": f"Failed to toggle source status: {str(e)}"}), 500
+
+@source_routes_bp.route('/scan-folders', methods=['POST'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
+def scan_folders():
+    """
+    V.PACK Step 3 Enhancement: Auto-scan subdirectories as camera folders
+    
+    POST /api/config/scan-folders
+    Body: {"path": "directory_path"}
+    Response: {"success": bool, "folders": [{"name": str, "path": str}], "message": str}
+    """
+    try:
+        # Validate request
+        if not request.is_json:
+            return jsonify({
+                "success": False,
+                "folders": [],
+                "message": "Invalid request format - JSON required"
+            }), 400
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                "success": False,
+                "folders": [],
+                "message": "No data provided"
+            }), 400
+        
+        input_path = data.get('path')
+        if not input_path:
+            return jsonify({
+                "success": False,
+                "folders": [],
+                "message": "Path parameter is required"
+            }), 400
+        
+        print(f"=== SCAN FOLDERS REQUEST: {input_path} ===")
+        
+        # Use enhanced scanning function
+        scan_result = scan_subdirectories_as_cameras(input_path)
+        
+        print(f"Scan result: {scan_result['message']}")
+        print(f"Found folders: {[f['name'] for f in scan_result['folders']]}")
+        
+        # Return result (success status is already set by scan function)
+        return jsonify(scan_result), 200 if scan_result['success'] else 400
+        
+    except Exception as e:
+        error_message = f"Failed to scan folders: {str(e)}"
+        print(f"Scan folders error: {error_message}")
+        return jsonify({
+            "success": False,
+            "folders": [],
+            "message": error_message
+        }), 500

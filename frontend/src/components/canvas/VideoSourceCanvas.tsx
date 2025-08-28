@@ -11,12 +11,20 @@ import {
   Select,
   SimpleGrid,
   useColorModeValue,
+  Checkbox,
+  Spinner,
+  Alert,
+  AlertIcon,
+  AlertDescription,
+  Wrap,
+  WrapItem,
 } from '@chakra-ui/react';
 import { MdVideoLibrary } from 'react-icons/md';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
 import GoogleDriveFolderTree from './GoogleDriveFolderTree';
 import { useState, useEffect, useRef } from 'react';
 import React from 'react';
+import { stepConfigService } from '@/services/stepConfigService';
 
 // Height breakpoints for adaptive behavior
 type HeightMode = 'compact' | 'normal' | 'spacious';
@@ -65,6 +73,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   const textColor = useColorModeValue('navy.700', 'white');
   const secondaryText = useColorModeValue('gray.600', 'gray.400');
   const cardBg = useColorModeValue('gray.50', 'navy.700');
+  const selectionBoxBg = useColorModeValue('gray.50', 'navy.600');
 
   // State for selected source type and input path
   const [selectedSourceType, setSelectedSourceType] = useState<'local_storage' | 'cloud_storage'>('local_storage');
@@ -81,7 +90,14 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
     }
   };
   
-  const [inputPath, setInputPath] = useState(getDefaultInputPath());
+  const [inputPath, setInputPath] = useState(''); // No default path to avoid confusion
+  
+  // NEW: V.PACK Step 3 Enhancement - Auto-scan camera folders
+  const [detectedFolders, setDetectedFolders] = useState<{name: string, path: string}[]>([]);
+  const [selectedCameras, setSelectedCameras] = useState<string[]>([]);
+  const [scanningFolders, setScanningFolders] = useState(false);
+  const [scanError, setScanError] = useState<string>('');
+  const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Google Drive connection state
   const [driveConnected, setDriveConnected] = useState(false);
@@ -101,6 +117,176 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   React.useEffect(() => {
     checkDriveConnectionStatus();
   }, []);
+
+  // NEW: Auto-scan subdirectories when input path changes (with debounce)
+  React.useEffect(() => {
+    // Clear previous timeout
+    if (scanTimeoutRef.current) {
+      clearTimeout(scanTimeoutRef.current);
+    }
+    
+    // Clear previous results
+    setDetectedFolders([]);
+    setSelectedCameras([]);
+    setScanError('');
+    
+    // Only scan if we have a valid path and local storage is selected
+    if (!inputPath.trim() || selectedSourceType !== 'local_storage') {
+      return;
+    }
+    
+    // Debounce API call by 500ms to prevent excessive requests
+    scanTimeoutRef.current = setTimeout(async () => {
+      await scanFoldersInPath(inputPath);
+    }, 500);
+    
+    // Cleanup timeout on unmount
+    return () => {
+      if (scanTimeoutRef.current) {
+        clearTimeout(scanTimeoutRef.current);
+      }
+    };
+  }, [inputPath, selectedSourceType]);
+
+  // Function to scan folders in the given path
+  const scanFoldersInPath = async (path: string) => {
+    if (!path.trim()) return;
+    
+    try {
+      setScanningFolders(true);
+      setScanError('');
+      
+      console.log(`🔍 Scanning folders in: ${path}`);
+      
+      const response = await fetch('http://localhost:8080/api/config/scan-folders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ path: path })
+      });
+      
+      const data = await response.json();
+      console.log('📊 Scan result:', data);
+      
+      if (data.success && data.folders) {
+        setDetectedFolders(data.folders);
+        setScanError('');
+        
+        // Auto-select all detected cameras by default
+        const folderNames = data.folders.map((f: any) => f.name);
+        setSelectedCameras(folderNames);
+        
+        // Update step data
+        if (onStepChange) {
+          onStepChange('video_source', {
+            sourceType: 'local_storage',
+            inputPath: path,
+            detectedFolders: data.folders,
+            selectedCameras: folderNames
+          });
+        }
+        
+        console.log(`✅ Found ${data.folders.length} camera folders, auto-selected all`);
+      } else {
+        setDetectedFolders([]);
+        setSelectedCameras([]);
+        
+        // ENHANCED: Show concise error messages
+        let errorMessage = 'Failed to scan folders';
+        if (data.message) {
+          if (data.message.includes('does not exist')) {
+            errorMessage = 'Path does not exist';
+          } else if (data.message.includes('Permission denied')) {
+            errorMessage = 'Permission denied';
+          } else if (data.message.includes('not a directory')) {
+            errorMessage = 'Invalid directory path';
+          } else if (data.message.includes('No subdirectories')) {
+            errorMessage = 'No folders found';
+          } else {
+            errorMessage = 'Invalid path';
+          }
+        }
+        
+        setScanError(errorMessage);
+        console.log(`⚠️ Scan failed: ${data.message}`);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error scanning folders:', error);
+      setDetectedFolders([]);
+      setSelectedCameras([]);
+      setScanError('Connection error');
+    } finally {
+      setScanningFolders(false);
+    }
+  };
+
+  // Handle camera checkbox selection
+  const handleCameraToggle = (cameraName: string) => {
+    let newSelection: string[];
+    
+    if (selectedCameras.includes(cameraName)) {
+      // Deselect camera
+      newSelection = selectedCameras.filter(c => c !== cameraName);
+    } else {
+      // Select camera
+      newSelection = [...selectedCameras, cameraName];
+    }
+    
+    setSelectedCameras(newSelection);
+    
+    // Update step data for UI
+    if (onStepChange) {
+      onStepChange('video_source', {
+        sourceType: 'local_storage',
+        inputPath: inputPath,
+        detectedFolders: detectedFolders,
+        selectedCameras: newSelection
+      });
+    }
+    
+    // Auto-save to backend (debounced)
+    saveVideoSourceConfig('local_storage', inputPath, detectedFolders, newSelection);
+    
+    console.log(`📷 Camera selection updated: ${newSelection.join(', ')}`);
+  };
+
+  // Save video source configuration to backend with debounce
+  const saveVideoSourceConfig = React.useCallback(
+    debounceFunction(async (sourceType: string, path: string, folders: any[], cameras: string[]) => {
+      try {
+        console.log('💾 Saving video source configuration...');
+        
+        const result = await stepConfigService.updateVideoSourceState({
+          sourceType: sourceType,
+          inputPath: path,
+          detectedFolders: folders,
+          selectedCameras: cameras
+        });
+        
+        if (result.success) {
+          console.log('✅ Video source configuration saved successfully');
+        } else {
+          console.error('❌ Failed to save video source configuration:', result.error);
+        }
+        
+      } catch (error) {
+        console.error('❌ Error saving video source configuration:', error);
+      }
+    }, 1000), // 1 second debounce
+    []
+  );
+
+  // Utility debounce function
+  function debounceFunction<T extends (...args: any[]) => any>(func: T, delay: number): T {
+    let timeoutId: NodeJS.Timeout;
+    return ((...args: any[]) => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => func.apply(null, args), delay);
+    }) as T;
+  }
   
   const checkDriveConnectionStatus = async () => {
     try {
@@ -271,20 +457,138 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 bg={bgColor}
                 mb="12px"
                 onFocus={(e) => {
-                  // Clear input when user clicks to enter new path
-                  if (inputPath === getDefaultInputPath()) {
-                    setInputPath('');
-                  }
                   e.target.select(); // Select all text for easy replacement
                 }}
                 onChange={(e) => {
                   setInputPath(e.target.value);
-                  onStepChange?.('video_source', { inputPath: e.target.value });
                 }}
               />
               <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-                📋 Input folder: {inputPath}
+                📋 Input folder: {inputPath || 'No path specified'}
               </Text>
+              
+              {/* NEW: Camera Folders Auto-Detection */}
+              {inputPath && (
+                <Box mt="16px">
+                  {/* Scanning Status */}
+                  {scanningFolders && (
+                    <HStack spacing="8px" mb="12px">
+                      <Spinner size="sm" color={currentColors.brand500} />
+                      <Text fontSize={adaptiveConfig.fontSize.small} color={currentColors.brand500}>
+                        🔍 Scanning for camera folders...
+                      </Text>
+                    </HStack>
+                  )}
+                  
+                  {/* Scan Error */}
+                  {scanError && !scanningFolders && (
+                    <Alert status="warning" mb="12px" borderRadius="8px">
+                      <AlertIcon />
+                      <AlertDescription fontSize={adaptiveConfig.fontSize.small}>
+                        {scanError}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  
+                  {/* Detected Camera Folders */}
+                  {detectedFolders.length > 0 && !scanningFolders && (
+                    <Box>
+                      <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="8px">
+                        📷 Detected Camera Folders
+                      </Text>
+                      <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} mb="12px">
+                        ✅ Select cameras you want to process (all selected by default)
+                      </Text>
+                      
+                      {/* Camera Selection Grid */}
+                      <Box
+                        bg={selectionBoxBg}
+                        p="16px"
+                        borderRadius="12px"
+                        border="1px solid"
+                        borderColor={borderColor}
+                      >
+                        <Wrap spacing="12px">
+                          {detectedFolders.map((folder) => (
+                            <WrapItem key={folder.name}>
+                              <Checkbox
+                                colorScheme="brand"
+                                isChecked={selectedCameras.includes(folder.name)}
+                                onChange={() => handleCameraToggle(folder.name)}
+                                size="md"
+                              >
+                                <VStack align="start" spacing="2px" ml="8px">
+                                  <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor}>
+                                    📹 {folder.name}
+                                  </Text>
+                                  <Text fontSize="10px" color={secondaryText} noOfLines={1}>
+                                    {folder.path}
+                                  </Text>
+                                </VStack>
+                              </Checkbox>
+                            </WrapItem>
+                          ))}
+                        </Wrap>
+                        
+                        {/* Selection Summary */}
+                        <HStack justify="space-between" align="center" mt="12px" pt="12px" borderTop="1px solid" borderColor={borderColor}>
+                          <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                            Selected {selectedCameras.length}/{detectedFolders.length} cameras
+                          </Text>
+                          <HStack spacing="8px">
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              colorScheme="brand"
+                              onClick={() => {
+                                const allNames = detectedFolders.map(f => f.name);
+                                setSelectedCameras(allNames);
+                                if (onStepChange) {
+                                  onStepChange('video_source', {
+                                    sourceType: 'local_storage',
+                                    inputPath: inputPath,
+                                    detectedFolders: detectedFolders,
+                                    selectedCameras: allNames
+                                  });
+                                }
+                              }}
+                            >
+                              Select All
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              onClick={() => {
+                                setSelectedCameras([]);
+                                if (onStepChange) {
+                                  onStepChange('video_source', {
+                                    sourceType: 'local_storage',
+                                    inputPath: inputPath,
+                                    detectedFolders: detectedFolders,
+                                    selectedCameras: []
+                                  });
+                                }
+                              }}
+                            >
+                              Clear All
+                            </Button>
+                          </HStack>
+                        </HStack>
+                      </Box>
+                    </Box>
+                  )}
+                  
+                  {/* No Folders Found */}
+                  {detectedFolders.length === 0 && !scanningFolders && !scanError && inputPath && (
+                    <Alert status="info" mb="12px" borderRadius="8px">
+                      <AlertIcon />
+                      <AlertDescription fontSize={adaptiveConfig.fontSize.small}>
+                        📂 No subdirectories found in the specified path. Make sure the path contains camera folders.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </Box>
+              )}
             </Box>
           </Box>
         )}

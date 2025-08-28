@@ -733,8 +733,38 @@ def get_step_location_time():
                 row = cursor.fetchone()
                 if row:
                     country, timezone, language, working_days_json, from_time, to_time = row
+                    
+                    # Parse working_days JSON string to array
+                    import json
+                    try:
+                        working_days = json.loads(working_days_json) if working_days_json else ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                    except json.JSONDecodeError:
+                        working_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                    
+                    return jsonify({
+                        "success": True,
+                        "data": {
+                            "country": country or "Vietnam",
+                            "timezone": timezone or "Asia/Ho_Chi_Minh",
+                            "language": language or "English (en-US)",
+                            "working_days": working_days,
+                            "from_time": from_time or "07:00",
+                            "to_time": to_time or "23:00"
+                        }
+                    }), 200
                 else:
-                    language = "English (en-US)"  # Default
+                    # Return defaults if no record exists in has_language_column case
+                    return jsonify({
+                        "success": True,
+                        "data": {
+                            "country": "Vietnam",
+                            "timezone": "Asia/Ho_Chi_Minh", 
+                            "language": "English (en-US)",
+                            "working_days": ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+                            "from_time": "07:00",
+                            "to_time": "23:00"
+                        }
+                    }), 200
             else:
                 cursor.execute("""
                     SELECT country, timezone, working_days, from_time, to_time 
@@ -744,38 +774,38 @@ def get_step_location_time():
                 language = "English (en-US)"  # Default since column doesn't exist
                 if row:
                     country, timezone, working_days_json, from_time, to_time = row
-                
-                # Parse working_days JSON string to array
-                import json
-                try:
-                    working_days = json.loads(working_days_json) if working_days_json else ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-                except json.JSONDecodeError:
-                    working_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-                
-                return jsonify({
-                    "success": True,
-                    "data": {
-                        "country": country or "Vietnam",
-                        "timezone": timezone or "Asia/Ho_Chi_Minh",
-                        "language": language or "English (en-US)",
-                        "working_days": working_days,
-                        "from_time": from_time or "07:00",
-                        "to_time": to_time or "23:00"
-                    }
-                }), 200
-            else:
-                # Return defaults if no record exists
-                return jsonify({
-                    "success": True,
-                    "data": {
-                        "country": "Vietnam",
-                        "timezone": "Asia/Ho_Chi_Minh", 
-                        "language": "English (en-US)",
-                        "working_days": ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
-                        "from_time": "07:00",
-                        "to_time": "23:00"
-                    }
-                }), 200
+                    
+                    # Parse working_days JSON string to array
+                    import json
+                    try:
+                        working_days = json.loads(working_days_json) if working_days_json else ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                    except json.JSONDecodeError:
+                        working_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                    
+                    return jsonify({
+                        "success": True,
+                        "data": {
+                            "country": country or "Vietnam",
+                            "timezone": timezone or "Asia/Ho_Chi_Minh",
+                            "language": language or "English (en-US)",
+                            "working_days": working_days,
+                            "from_time": from_time or "07:00",
+                            "to_time": to_time or "23:00"
+                        }
+                    }), 200
+                else:
+                    # Return defaults if no record exists
+                    return jsonify({
+                        "success": True,
+                        "data": {
+                            "country": "Vietnam",
+                            "timezone": "Asia/Ho_Chi_Minh", 
+                            "language": "English (en-US)",
+                            "working_days": ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+                            "from_time": "07:00",
+                            "to_time": "23:00"
+                        }
+                    }), 200
             
     except Exception as e:
         error_msg = f"Failed to get location-time: {str(e)}"
@@ -857,6 +887,12 @@ def update_step_location_time():
                 row = cursor.fetchone()
                 if row:
                     current_country, current_timezone, current_language, current_working_days_json, current_from_time, current_to_time = row
+                    
+                    # Parse working_days JSON string to array
+                    try:
+                        current_working_days = json.loads(current_working_days_json) if current_working_days_json else ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                    except json.JSONDecodeError:
+                        current_working_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
                 else:
                     current_country, current_timezone, current_language = "Vietnam", "Asia/Ho_Chi_Minh", "English (en-US)"
                     current_working_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -871,16 +907,15 @@ def update_step_location_time():
                 current_language = "English (en-US)"  # Default since column doesn't exist
                 if row:
                     current_country, current_timezone, current_working_days_json, current_from_time, current_to_time = row
-                
-                import json
-                try:
-                    current_working_days = json.loads(current_working_days_json) if current_working_days_json else []
-                except json.JSONDecodeError:
-                    current_working_days = []
-            else:
-                current_country, current_timezone, current_language = "Vietnam", "Asia/Ho_Chi_Minh", "English (en-US)"
-                current_working_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-                current_from_time, current_to_time = "07:00", "23:00"
+                    
+                    try:
+                        current_working_days = json.loads(current_working_days_json) if current_working_days_json else []
+                    except json.JSONDecodeError:
+                        current_working_days = []
+                else:
+                    current_country, current_timezone = "Vietnam", "Asia/Ho_Chi_Minh"
+                    current_working_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                    current_from_time, current_to_time = "07:00", "23:00"
             
             # Check if there are any changes
             new_working_days_json = json.dumps(new_working_days)
@@ -945,4 +980,200 @@ def update_step_location_time():
     except Exception as e:
         error_msg = f"Failed to update location-time: {str(e)}"
         print(f"❌ Update location-time error: {error_msg}")
+        return jsonify({"error": error_msg}), 500
+
+# Step 3 Video Source Configuration Endpoints
+@config_routes_bp.route('/step/video-source', methods=['GET'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
+def get_step_video_source():
+    """Get current video source configuration for Step 3."""
+    try:
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get active video sources
+            path_manager = PathManager()
+            active_sources = path_manager.get_all_active_sources()
+            
+            # Get processing config for selected cameras
+            cursor.execute("SELECT input_path, selected_cameras, camera_paths FROM processing_config WHERE id = 1")
+            row = cursor.fetchone()
+            
+            if row:
+                input_path, selected_cameras_json, camera_paths_json = row
+                selected_cameras = json.loads(selected_cameras_json) if selected_cameras_json else []
+                camera_paths = json.loads(camera_paths_json) if camera_paths_json else {}
+            else:
+                input_path, selected_cameras, camera_paths = "", [], {}
+            
+            # Build response
+            video_source_data = {
+                "active_sources": active_sources,
+                "input_path": input_path or "",
+                "selected_cameras": selected_cameras,
+                "camera_paths": camera_paths
+            }
+            
+            return jsonify({
+                "success": True,
+                "data": video_source_data
+            }), 200
+            
+    except Exception as e:
+        error_msg = f"Failed to get video source configuration: {str(e)}"
+        print(f"❌ Get video source error: {error_msg}")
+        return jsonify({"error": error_msg}), 500
+
+@config_routes_bp.route('/step/video-source', methods=['PUT'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
+def update_step_video_source():
+    """Update video source configuration for Step 3 with selected cameras."""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"error": "Request data is required"}), 400
+        
+        source_type = data.get('sourceType')
+        input_path = data.get('inputPath', '').strip()
+        detected_folders = data.get('detectedFolders', [])
+        selected_cameras = data.get('selectedCameras', [])
+        
+        print(f"=== UPDATE VIDEO SOURCE STEP 3 ===")
+        print(f"Source Type: {source_type}")
+        print(f"Input Path: {input_path}")
+        print(f"Detected Folders: {len(detected_folders)} folders")
+        print(f"Selected Cameras: {selected_cameras}")
+        
+        # Validation for local storage
+        if source_type == 'local_storage':
+            if not input_path:
+                return jsonify({"error": "Input path is required for local storage"}), 400
+            if not selected_cameras:
+                return jsonify({"error": "At least one camera must be selected"}), 400
+        
+        # Build camera_paths mapping from detected folders and selected cameras
+        camera_paths = {}
+        if source_type == 'local_storage' and detected_folders:
+            for folder in detected_folders:
+                if folder.get('name') in selected_cameras:
+                    camera_paths[folder['name']] = folder['path']
+        
+        print(f"Camera Paths Mapping: {camera_paths}")
+        
+        # Update database with selected camera information
+        try:
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Ensure camera_paths column exists
+                try:
+                    cursor.execute("ALTER TABLE processing_config ADD COLUMN camera_paths TEXT DEFAULT '{}'")
+                    print("Added camera_paths column")
+                except sqlite3.OperationalError:
+                    pass  # Column already exists
+                
+                # Update processing config with camera selection
+                cursor.execute("""
+                    INSERT OR REPLACE INTO processing_config (
+                        id, input_path, selected_cameras, camera_paths,
+                        output_path, storage_duration, min_packing_time, max_packing_time,
+                        frame_rate, frame_interval, video_buffer, default_frame_mode,
+                        db_path, run_default_on_start
+                    ) VALUES (
+                        1, ?, ?, ?,
+                        COALESCE((SELECT output_path FROM processing_config WHERE id = 1), '/default/output'),
+                        COALESCE((SELECT storage_duration FROM processing_config WHERE id = 1), 30),
+                        COALESCE((SELECT min_packing_time FROM processing_config WHERE id = 1), 10),
+                        COALESCE((SELECT max_packing_time FROM processing_config WHERE id = 1), 120),
+                        COALESCE((SELECT frame_rate FROM processing_config WHERE id = 1), 30),
+                        COALESCE((SELECT frame_interval FROM processing_config WHERE id = 1), 5),
+                        COALESCE((SELECT video_buffer FROM processing_config WHERE id = 1), 2),
+                        COALESCE((SELECT default_frame_mode FROM processing_config WHERE id = 1), 'default'),
+                        COALESCE((SELECT db_path FROM processing_config WHERE id = 1), ''),
+                        COALESCE((SELECT run_default_on_start FROM processing_config WHERE id = 1), 1)
+                    )
+                """, (input_path, json.dumps(selected_cameras), json.dumps(camera_paths)))
+                
+                conn.commit()
+                print("✅ Processing config updated with camera selection")
+                
+                # ENHANCED: Also create/update video_sources table for Step 3 integration
+                if source_type == 'local_storage':
+                    # Create or update video source record
+                    source_name = f"LocalStorage_{int(datetime.now().timestamp())}"
+                    
+                    # First, deactivate all existing sources
+                    cursor.execute("UPDATE video_sources SET active = 0")
+                    
+                    # Insert new video source
+                    cursor.execute("""
+                        INSERT INTO video_sources (
+                            source_type, name, path, config, active, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?)
+                    """, (
+                        'local',  # source_type for local storage
+                        source_name,
+                        input_path,
+                        json.dumps({
+                            'selected_cameras': selected_cameras,
+                            'camera_paths': camera_paths,
+                            'detected_folders': detected_folders
+                        }),
+                        1,  # active
+                        datetime.now().isoformat()
+                    ))
+                    
+                    video_source_id = cursor.lastrowid
+                    print(f"✅ Video source created: {source_name} (ID: {video_source_id})")
+                    
+                    # Validate camera directories if available
+                    if camera_paths:
+                        try:
+                            for camera_name, camera_path in camera_paths.items():
+                                if os.path.exists(camera_path) and os.path.isdir(camera_path):
+                                    print(f"✅ Camera directory validated: {camera_name} -> {camera_path}")
+                                else:
+                                    print(f"⚠️ Camera directory not found: {camera_name} -> {camera_path}")
+                        except Exception as dir_error:
+                            print(f"⚠️ Directory validation error: {dir_error}")
+                    
+                    # Final commit for all changes
+                    conn.commit()
+                    
+                    return jsonify({
+                        "success": True,
+                        "data": {
+                            "sourceType": source_type,
+                            "inputPath": input_path,
+                            "selectedCameras": selected_cameras,
+                            "cameraPathsCount": len(camera_paths),
+                            "videoSourceId": video_source_id,
+                            "videoSourceName": source_name,
+                            "changed": True
+                        },
+                        "message": "Video source configuration updated successfully"
+                    }), 200
+                
+                else:
+                    # Non-local storage types (cloud, etc.)
+                    return jsonify({
+                        "success": True,
+                        "data": {
+                            "sourceType": source_type,
+                            "inputPath": input_path,
+                            "selectedCameras": selected_cameras,
+                            "cameraPathsCount": len(camera_paths),
+                            "changed": True
+                        },
+                        "message": "Video source configuration updated successfully"
+                    }), 200
+                
+        except Exception as db_error:
+            error_msg = f"Database update failed: {str(db_error)}"
+            print(f"❌ Database error: {error_msg}")
+            return jsonify({"error": error_msg}), 500
+            
+    except Exception as e:
+        error_msg = f"Failed to update video source configuration: {str(e)}"
+        print(f"❌ Update video source error: {error_msg}")
         return jsonify({"error": error_msg}), 500

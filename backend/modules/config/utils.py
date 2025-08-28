@@ -84,6 +84,93 @@ def detect_camera_folders(path: str) -> List[str]:
         return cameras
 
 
+def scan_subdirectories_as_cameras(path: str) -> Dict[str, Any]:
+    """
+    Enhanced function to scan subdirectories and return structured camera folder data.
+    
+    Args:
+        path: Directory path to scan for subdirectories
+        
+    Returns:
+        Dict with success status, folders list, and error message if any
+    """
+    result = {
+        "success": False,
+        "folders": [],
+        "message": ""
+    }
+    
+    # Validate input path
+    if not path or not isinstance(path, str):
+        result["message"] = "Invalid path provided"
+        return result
+    
+    path = path.strip()
+    if not path:
+        result["message"] = "Empty path provided"
+        return result
+    
+    # Check if path exists
+    if not os.path.exists(path):
+        result["message"] = f"Path does not exist: {path}"
+        return result
+    
+    # Check if it's a directory
+    if not os.path.isdir(path):
+        result["message"] = f"Path is not a directory: {path}"
+        return result
+    
+    try:
+        # Check read permissions
+        os.listdir(path)
+    except PermissionError:
+        result["message"] = f"Permission denied accessing path: {path}"
+        return result
+    except Exception as e:
+        result["message"] = f"Error accessing path: {str(e)}"
+        return result
+    
+    folders = []
+    try:
+        for item in os.listdir(path):
+            item_path = os.path.join(path, item)
+            
+            # Only include directories (ignore files)
+            if os.path.isdir(item_path):
+                try:
+                    # Test if we can access the directory
+                    os.listdir(item_path)
+                    
+                    folders.append({
+                        "name": item,
+                        "path": item_path
+                    })
+                except PermissionError:
+                    # Skip directories we can't access, but don't fail the entire operation
+                    print(f"Skipping directory due to permissions: {item_path}")
+                    continue
+                except Exception as e:
+                    # Skip problematic directories
+                    print(f"Skipping directory due to error: {item_path} - {e}")
+                    continue
+        
+        # Sort folders alphabetically by name
+        folders.sort(key=lambda x: x["name"].lower())
+        
+        result["success"] = True
+        result["folders"] = folders
+        
+        if not folders:
+            result["message"] = "No subdirectories found in the specified path"
+        else:
+            result["message"] = f"Found {len(folders)} subdirectory(ies)"
+            
+    except Exception as e:
+        result["message"] = f"Error scanning directory: {str(e)}"
+    
+    return result
+
+
 def has_video_files(path: str, max_depth: int = 2) -> bool:
     """
     Check if directory contains video files (recursive up to max_depth).
