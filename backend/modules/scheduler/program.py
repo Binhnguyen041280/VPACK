@@ -35,11 +35,11 @@ import os
 import json
 import threading
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Dict, Any, List, Optional
 from modules.db_utils import find_project_root
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.config.logging_config import get_logger
-from modules.utils.timezone_manager import timezone_manager
 from .file_lister import run_file_scan, get_db_path
 from .batch_scheduler import BatchScheduler
 from .db_sync import frame_sampler_event, event_detector_event
@@ -76,7 +76,7 @@ def init_default_program():
     
     Uses timezone-aware logging for better debugging across different timezones.
     """
-    start_time = timezone_manager.now_local()
+    start_time = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh'))
     logger.info(f"Initializing default program at {start_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
     
     try:
@@ -90,7 +90,7 @@ def init_default_program():
         logger.info(f"First run completed: {first_run_completed}, Scheduler running: {scheduler.running}")
         
         if first_run_completed and not scheduler.running:
-            logger.info(f"Chuyển sang chế độ chạy mặc định (quét lặp) at {timezone_manager.now_local().strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            logger.info(f"Chuyển sang chế độ chạy mặc định (quét lặp) at {datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')).strftime('%Y-%m-%d %H:%M:%S %Z')}")
             running_state["current_running"] = "Mặc định"
             scheduler.start()
             
@@ -185,18 +185,18 @@ def program():
             running_state["days"] = days
             running_state["custom_path"] = None
             
-            start_time = timezone_manager.now_local()
+            start_time = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh'))
             logger.info(f"Starting first run processing for {days} days at {start_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
             
             try:
                 # Scan and queue files from the specified number of days
                 run_file_scan(scan_action="first", days=days)
                 
-                completion_time = timezone_manager.now_local()
+                completion_time = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh'))
                 logger.info(f"First run scan completed at {completion_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
                 
             except Exception as e:
-                error_time = timezone_manager.now_local()
+                error_time = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh'))
                 logger.error(f"Failed to run first scan at {error_time.strftime('%Y-%m-%d %H:%M:%S %Z')}: {str(e)}")
                 return jsonify({"error": f"Failed to run first scan: {str(e)}"}), 500
         # CUSTOM PROCESSING: Process specific file or directory
@@ -279,8 +279,8 @@ def program():
 
         if card == "Lần đầu":
             try:
-                completion_time = timezone_manager.now_local()
-                completion_utc = timezone_manager.now_utc()
+                completion_time = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh'))
+                completion_utc = datetime.now(timezone.utc)
                 
                 with db_rwlock:
                     with safe_db_connection() as conn:
@@ -290,7 +290,7 @@ def program():
                         # Also store completion timestamp for audit purposes
                         cursor.execute(
                             "INSERT OR REPLACE INTO program_status (key, value) VALUES (?, ?)",
-                            ("first_run_completed_at", timezone_manager.format_for_db(completion_utc))
+                            ("first_run_completed_at", completion_utc.isoformat())
                         )
                         
                 logger.info(
@@ -299,7 +299,7 @@ def program():
                 )
                 
             except Exception as e:
-                error_time = timezone_manager.now_local()
+                error_time = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh'))
                 logger.error(f"Error updating first_run_completed at {error_time.strftime('%Y-%m-%d %H:%M:%S %Z')}: {e}")
 
     elif action == "stop":

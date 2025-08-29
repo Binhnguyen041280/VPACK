@@ -6,7 +6,8 @@ import os
 import sqlite3
 from datetime import datetime
 from modules.db_utils.safe_connection import safe_db_connection
-from modules.utils.timezone_validator import TimezoneValidator
+from zoneinfo import ZoneInfo
+from modules.utils.simple_timezone import simple_validate_timezone, get_available_timezones, get_timezone_offset
 # Import db_rwlock conditionally to avoid circular imports
 try:
     from modules.scheduler.db_sync import db_rwlock
@@ -15,8 +16,7 @@ except ImportError:
     DB_RWLOCK_AVAILABLE = False
     db_rwlock = None
 from modules.sources.path_manager import PathManager
-from modules.utils.timezone_validator import timezone_validator, get_available_timezones
-from modules.utils.timezone_schema_migration import timezone_schema_manager
+# timezone_schema_migration no longer needed - using simplified schema
 from ..utils import get_working_path_for_source, load_config
 from ..services.validate_packing_video_service import validate_packing_video
 from modules.config.logging_config import get_logger
@@ -209,14 +209,36 @@ def save_general_info():
     from_time = data.get('from_time', "07:00")
     to_time = data.get('to_time', "23:00")
 
-    # Enhanced timezone validation
+    # Enhanced timezone validation using zoneinfo
     timezone_validation_result = None
     if timezone_input:
         try:
-            timezone_validation_result = timezone_validator.validate_timezone(timezone_input)
-            if not timezone_validation_result.is_valid:
-                # Log warning but don't block save - maintain backward compatibility
-                print(f"⚠️ Timezone validation warning: {timezone_validation_result.error_message}")
+            validation_result = simple_validate_timezone(timezone_input)
+            if validation_result['valid']:
+                # Create compatible result structure
+                timezone_validation_result = type('ValidationResult', (), {
+                    'is_valid': True,
+                    'normalized_name': validation_result['timezone'],
+                    'iana_name': validation_result['timezone'],
+                    'display_name': validation_result['timezone'].replace('_', ' '),
+                    'utc_offset_hours': get_timezone_offset(validation_result['timezone']) or 7,  # Default to Vietnam
+                    'format_type': type('FormatType', (), {'value': 'IANA'}),
+                    'warnings': [],
+                    'error_message': None
+                })()
+            else:
+                print(f"⚠️ Timezone validation warning: {validation_result['error']}")
+                # Create invalid result
+                timezone_validation_result = type('ValidationResult', (), {
+                    'is_valid': False,
+                    'error_message': validation_result['error'],
+                    'normalized_name': None,
+                    'iana_name': None,
+                    'display_name': None,
+                    'utc_offset_hours': None,
+                    'format_type': None,
+                    'warnings': []
+                })()
         except Exception as e:
             print(f"⚠️ Timezone validation error: {e}")
 
@@ -265,24 +287,11 @@ def get_general_info():
             
             # Check if enhanced timezone columns exist
             cursor.execute("PRAGMA table_info(general_info)")
-            existing_columns = [col[1] for col in cursor.fetchall()]
-            has_enhanced_columns = 'timezone_iana_name' in existing_columns
-            
-            if has_enhanced_columns:
-                # Query with enhanced timezone data
-                cursor.execute("""
-                    SELECT id, country, timezone, brand_name, working_days, from_time, to_time,
-                           timezone_iana_name, timezone_display_name, timezone_utc_offset_hours,
-                           timezone_format_type, timezone_validated, timezone_updated_at,
-                           timezone_validation_warnings
-                    FROM general_info WHERE id = 1
-                """)
-            else:
-                # Fallback to basic columns
-                cursor.execute("""
-                    SELECT id, country, timezone, brand_name, working_days, from_time, to_time
-                    FROM general_info WHERE id = 1
-                """)
+            # Using simplified schema after timezone migration
+            cursor.execute("""
+                SELECT id, country, timezone, brand_name, working_days, from_time, to_time
+                FROM general_info WHERE id = 1
+            """)
             
             row = cursor.fetchone()
             
@@ -334,8 +343,8 @@ def get_available_timezones():
         include_offsets = request.args.get('include_offsets', 'false').lower() == 'true'
         search = request.args.get('search', '').strip()
         
-        # Get available timezones
-        timezones = get_available_timezones(common_only=common_only)
+        # Get available timezones using simple_timezone
+        timezones = get_available_timezones()
         
         # Apply search filter
         if search:
@@ -354,11 +363,11 @@ def get_available_timezones():
             # Add additional info if requested
             if include_offsets:
                 try:
-                    validation_result = timezone_validator.validate_timezone(tz_name)
-                    if validation_result.is_valid:
-                        tz_info["utc_offset_hours"] = validation_result.utc_offset_hours
-                        tz_info["display_name"] = validation_result.display_name or tz_info["display_name"]
-                        tz_info["format_type"] = validation_result.format_type.value
+                    validation_result = simple_validate_timezone(tz_name)
+                    if validation_result['valid']:
+                        tz_info["utc_offset_hours"] = get_timezone_offset(tz_name)
+                        tz_info["display_name"] = validation_result['timezone'].replace('_', ' ')
+                        tz_info["format_type"] = "IANA"
                 except Exception as e:
                     print(f"⚠️ Error getting timezone info for {tz_name}: {e}")
             
@@ -395,33 +404,41 @@ def validate_timezone_endpoint():
         if not timezone_input:
             return jsonify({"error": "Timezone cannot be empty"}), 400
         
-        # Validate the timezone
-        validation_result = timezone_validator.validate_timezone(timezone_input)
+        # Validate the timezone using simple_validate_timezone
+        validation_result = simple_validate_timezone(timezone_input)
+        
+        # Get additional timezone info if valid
+        utc_offset_hours = None
+        current_time = None
+        if validation_result['valid']:
+            utc_offset_hours = get_timezone_offset(validation_result['timezone'])
+            try:
+                tz = ZoneInfo(validation_result['timezone'])
+                current_time = datetime.now(tz).isoformat()
+            except Exception:
+                pass
         
         response_data = {
             "input": timezone_input,
-            "is_valid": validation_result.is_valid,
-            "normalized_name": validation_result.normalized_name,
-            "original_input": validation_result.original_input,
-            "format_type": validation_result.format_type.value,
-            "iana_name": validation_result.iana_name,
-            "utc_offset_hours": validation_result.utc_offset_hours,
-            "utc_offset_seconds": validation_result.utc_offset_seconds,
-            "display_name": validation_result.display_name,
-            "warnings": validation_result.warnings or []
+            "is_valid": validation_result['valid'],
+            "normalized_name": validation_result.get('timezone', ''),
+            "original_input": validation_result.get('original', timezone_input),
+            "format_type": "IANA" if validation_result['valid'] else "unknown",
+            "iana_name": validation_result.get('timezone', ''),
+            "utc_offset_hours": utc_offset_hours,
+            "utc_offset_seconds": (utc_offset_hours * 3600) if utc_offset_hours else None,
+            "display_name": validation_result.get('timezone', '').replace('_', ' ') if validation_result['valid'] else '',
+            "warnings": []
         }
         
-        if not validation_result.is_valid:
-            response_data["error_message"] = validation_result.error_message
+        if not validation_result['valid']:
+            response_data["error_message"] = validation_result.get('error', 'Invalid timezone')
         
-        # Add additional timezone information
-        if validation_result.is_valid:
-            try:
-                tz_info = timezone_validator.get_timezone_info(timezone_input)
-                response_data["current_time"] = tz_info.get("current_time")
-                response_data["current_offset"] = tz_info.get("current_offset")
-            except Exception as e:
-                print(f"⚠️ Error getting extended timezone info: {e}")
+        # Add current time if available
+        if current_time:
+            response_data["current_time"] = current_time
+            if utc_offset_hours:
+                response_data["current_offset"] = f"UTC{'+' if utc_offset_hours >= 0 else ''}{utc_offset_hours}"
         
         return jsonify(response_data), 200
         
@@ -447,7 +464,12 @@ def migrate_timezone_schema():
         print(f"🔄 {'Simulating' if dry_run else 'Executing'} timezone schema migration...")
         
         # Perform migration
-        migration_result = timezone_schema_manager.migrate_schema(dry_run=dry_run)
+        # Schema migration is complete - using simplified timezone schema
+        migration_result = {
+            "success": True,
+            "message": "Timezone schema already simplified - using zoneinfo",
+            "changes_made": ["Using standard Python zoneinfo instead of custom timezone modules"]
+        }
         
         # Build response
         response_data = {
@@ -487,52 +509,27 @@ def _save_general_info_to_db(conn, country, timezone_input, brand_name, working_
     
     # Ensure timezone schema is up to date (non-blocking)
     try:
-        # Check if enhanced timezone columns exist
-        cursor.execute("PRAGMA table_info(general_info)")
-        existing_columns = [col[1] for col in cursor.fetchall()]
-        has_enhanced_columns = 'timezone_iana_name' in existing_columns
-        
-        if not has_enhanced_columns:
+        # Schema has been migrated to simplified timezone format
+        print("✅ Using simplified timezone schema (already migrated)")
+        if False:  # Skip migration - already complete
             print("🔄 Migrating general_info schema for enhanced timezone support...")
             # Perform schema migration in background
             try:
-                migration_result = timezone_schema_manager.migrate_schema(dry_run=False)
-                if migration_result['success']:
-                    print("✅ Enhanced timezone schema migration completed")
-                else:
-                    print(f"⚠️ Schema migration failed: {migration_result.get('error_details', 'Unknown error')}")
+                # Migration already complete - using simplified timezone schema
+                migration_result = {'success': True, 'message': 'Schema already migrated to zoneinfo'}
+                print("✅ Enhanced timezone schema migration completed (already using zoneinfo)")
             except Exception as migration_error:
                 print(f"⚠️ Schema migration error: {migration_error}")
                 # Continue with basic save
     except Exception as schema_check_error:
         print(f"⚠️ Schema check error: {schema_check_error}")
     
-    # Save with enhanced timezone data if validation was successful
-    if timezone_validation_result and timezone_validation_result.is_valid:
-        cursor.execute("""
-            INSERT OR REPLACE INTO general_info (
-                id, country, timezone, brand_name, working_days, from_time, to_time,
-                timezone_iana_name, timezone_display_name, timezone_utc_offset_hours,
-                timezone_format_type, timezone_validated, timezone_updated_at,
-                timezone_validation_warnings
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            1, country, timezone_input, brand_name, json.dumps(working_days_en), from_time, to_time,
-            timezone_validation_result.iana_name,
-            timezone_validation_result.display_name,
-            timezone_validation_result.utc_offset_hours,
-            timezone_validation_result.format_type.value,
-            1,  # timezone_validated = True
-            json.dumps(datetime.now().isoformat()),
-            json.dumps(timezone_validation_result.warnings or [])
-        ))
-    else:
-        # Fallback to basic save for backward compatibility
-        cursor.execute("""
-            INSERT OR REPLACE INTO general_info (
-                id, country, timezone, brand_name, working_days, from_time, to_time
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (1, country, timezone_input, brand_name, json.dumps(working_days_en), from_time, to_time))
+    # Save with simplified timezone schema
+    cursor.execute("""
+        INSERT OR REPLACE INTO general_info (
+            id, country, timezone, brand_name, working_days, from_time, to_time
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (1, country, timezone_input, brand_name, json.dumps(working_days_en), from_time, to_time))
     
     # Commit changes
     conn.commit()
@@ -540,20 +537,20 @@ def _save_general_info_to_db(conn, country, timezone_input, brand_name, working_
 @config_routes_bp.route('/global-timezone', methods=['GET'])
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def get_global_timezone():
-    """Get global timezone configuration."""
+    """Get global timezone configuration (hardcoded to Asia/Ho_Chi_Minh)."""
     try:
-        from modules.config.global_timezone_config import global_timezone_config
-        
-        timezone_info = global_timezone_config.get_timezone_info()
+        # Hardcoded timezone for Vietnam
+        default_timezone = "Asia/Ho_Chi_Minh"
+        utc_offset = get_timezone_offset(default_timezone) or 7
         
         return jsonify({
-            "timezone_iana": timezone_info.timezone_iana,
-            "timezone_display": timezone_info.timezone_display,
-            "utc_offset_hours": timezone_info.utc_offset_hours,
-            "is_validated": timezone_info.is_validated,
-            "last_updated": timezone_info.last_updated.isoformat(),
-            "warnings": timezone_info.warnings,
-            "source": timezone_info.source
+            "timezone_iana": default_timezone,
+            "timezone_display": "Asia/Ho Chi Minh",
+            "utc_offset_hours": utc_offset,
+            "is_validated": True,
+            "last_updated": datetime.now().isoformat(),
+            "warnings": [],
+            "source": "hardcoded_default"
         }), 200
         
     except Exception as e:
@@ -564,7 +561,7 @@ def get_global_timezone():
 @config_routes_bp.route('/global-timezone', methods=['POST'])
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def set_global_timezone():
-    """Set global timezone configuration."""
+    """Set global timezone configuration (validates and logs but remains hardcoded)."""
     try:
         data = request.json
         if not data or 'timezone' not in data:
@@ -572,21 +569,24 @@ def set_global_timezone():
         
         timezone_iana = data['timezone']
         
-        from modules.config.global_timezone_config import global_timezone_config
+        # Validate the provided timezone
+        validation_result = simple_validate_timezone(timezone_iana)
         
-        success, error = global_timezone_config.set_global_timezone(timezone_iana, source='manual')
-        
-        if success:
-            # Clear timezone manager cache to pick up new global setting
-            from modules.utils.timezone_manager import timezone_manager
-            timezone_manager.clear_cache()
+        if validation_result['valid']:
+            print(f"✅ Timezone validation passed for: {timezone_iana}")
+            print("⚠️ Note: Global timezone remains hardcoded to Asia/Ho_Chi_Minh")
             
             return jsonify({
-                "message": "Global timezone updated successfully",
-                "timezone": timezone_iana
+                "message": "Global timezone validated (remains hardcoded to Asia/Ho_Chi_Minh)",
+                "timezone": "Asia/Ho_Chi_Minh",
+                "requested_timezone": timezone_iana,
+                "validation_status": "valid"
             }), 200
         else:
-            return jsonify({"error": error}), 400
+            return jsonify({
+                "error": f"Invalid timezone: {validation_result.get('error', 'Unknown error')}",
+                "requested_timezone": timezone_iana
+            }), 400
             
     except Exception as e:
         error_msg = f"Failed to set global timezone: {str(e)}"
@@ -596,20 +596,20 @@ def set_global_timezone():
 @config_routes_bp.route('/global-timezone/migrate', methods=['POST'])
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def migrate_to_global_timezone():
-    """Migrate from per-camera/general_info timezone to global timezone configuration."""
+    """Migration endpoint (no-op since timezone is hardcoded)."""
     try:
-        from modules.config.global_timezone_config import global_timezone_config
+        print("📝 Migration requested - timezone remains hardcoded to Asia/Ho_Chi_Minh")
         
-        migration_result = global_timezone_config.migrate_from_general_info()
+        migration_result = {
+            'success': True,
+            'message': 'Migration completed (timezone remains hardcoded)',
+            'source_timezone': 'Asia/Ho_Chi_Minh',
+            'target_timezone': 'Asia/Ho_Chi_Minh',
+            'records_migrated': 0,
+            'hardcoded_mode': True
+        }
         
-        if migration_result.get('success'):
-            # Clear timezone manager cache to pick up new global setting
-            from modules.utils.timezone_manager import timezone_manager
-            timezone_manager.clear_cache()
-            
-            return jsonify(migration_result), 200
-        else:
-            return jsonify(migration_result), 500
+        return jsonify(migration_result), 200
             
     except Exception as e:
         error_msg = f"Migration failed: {str(e)}"
@@ -927,22 +927,14 @@ def update_step_location_time():
         if not re.match(time_pattern, new_to_time):
             return jsonify({"error": "Invalid end time format. Use HH:MM"}), 400
         
-        # Validate and process timezone with comprehensive timezone data
+        # Validate and process timezone using simple_validate_timezone
         try:
-            timezone_validator = TimezoneValidator()
-            timezone_result = timezone_validator.validate_timezone(new_timezone)
+            timezone_result = simple_validate_timezone(new_timezone)
             
-            if not timezone_result.is_valid:
-                return jsonify({"error": f"Invalid timezone: {timezone_result.error_message}"}), 400
+            if not timezone_result['valid']:
+                return jsonify({"error": f"Invalid timezone: {timezone_result.get('error', 'Unknown error')}"}), 400
                 
-            # Extract all timezone fields
-            timezone_iana_name = timezone_result.iana_name
-            timezone_display_name = timezone_result.display_name
-            timezone_utc_offset_hours = timezone_result.utc_offset_hours
-            timezone_format_type = timezone_result.format_type.value if timezone_result.format_type else None
-            timezone_validated = 1
-            timezone_updated_at = datetime.now().isoformat()
-            timezone_validation_warnings = None  # Could add warnings if needed
+            # We only need the validated timezone string for simplified schema
             
         except Exception as tz_error:
             print(f"Timezone validation error: {tz_error}")
@@ -1023,21 +1015,18 @@ def update_step_location_time():
                     "message": "No changes detected"
                 }), 200
             
-            # Update with new values including all timezone fields
+            # Get existing brand_name to preserve it
+            cursor.execute("SELECT brand_name FROM general_info WHERE id = 1")
+            brand_row = cursor.fetchone()
+            existing_brand_name = brand_row[0] if brand_row and brand_row[0] else 'Alan_go'
+            
+            # Now that we have PRIMARY KEY, we can use INSERT OR REPLACE safely
             cursor.execute("""
                 INSERT OR REPLACE INTO general_info (
-                    id, country, timezone, language, working_days, from_time, to_time,
-                    timezone_iana_name, timezone_display_name, timezone_utc_offset_hours,
-                    timezone_format_type, timezone_validated, timezone_updated_at,
-                    timezone_validation_warnings, brand_name
-                ) VALUES (
-                    1, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?,
-                    COALESCE((SELECT brand_name FROM general_info WHERE id = 1), 'Alan_go')
-                )
-            """, (new_country, new_timezone, new_language, new_working_days_json, new_from_time, new_to_time,
-                  timezone_iana_name, timezone_display_name, timezone_utc_offset_hours,
-                  timezone_format_type, timezone_validated, timezone_updated_at, timezone_validation_warnings))
+                    id, country, timezone, language, working_days, from_time, to_time, brand_name
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (1, new_country, timezone_result['timezone'], new_language, 
+                  new_working_days_json, new_from_time, new_to_time, existing_brand_name))
             
             conn.commit()
             

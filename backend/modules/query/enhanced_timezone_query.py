@@ -37,10 +37,10 @@ from typing import Dict, List, Any, Optional, Tuple, Union
 from dataclasses import dataclass
 from contextlib import contextmanager
 
+from zoneinfo import ZoneInfo
 from modules.db_utils.safe_connection import safe_db_connection
-from modules.config.global_timezone_config import global_timezone_config
-from modules.utils.timezone_manager import timezone_manager
 from modules.config.logging_config import get_logger
+from modules.utils.simple_timezone import simple_validate_timezone, get_available_timezones
 
 logger = get_logger(__name__, {"module": "enhanced_timezone_query"})
 
@@ -155,17 +155,17 @@ class EnhancedTimezoneQuery:
         """Parse various time input formats to timezone-aware datetime."""
         
         if user_timezone is None:
-            user_timezone = global_timezone_config.get_global_timezone()
+            user_timezone = "Asia/Ho_Chi_Minh"
         
         try:
             # Get timezone object
-            user_tz = timezone_manager.get_timezone_object(user_timezone)
+            user_tz = ZoneInfo(user_timezone)
             
             # Handle different input types
             if isinstance(time_input, datetime):
                 if time_input.tzinfo is None:
                     # Naive datetime - assume user timezone
-                    return user_tz.localize(time_input) if hasattr(user_tz, 'localize') else time_input.replace(tzinfo=user_tz)
+                    return time_input.replace(tzinfo=user_tz)
                 else:
                     # Already timezone-aware
                     return time_input
@@ -184,7 +184,7 @@ class EnhancedTimezoneQuery:
                     # Try ISO format without timezone
                     if 'T' in time_input:
                         naive_dt = datetime.fromisoformat(time_input)
-                        return user_tz.localize(naive_dt) if hasattr(user_tz, 'localize') else naive_dt.replace(tzinfo=user_tz)
+                        return naive_dt.replace(tzinfo=user_tz)
                     
                     # Try common date formats
                     formats = [
@@ -199,7 +199,7 @@ class EnhancedTimezoneQuery:
                     for fmt in formats:
                         try:
                             naive_dt = datetime.strptime(time_input, fmt)
-                            return user_tz.localize(naive_dt) if hasattr(user_tz, 'localize') else naive_dt.replace(tzinfo=user_tz)
+                            return naive_dt.replace(tzinfo=user_tz)
                         except ValueError:
                             continue
                     
@@ -223,12 +223,12 @@ class EnhancedTimezoneQuery:
         """Create a timezone-aware time range for queries."""
         
         if user_timezone is None:
-            user_timezone = global_timezone_config.get_global_timezone()
+            user_timezone = "Asia/Ho_Chi_Minh"
         
         # Handle default time range
         if from_time is None and to_time is None:
             # Default to last 24 hours in user timezone
-            user_tz = timezone_manager.get_timezone_object(user_timezone)
+            user_tz = ZoneInfo(user_timezone)
             now_local = datetime.now(user_tz)
             to_local = now_local
             from_local = now_local - timedelta(hours=default_range_hours)
@@ -280,7 +280,7 @@ class EnhancedTimezoneQuery:
          packing_time_start, packing_time_end, timezone_info,
          camera_name, created_at_utc, updated_at_utc) = event_data
         
-        user_tz = timezone_manager.get_timezone_object(user_timezone)
+        user_tz = ZoneInfo(user_timezone)
         
         # Format timezone-aware timestamps
         formatted_event = {
@@ -431,7 +431,7 @@ class EnhancedTimezoneQuery:
                 query_time_ms=query_time_ms,
                 timezone_info={
                     'user_timezone': user_timezone,
-                    'global_timezone': global_timezone_config.get_global_timezone(),
+                    'global_timezone': "Asia/Ho_Chi_Minh",
                     'query_timezone_aware': True
                 },
                 time_range=time_range,

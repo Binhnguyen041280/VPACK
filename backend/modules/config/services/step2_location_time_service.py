@@ -9,7 +9,7 @@ FIXED: Removes Vietnamese day name conversion - frontend sends English directly.
 import json
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional
-from modules.utils.timezone_validator import TimezoneValidator
+from modules.utils.simple_timezone import simple_validate_timezone
 from ..shared import (
     safe_connection_wrapper,
     execute_with_change_detection,
@@ -35,7 +35,7 @@ class Step2LocationTimeService:
     
     def __init__(self):
         """Initialize service with timezone validator."""
-        self.timezone_validator = TimezoneValidator()
+        # Using simple_validate_timezone function instead of class
     
     def get_location_time_config(self) -> Dict[str, Any]:
         """
@@ -181,19 +181,19 @@ class Step2LocationTimeService:
             Tuple of (is_valid: bool, error_message: str, timezone_data: dict)
         """
         try:
-            timezone_result = self.timezone_validator.validate_timezone(timezone_input)
+            timezone_result = simple_validate_timezone(timezone_input)
             
-            if not timezone_result.is_valid:
-                return False, timezone_result.error_message, None
+            if not timezone_result['valid']:
+                return False, timezone_result['error'], None
             
             timezone_data = {
-                "iana_name": timezone_result.iana_name,
-                "display_name": timezone_result.display_name,
-                "utc_offset_hours": timezone_result.utc_offset_hours,
-                "format_type": timezone_result.format_type.value if timezone_result.format_type else None,
+                "iana_name": timezone_result['timezone'],
+                "display_name": timezone_result['timezone'],
+                "utc_offset_hours": 7,  # Asia/Ho_Chi_Minh is always UTC+7
+                "format_type": "IANA",
                 "validated": True,
                 "updated_at": datetime.now().isoformat(),
-                "warnings": timezone_result.warnings or []
+                "warnings": []
             }
             
             return True, "", timezone_data

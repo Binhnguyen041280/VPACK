@@ -12,11 +12,11 @@ from modules.db_utils import find_project_root
 from modules.db_utils.safe_connection import safe_db_connection
 from ..utils.file_parser import parse_uploaded_file
 from modules.scheduler.db_sync import db_rwlock  # Thêm import db_rwlock
-from modules.utils.timezone_manager import timezone_manager
+from zoneinfo import ZoneInfo
 from modules.config.logging_config import get_logger
-from .timezone_validation import validate_query_parameters
+# Removed timezone_validation - using simple validation inline
 from .enhanced_timezone_query import enhanced_timezone_query
-from modules.config.global_timezone_config import global_timezone_config
+from modules.utils.simple_timezone import simple_validate_timezone, get_available_timezones
 
 query_bp = Blueprint('query', __name__)
 logger = get_logger(__name__)
@@ -128,24 +128,25 @@ def query_events():
     # Note: tracking_codes will be parsed by validation module
 
     try:
-        # Validate query parameters using comprehensive validation
-        validation_result = validate_query_parameters(data)
-        if not validation_result.valid:
-            return jsonify({"error": validation_result.error}), 400
+        # Simple parameter validation (replacing complex timezone_validation)
+        from_time = data.get('from_time')
+        to_time = data.get('to_time') 
+        timezone_str = data.get('timezone', 'Asia/Ho_Chi_Minh')
         
-        # Extract validated parameters
-        time_range = validation_result.time_range
-        from_timestamp = time_range.from_timestamp
-        to_timestamp = time_range.to_timestamp
-        user_tz = time_range.user_timezone
-        tracking_codes = validation_result.tracking_codes
-        selected_cameras = validation_result.cameras
+        # Validate timezone
+        tz_result = simple_validate_timezone(timezone_str)
+        if not tz_result['valid']:
+            return jsonify({"error": f"Invalid timezone: {timezone_str}"}), 400
+            
+        # Parse timestamps - these will be handled later in the function
+        from_timestamp = from_time
+        to_timestamp = to_time
+        # Extract other parameters
+        user_tz = ZoneInfo(tz_result['timezone'])
+        tracking_codes = data.get('tracking_codes', [])
+        selected_cameras = data.get('cameras', [])
         
-        # Log warnings if any
-        if validation_result.warnings:
-            logger.warning(f"Query validation warnings: {validation_result.warnings}")
-        
-        logger.info(f"Validated query: {from_timestamp} to {to_timestamp} (UTC), user_tz: {user_tz}, cameras: {len(selected_cameras)}, codes: {len(tracking_codes)}")
+        logger.info(f"Validated query: {from_timestamp} to {to_timestamp}, user_tz: {tz_result['timezone']}, cameras: {len(selected_cameras)}, codes: {len(tracking_codes)}")
 
         with db_rwlock.gen_rlock():  # Thêm khóa đọc
             with safe_db_connection() as conn:
@@ -233,23 +234,18 @@ def parse_time_range(from_time: Optional[str], to_time: Optional[str],
         # Get user timezone
         if user_timezone_name:
             try:
-                from modules.utils.timezone_validator import timezone_validator
-                validation_result = timezone_validator.validate_timezone(user_timezone_name)
-                if validation_result.is_valid:
-                    # Try to get timezone object
+                validation_result = simple_validate_timezone(user_timezone_name)
+                if validation_result['valid']:
                     try:
-                        if validation_result.iana_name:
-                            user_tz = timezone_manager._get_timezone_from_iana(validation_result.iana_name)
-                        else:
-                            user_tz = timezone_manager.get_user_timezone()
+                        user_tz = ZoneInfo(validation_result['timezone'])
                     except:
-                        user_tz = timezone_manager.get_user_timezone()
+                        user_tz = ZoneInfo("Asia/Ho_Chi_Minh")
                 else:
-                    user_tz = timezone_manager.get_user_timezone()
+                    user_tz = ZoneInfo("Asia/Ho_Chi_Minh")
             except:
-                user_tz = timezone_manager.get_user_timezone()
+                user_tz = ZoneInfo("Asia/Ho_Chi_Minh")
         else:
-            user_tz = timezone_manager.get_user_timezone()
+            user_tz = ZoneInfo("Asia/Ho_Chi_Minh")
         
         if from_time and to_time:
             # Parse custom time range
@@ -324,10 +320,7 @@ def parse_datetime_with_timezone(time_str: str, user_tz) -> Optional[datetime]:
         # Try parsing as naive datetime and apply user timezone
         try:
             naive_dt = datetime.fromisoformat(time_str)
-            if hasattr(user_tz, 'localize'):
-                return user_tz.localize(naive_dt)
-            else:
-                return naive_dt.replace(tzinfo=user_tz)
+            return naive_dt.replace(tzinfo=user_tz)
         except ValueError:
             pass
         
@@ -622,7 +615,7 @@ def query_events_enhanced():
         
         # Use global timezone if not specified
         if not user_timezone:
-            user_timezone = global_timezone_config.get_global_timezone()
+            user_timezone = "Asia/Ho_Chi_Minh"
         
         # Execute enhanced timezone-aware query
         result = enhanced_timezone_query.query_events_timezone_aware(
@@ -688,28 +681,28 @@ def query_events_enhanced():
 def get_timezone_info():
     """Get current timezone configuration for query interface."""
     try:
-        # Get global timezone info
-        global_tz_info = global_timezone_config.get_timezone_info()
-        
-        # Get timezone manager info
-        tz_manager_info = {
-            'user_timezone': timezone_manager.get_user_timezone_name(),
-            'timezone_object_available': True
-        }
+        # Get timezone info using simple implementation
+        current_tz_name = "Asia/Ho_Chi_Minh"
+        current_tz = ZoneInfo(current_tz_name)
+        now = datetime.now(current_tz)
+        utc_offset_hours = now.utcoffset().total_seconds() / 3600
         
         # Get available timezones for UI
-        common_timezones = timezone_manager.get_common_timezones()
+        common_timezones = get_available_timezones()
         
         response_data = {
             'current_timezone': {
-                'iana_name': global_tz_info.timezone_iana,
-                'display_name': global_tz_info.timezone_display,
-                'utc_offset_hours': global_tz_info.utc_offset_hours,
-                'is_validated': global_tz_info.is_validated,
-                'source': global_tz_info.source
+                'iana_name': current_tz_name,
+                'display_name': current_tz_name,
+                'utc_offset_hours': utc_offset_hours,
+                'is_validated': True,
+                'source': 'hardcoded_default'
             },
-            'timezone_manager': tz_manager_info,
-            'available_timezones': common_timezones,
+            'zoneinfo': {
+                'user_timezone': current_tz_name,
+                'using_standard_library': True
+            },
+            'available_timezones': common_timezones[:50],  # Limit for UI performance
             'query_capabilities': {
                 'timezone_aware_filtering': True,
                 'automatic_utc_conversion': True,

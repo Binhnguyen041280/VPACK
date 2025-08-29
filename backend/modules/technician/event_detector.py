@@ -6,8 +6,8 @@ from datetime import datetime, timezone, timedelta
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import db_rwlock
 from modules.config.logging_config import get_logger
-from modules.utils.timezone_manager import timezone_manager
-from modules.utils.video_timezone_detector import get_timezone_aware_creation_time
+from zoneinfo import ZoneInfo
+# Removed video_timezone_detector - using simple timezone operations
 
 
 # Định nghĩa BASE_DIR
@@ -54,11 +54,8 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
         # Parse start_time with timezone awareness
         start_time_dt = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
         # Assume start_time_str is in local timezone from video metadata
-        user_timezone = timezone_manager.get_user_timezone()
-        if hasattr(user_timezone, 'localize'):
-            start_time_dt = user_timezone.localize(start_time_dt)
-        else:
-            start_time_dt = start_time_dt.replace(tzinfo=user_timezone)
+        user_timezone = ZoneInfo("Asia/Ho_Chi_Minh")
+        start_time_dt = start_time_dt.replace(tzinfo=user_timezone)
         # Convert to UTC for consistent storage
         start_time_dt_utc = start_time_dt.astimezone(timezone.utc)
         logging.info(f"Parsed header - Start: {start_time}, End: {end_time}, Start_Time: {start_time_str} (UTC: {start_time_dt_utc}), Camera_Name: {camera_name}, Video_File: {video_path}")

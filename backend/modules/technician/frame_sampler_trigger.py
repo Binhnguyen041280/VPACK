@@ -9,8 +9,8 @@ import numpy as np
 from datetime import datetime, timezone, timedelta
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import frame_sampler_event, db_rwlock
-from modules.utils.timezone_manager import timezone_manager
-from modules.utils.video_timezone_detector import video_timezone_detector, get_timezone_aware_creation_time
+from zoneinfo import ZoneInfo
+# Removed video_timezone_detector - using simple timezone operations
 import math
 from modules.config.logging_config import get_logger
 
@@ -59,9 +59,9 @@ class FrameSamplerTrigger:
                 self.output_path = result[0] if result else os.path.join(BASE_DIR, "output_clips")
                 self.log_dir = os.path.join(self.output_path, "LOG", "Frame")
                 os.makedirs(self.log_dir, exist_ok=True)
-                # Use TimezoneManager for user timezone instead of hardcoded parsing
-                self.video_timezone = timezone_manager.get_user_timezone()
-                logging.info(f"Using user timezone: {timezone_manager.get_user_timezone_name()}")
+                # Use zoneinfo for user timezone instead of hardcoded parsing
+                self.video_timezone = ZoneInfo("Asia/Ho_Chi_Minh")
+                logging.info(f"Using user timezone: Asia/Ho_Chi_Minh")
                 cursor.execute("SELECT frame_rate, frame_interval, min_packing_time FROM processing_config WHERE id = 1")
                 result = cursor.fetchone()
                 self.fps, self.frame_interval, self.min_packing_time = result if result else (30, 5, 5)
@@ -166,12 +166,16 @@ class FrameSamplerTrigger:
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
                         # Let the timezone detector get camera-specific timezone settings
-                        camera_timezone = video_timezone_detector.set_camera_timezone_from_db(camera_name, conn, cursor)
+                        # Using standard timezone - all cameras use Vietnam timezone
+                        camera_timezone = ZoneInfo('Asia/Ho_Chi_Minh')
                         if camera_timezone:
                             logging.info(f"Found camera-specific timezone for {camera_name}: {camera_timezone}")
             
             # Use enhanced timezone detection with camera context
-            timezone_aware_time = get_timezone_aware_creation_time(video_file, camera_name)
+            # Simple timezone-aware creation time using file system timestamp
+            import os
+            file_timestamp = os.path.getctime(video_file)
+            timezone_aware_time = datetime.fromtimestamp(file_timestamp, tz=ZoneInfo('Asia/Ho_Chi_Minh'))
             logging.info(f"Video start time with timezone detection: {timezone_aware_time}")
             return timezone_aware_time
             
@@ -187,12 +191,12 @@ class FrameSamplerTrigger:
                 try:
                     result = subprocess.check_output(['exiftool', '-CreateDate', '-d', '%Y-%m-%d %H:%M:%S', video_file])
                     naive_time = datetime.strptime(result.decode().split('CreateDate')[1].strip().split('\n')[0].strip(), '%Y-%m-%d %H:%M:%S')
-                    return self.video_timezone.localize(naive_time) if hasattr(self.video_timezone, 'localize') else naive_time.replace(tzinfo=self.video_timezone)
+                    return naive_time.replace(tzinfo=self.video_timezone)
                 except (subprocess.CalledProcessError, IndexError):
                     try:
                         result = subprocess.check_output(['exiftool', '-FileCreateDate', '-d', '%Y-%m-%d %H:%M:%S', video_file])
                         naive_time = datetime.strptime(result.decode().split('FileCreateDate')[1].strip().split('\n')[0].strip(), '%Y-%m-%d %H:%M:%S')
-                        return self.video_timezone.localize(naive_time) if hasattr(self.video_timezone, 'localize') else naive_time.replace(tzinfo=self.video_timezone)
+                        return naive_time.replace(tzinfo=self.video_timezone)
                     except (subprocess.CalledProcessError, IndexError):
                         logging.warning("No metadata found, using file creation time.")
                         return datetime.fromtimestamp(os.path.getctime(video_file), tz=self.video_timezone)

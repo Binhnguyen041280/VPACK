@@ -27,7 +27,7 @@ import json
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import db_rwlock
 from modules.config.logging_config import get_logger
-from modules.utils.timezone_manager import timezone_manager
+from zoneinfo import ZoneInfo
 
 logger = get_logger(__name__)
 
@@ -138,7 +138,7 @@ def create_timezone_metadata_table() -> bool:
                 count = cursor.fetchone()[0]
                 
                 if count == 0:
-                    user_timezone_name = timezone_manager.get_user_timezone_name()
+                    user_timezone_name = "Asia/Ho_Chi_Minh"
                     current_utc_timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
                     
                     cursor.execute('''
@@ -212,8 +212,8 @@ def migrate_existing_events() -> bool:
                 logger.info(f"Migrating {len(events)} events to timezone-aware format")
                 
                 # Get current user timezone for migration
-                user_timezone = timezone_manager.get_user_timezone()
-                user_timezone_name = timezone_manager.get_user_timezone_name()
+                user_timezone = ZoneInfo("Asia/Ho_Chi_Minh")
+                user_timezone_name = "Asia/Ho_Chi_Minh"
                 
                 # Calculate timezone offset
                 now = datetime.now(user_timezone)
