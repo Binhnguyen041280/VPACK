@@ -513,7 +513,9 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   return (
     <Box
       w="100%"
+      maxW="100%"
       minH="fit-content"
+      overflow="hidden"
     >
       {/* Header */}
       <Text fontSize={adaptiveConfig.fontSize.header} fontWeight="700" color={textColor} mb={adaptiveConfig.spacing.section}>
@@ -554,7 +556,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
         </Box>
       )}
 
-      <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
+      <VStack spacing={adaptiveConfig.spacing.item} align="stretch" maxW="100%">
         {/* Source Type Selection */}
         <Box>
           <HStack justify="space-between" align="center" mb="8px">
@@ -570,7 +572,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
           <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} mb="12px">
             📁 Choose where your video files are located for processing
           </Text>
-          <SimpleGrid columns={2} spacing="12px">
+          <SimpleGrid columns={2} spacing="12px" maxW="100%">
             <Box 
               bg={cardBg} 
               p="16px" 
@@ -622,8 +624,8 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
             <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="8px">
               📂 Video Input Directory
             </Text>
-            <Box bg={cardBg} p="16px" borderRadius="12px">
-              <VStack spacing="8px" align="stretch" mb="12px">
+            <Box bg={cardBg} p="16px" borderRadius="12px" maxW="100%" overflow="hidden">
+              <VStack spacing="8px" align="stretch" mb="12px" maxW="100%">
                 <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
                   📝 Choose where your input videos are stored for processing
                 </Text>
@@ -639,6 +641,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 _focus={{ borderColor: currentColors.brand500 }}
                 bg={bgColor}
                 mb="12px"
+                maxW="100%"
                 onFocus={(e) => {
                   e.target.select(); // Select all text for easy replacement
                 }}
@@ -646,7 +649,16 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                   setInputPath(e.target.value);
                 }}
               />
-              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+              <Text 
+                fontSize={adaptiveConfig.fontSize.small} 
+                color={secondaryText}
+                maxW="400px"
+                overflow="hidden"
+                textOverflow="ellipsis"
+                whiteSpace="nowrap"
+                textAlign="right"
+                title={inputPath || 'No path specified'}
+              >
                 📋 Input folder: {inputPath || 'No path specified'}
               </Text>
               
@@ -1055,7 +1067,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
           <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
             ⚙️ Camera Settings
           </Text>
-          <SimpleGrid columns={2} spacing="12px">
+          <SimpleGrid columns={2} spacing="12px" maxW="100%">
             <Box bg={cardBg} p="16px" borderRadius="12px">
               <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} mb="8px">
                 Resolution:

@@ -561,8 +561,8 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
             <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="8px">
               📂 Sample Video for Traditional Detection Setup
             </Text>
-            <Box bg={cardBg} p="16px" borderRadius="12px" border="2px solid" borderColor="orange.300">
-              <VStack spacing="8px" align="stretch" mb="12px">
+            <Box bg={cardBg} p="16px" borderRadius="12px" border="2px solid" borderColor="orange.300" maxW="100%" overflow="hidden">
+              <VStack spacing="8px" align="stretch" mb="12px" maxW="100%">
                 <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
                   📝 Choose where your traditional packing videos are stored for processing
                 </Text>
@@ -601,7 +601,16 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                   });
                 }}
               />
-              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+              <Text 
+                fontSize={adaptiveConfig.fontSize.small} 
+                color={secondaryText}
+                maxW="400px"
+                overflow="hidden"
+                textOverflow="ellipsis"
+                whiteSpace="nowrap"
+                textAlign="right"
+                title={traditionalInputPath || 'No path specified'}
+              >
                 📋 Traditional training video path: {traditionalInputPath || 'No path specified'}
               </Text>
               
@@ -812,8 +821,8 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
             <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="8px">
               📂 Sample Video for QR Detection Setup
             </Text>
-            <Box bg={cardBg} p="16px" borderRadius="12px" border="2px solid" borderColor="blue.300">
-              <VStack spacing="8px" align="stretch" mb="12px">
+            <Box bg={cardBg} p="16px" borderRadius="12px" border="2px solid" borderColor="blue.300" maxW="100%" overflow="hidden">
+              <VStack spacing="8px" align="stretch" mb="12px" maxW="100%">
                 <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
                   📝 Choose where your QR code packing videos are stored for processing
                 </Text>
@@ -852,7 +861,16 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                   });
                 }}
               />
-              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+              <Text 
+                fontSize={adaptiveConfig.fontSize.small} 
+                color={secondaryText}
+                maxW="400px"
+                overflow="hidden"
+                textOverflow="ellipsis"
+                whiteSpace="nowrap"
+                textAlign="right"
+                title={qrInputPath || 'No path specified'}
+              >
                 📋 QR training video path: {qrInputPath || 'No path specified'}
               </Text>
               

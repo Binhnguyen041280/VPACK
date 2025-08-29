@@ -94,21 +94,23 @@ function TimingCanvas({ adaptiveConfig, onStepChange, timingStorageData, timingS
   return (
     <Box
       w="100%"
+      maxW="100%"
       minH="fit-content"
+      overflow="hidden"
     >
       {/* Header */}
       <Text fontSize={adaptiveConfig.fontSize.header} fontWeight="700" color={textColor} mb={adaptiveConfig.spacing.section}>
         ⏱️ Step 5: Timing & File Storage
       </Text>
 
-      <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
+      <VStack spacing={adaptiveConfig.spacing.item} align="stretch" maxW="100%">
         {/* Storage Path Section */}
         <Box>
           <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
             💾 Video Output Directory
           </Text>
-          <Box bg={cardBg} p="16px" borderRadius="12px">
-            <VStack spacing="8px" align="stretch" mb="12px">
+          <Box bg={cardBg} p="16px" borderRadius="12px" maxW="100%" overflow="hidden">
+            <VStack spacing="8px" align="stretch" mb="12px" maxW="100%">
               <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
                 📝 Choose where to save processed videos and detection results
               </Text>
@@ -124,13 +126,23 @@ function TimingCanvas({ adaptiveConfig, onStepChange, timingStorageData, timingS
               _focus={{ borderColor: currentColors.brand500 }}
               bg={bgColor}
               mb="12px"
+              maxW="100%"
               onChange={(e) => handleFieldChange('output_path', e.target.value)}
               onFocus={(e) => {
                 e.target.select(); // Select all text for easy replacement
               }}
             />
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              📋 Output folder: {currentData.output_path}
+            <Text 
+              fontSize={adaptiveConfig.fontSize.small} 
+              color={secondaryText}
+              maxW="400px"
+              overflow="hidden"
+              textOverflow="ellipsis"
+              whiteSpace="nowrap"
+              textAlign="right"
+              title={currentData.output_path || 'No path specified'}
+            >
+              📋 Output folder: {currentData.output_path || 'No path specified'}
             </Text>
           </Box>
         </Box>
@@ -191,7 +203,7 @@ function TimingCanvas({ adaptiveConfig, onStepChange, timingStorageData, timingS
           <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
             ⏰ Packing Time Limits
           </Text>
-          <SimpleGrid columns={2} spacing="12px">
+          <SimpleGrid columns={2} spacing="12px" maxW="100%">
             <Box bg={cardBg} p="16px" borderRadius="12px">
               <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} mb="8px">
                 Min Packing Time:
@@ -241,7 +253,7 @@ function TimingCanvas({ adaptiveConfig, onStepChange, timingStorageData, timingS
           <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
             ⚡ Performance Settings
           </Text>
-          <SimpleGrid columns={2} spacing="12px">
+          <SimpleGrid columns={2} spacing="12px" maxW="100%">
             <Box bg={cardBg} p="16px" borderRadius="12px">
               <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} mb="8px">
                 Frame Rate:

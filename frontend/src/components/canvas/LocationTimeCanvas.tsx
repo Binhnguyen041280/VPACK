@@ -176,6 +176,7 @@ export default function LocationTimeCanvas({
           <SimpleGrid 
             columns={adaptiveConfig.mode === 'compact' ? 1 : { base: 1, md: 3 }} 
             spacing={adaptiveConfig.spacing.item}
+            maxW="100%"
           >
             {/* Country - Essential */}
             <VStack align="stretch" spacing="6px">
@@ -291,7 +292,7 @@ export default function LocationTimeCanvas({
             <Text fontSize="sm" fontWeight="500" color={labelColor}>
               Days:
             </Text>
-            <SimpleGrid columns={{ base: 4, md: 7 }} spacing="8px">
+            <SimpleGrid columns={{ base: 4, md: 7 }} spacing="8px" maxW="100%">
               {dayLabels.map(({ key, label }) => (
                 <Checkbox
                   key={key}
