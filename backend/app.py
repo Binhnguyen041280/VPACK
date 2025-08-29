@@ -34,6 +34,7 @@ from blueprints.cutter_bp import cutter_bp
 from blueprints.hand_detection_bp import hand_detection_bp
 from blueprints.qr_detection_bp import qr_detection_bp
 from blueprints.roi_bp import roi_bp
+from modules.config.routes.steps.step4_roi_routes import step4_roi_bp
 from modules.sources.cloud_endpoints import cloud_bp
 from modules.sources.cloud_lazy_folder_routes import lazy_folder_bp
 from modules.sources.sync_endpoints import sync_bp
@@ -244,6 +245,7 @@ logger.info("🔑 Session configuration applied")
 # Core modules
 #app.register_blueprint(program_bp)
 app.register_blueprint(config_bp, url_prefix='/api/config')
+app.register_blueprint(step4_roi_bp)  # ROI configuration endpoints
 app.register_blueprint(query_bp)
 app.register_blueprint(cutter_bp)
 app.register_blueprint(hand_detection_bp)

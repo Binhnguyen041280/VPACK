@@ -15,12 +15,15 @@ import {
   ModalContent,
   ModalBody,
   ModalCloseButton,
-  Tooltip
+  Tooltip,
+  Badge,
+  Spinner
 } from '@chakra-ui/react';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
 import { useState, useEffect } from 'react';
 import React from 'react';
 import { stepConfigService, VideoValidationResponse } from '@/services/stepConfigService';
+import ROIConfigModal from '@/components/roi/ROIConfigModal';
 
 // Height breakpoints for adaptive behavior
 type HeightMode = 'compact' | 'normal' | 'spacious';
@@ -92,6 +95,10 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   const [configuringCameraId, setConfiguringCameraId] = useState<string | null>(null);
   const [camerasDisabled, setCamerasDisabled] = useState(false);
   
+  // ROI configuration modal state
+  const [showROIModal, setShowROIModal] = useState(false);
+  const [roiVideoPath, setROIVideoPath] = useState<string>('');
+  
   // Helper function to check if a camera is currently being configured
   const isCameraConfiguring = (cameraId: string): boolean => {
     return configuringCameraId === cameraId;
@@ -119,6 +126,64 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
     setCamerasDisabled(false);
     setShowCameraPopup(false);
     setSelectedCameraForConfig(null);
+  };
+  
+  // ROI configuration handlers
+  const handleDefineDetectionZone = () => {
+    if (!selectedPackingMethod) {
+      console.warn('No packing method selected');
+      return;
+    }
+    
+    // Get the appropriate video path based on selected method
+    const videoPath = selectedPackingMethod === 'traditional' ? traditionalInputPath : qrInputPath;
+    
+    if (!videoPath || videoPath === getDefaultInputPath()) {
+      console.warn('No valid video path selected');
+      return;
+    }
+    
+    // Get validation result to check if video is valid
+    const validation = selectedPackingMethod === 'traditional' ? traditionalValidation : qrValidation;
+    
+    if (!validation?.success || !validation.video_file?.valid) {
+      console.warn('Video validation failed or not completed');
+      return;
+    }
+    
+    console.log('🎯 Opening ROI configuration modal', {
+      cameraId: configuringCameraId,
+      videoPath,
+      packingMethod: selectedPackingMethod
+    });
+    
+    setROIVideoPath(videoPath);
+    setShowROIModal(true);
+  };
+  
+  const handleROIModalClose = () => {
+    console.log('🔒 Closing ROI configuration modal');
+    setShowROIModal(false);
+    setROIVideoPath('');
+  };
+  
+  const handleROIConfigSave = (config: any) => {
+    console.log('💾 ROI configuration saved:', config);
+    
+    // Update parent component with configuration first
+    onStepChange?.('packing_area', {
+      selectedCameras,
+      packingMethod: selectedPackingMethod,
+      roiConfiguration: config,
+      configuredCamera: configuringCameraId
+    });
+    
+    // Complete the camera configuration workflow (reset states)
+    completeCameraConfiguration();
+  };
+  
+  const handleROIConfigError = (error: string) => {
+    console.error('❌ ROI configuration error:', error);
   };
   
   // Load camera data from processing_config table on component mount
@@ -216,7 +281,7 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   // Debounced validation function
   const debounceRef = React.useRef<NodeJS.Timeout | null>(null);
 
-  // Video validation function
+  // Video validation function with auto-open modal
   const validateVideo = async (filePath: string, videoType: 'traditional' | 'qr') => {
     if (!filePath || filePath.trim() === '' || filePath === getDefaultInputPath()) {
       // Clear validation state for empty paths
@@ -247,6 +312,36 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
       } else {
         setQrValidation(result);
       }
+
+      // 🎯 AUTO OPEN ROI MODAL: If validation successful, auto-open modal after 1 second
+      console.log('🔍 Auto-open modal check:', {
+        result_success: result.success,
+        video_file_valid: result.video_file?.valid,
+        configuringCameraId: configuringCameraId,
+        selectedPackingMethod: selectedPackingMethod,
+        videoType: videoType,
+        condition_match: selectedPackingMethod === videoType
+      });
+      
+      if (result.success && result.video_file?.valid && configuringCameraId && selectedPackingMethod === videoType) {
+        console.log(`🚀 Auto-opening ROI modal in 1s for ${videoType} video`);
+        console.log('🎯 Modal will open with:', { filePath, configuringCameraId, selectedPackingMethod });
+        setTimeout(() => {
+          console.log(`🎯 Opening ROI configuration modal automatically`);
+          setROIVideoPath(filePath);
+          setShowROIModal(true);
+        }, 1000);
+      } else {
+        console.warn('❌ Auto-open modal conditions not met:', {
+          success: result.success,
+          valid: result.video_file?.valid,
+          cameraId: configuringCameraId,
+          method: selectedPackingMethod,
+          type: videoType,
+          methodMatch: selectedPackingMethod === videoType
+        });
+      }
+
     } catch (error) {
       console.error(`❌ Error validating ${videoType} video:`, error);
       
@@ -880,59 +975,93 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
           </Box>
         )}
 
-        {/* Detection Zone Preview */}
-        <Box>
-          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
-            🎯 Detection Zones
-          </Text>
-          <Box 
-            bg={cardBg} 
-            p="16px" 
-            borderRadius="12px"
-            border="2px dashed" 
-            borderColor={currentColors.brand500}
-            minH="200px"
-            position="relative"
-            display="flex"
-            alignItems="center"
-            justifyContent="center"
-          >
-            <Box textAlign="center">
-              <Text fontSize={adaptiveConfig.fontSize.header} mb="8px">📹</Text>
-              <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText} mb="12px">
-                Camera preview area
-              </Text>
-              <Button 
-                size="sm" 
-                colorScheme="brand" 
-                variant="outline"
-                onClick={() => onStepChange?.('packing_area', { defineZone: true })}
-              >
-                Define Detection Zone
-              </Button>
-            </Box>
-            
-            {/* Sample ROI Box */}
-            <Box
-              position="absolute"
-              top="40px"
-              left="40px"
-              w="120px"
-              h="80px"
-              border="2px solid"
+        {/* ROI Configuration Status */}
+        {configuringCameraId && selectedPackingMethod && (
+          <Box>
+            <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
+              🎯 ROI Configuration Status
+            </Text>
+            <Box 
+              bg={cardBg} 
+              p="16px" 
+              borderRadius="12px"
+              border="2px solid" 
               borderColor={currentColors.brand500}
-              bg={`${currentColors.brand500}20`}
-              borderRadius="8px"
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
+              minH="150px"
             >
-              <Text fontSize={adaptiveConfig.fontSize.small} color={currentColors.brand500} fontWeight="bold">
-                Zone 1
-              </Text>
+              <VStack spacing="12px" align="stretch">
+                <HStack justify="space-between">
+                  <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor}>
+                    Camera: {availableCameras.find(c => c.id === configuringCameraId)?.name}
+                  </Text>
+                  <Badge colorScheme="blue">
+                    {selectedPackingMethod === 'traditional' ? 'Traditional' : 'QR Code'}
+                  </Badge>
+                </HStack>
+                
+                {/* Video Path Status */}
+                <Box>
+                  <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} mb="4px">
+                    Training Video Status:
+                  </Text>
+                  {(() => {
+                    const validation = selectedPackingMethod === 'traditional' ? traditionalValidation : qrValidation;
+                    const isValidating = selectedPackingMethod === 'traditional' ? traditionalValidating : qrValidating;
+                    
+                    if (isValidating) {
+                      return (
+                        <HStack spacing="8px">
+                          <Spinner size="sm" color="blue.500" />
+                          <Text fontSize="sm" color="blue.500">Validating video...</Text>
+                        </HStack>
+                      );
+                    }
+                    
+                    if (validation?.success && validation.video_file?.valid) {
+                      return (
+                        <VStack align="start" spacing="4px">
+                          <HStack spacing="8px">
+                            <Text fontSize="16px">✅</Text>
+                            <Text fontSize="sm" color="green.600" fontWeight="500">
+                              Video validated - Opening ROI modal in 1s...
+                            </Text>
+                          </HStack>
+                          <Text fontSize="xs" color="green.500">
+                            {validation.video_file.filename} • {validation.video_file.duration_formatted}
+                          </Text>
+                        </VStack>
+                      );
+                    }
+                    
+                    if (validation && !validation.success) {
+                      return (
+                        <HStack spacing="8px">
+                          <Text fontSize="16px">❌</Text>
+                          <Text fontSize="sm" color="red.600">
+                            {validation.error}
+                          </Text>
+                        </HStack>
+                      );
+                    }
+                    
+                    return (
+                      <Text fontSize="sm" color="orange.500">
+                        Please provide a valid training video path above
+                      </Text>
+                    );
+                  })()}
+                </Box>
+                
+                {/* Instructions */}
+                <Box>
+                  <Text fontSize={adaptiveConfig.fontSize.small} color="blue.600" fontStyle="italic">
+                    💡 Once video is validated, ROI configuration modal will open automatically
+                  </Text>
+                </Box>
+              </VStack>
             </Box>
           </Box>
-        </Box>
+        )}
 
         {/* Detection Stats */}
         <Box
@@ -986,8 +1115,9 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 _hover={{ transform: 'translateY(-2px)', boxShadow: 'lg' }}
                 transition="all 0.2s ease"
                 onClick={() => {
+                  console.log('🎯 Traditional method selected');
                   setSelectedPackingMethod('traditional');
-                  completeCameraConfiguration(); // Complete configuration and re-enable cameras
+                  setShowCameraPopup(false); // Close popup but keep configuringCameraId
                   onStepChange?.('packing_area', { 
                     packingMethod: 'traditional',
                     selectedCameras,
@@ -1043,8 +1173,9 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 transition="all 0.2s ease"
                 position="relative"
                 onClick={() => {
+                  console.log('🎯 QR method selected');
                   setSelectedPackingMethod('qr');
-                  completeCameraConfiguration(); // Complete configuration and re-enable cameras
+                  setShowCameraPopup(false); // Close popup but keep configuringCameraId
                   onStepChange?.('packing_area', { 
                     packingMethod: 'qr',
                     selectedCameras,
@@ -1174,6 +1305,26 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
           </ModalBody>
         </ModalContent>
       </Modal>
+
+      {/* ROI Configuration Modal */}
+      {console.log('🔍 ROI Modal render check:', {
+        showROIModal,
+        configuringCameraId,
+        selectedPackingMethod,
+        roiVideoPath,
+        shouldRender: showROIModal && configuringCameraId && selectedPackingMethod
+      })}
+      {showROIModal && configuringCameraId && selectedPackingMethod && (
+        <ROIConfigModal
+          isOpen={showROIModal}
+          onClose={handleROIModalClose}
+          videoPath={roiVideoPath}
+          cameraId={configuringCameraId}
+          packingMethod={selectedPackingMethod}
+          onSave={handleROIConfigSave}
+          onError={handleROIConfigError}
+        />
+      )}
 
     </Box>
   );
