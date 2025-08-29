@@ -14,7 +14,8 @@ import {
   ModalOverlay,
   ModalContent,
   ModalBody,
-  ModalCloseButton
+  ModalCloseButton,
+  Tooltip
 } from '@chakra-ui/react';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
 import { useState, useEffect } from 'react';
@@ -601,7 +602,7 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 }}
               />
               <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-                📋 Traditional video folder: {traditionalInputPath}
+                📋 Traditional training video path: {traditionalInputPath || 'No path specified'}
               </Text>
               
               {/* Validation Result */}
@@ -852,7 +853,7 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 }}
               />
               <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-                📋 QR video folder: {qrInputPath}
+                📋 QR training video path: {qrInputPath || 'No path specified'}
               </Text>
               
               {/* Validation Result */}
