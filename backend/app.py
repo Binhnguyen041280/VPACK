@@ -34,6 +34,7 @@ from blueprints.cutter_bp import cutter_bp
 from blueprints.hand_detection_bp import hand_detection_bp
 from blueprints.qr_detection_bp import qr_detection_bp
 from blueprints.roi_bp import roi_bp
+from blueprints.analysis_streaming_bp import analysis_streaming_bp
 from modules.config.routes.steps.step4_roi_routes import step4_roi_bp
 from modules.sources.cloud_endpoints import cloud_bp
 from modules.sources.cloud_lazy_folder_routes import lazy_folder_bp
@@ -251,6 +252,7 @@ app.register_blueprint(cutter_bp)
 app.register_blueprint(hand_detection_bp)
 app.register_blueprint(qr_detection_bp)
 app.register_blueprint(roi_bp)
+app.register_blueprint(analysis_streaming_bp, url_prefix='/api/analysis-streaming')
 
 # Cloud and sync modules
 try:

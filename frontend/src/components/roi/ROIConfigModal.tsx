@@ -36,6 +36,7 @@ import {
 import { FaTrash, FaEdit, FaCheck, FaTimes, FaPlay, FaPause } from 'react-icons/fa';
 import VideoPlayer from './VideoPlayer';
 import CanvasOverlay, { ROIData } from './CanvasOverlay';
+import DualAnalysisCanvas from './DualAnalysisCanvas';
 // Generate unique IDs without external dependency
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -132,6 +133,8 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingROI, setEditingROI] = useState<{ id: string; label: string } | null>(null);
+  const [analysisSessionId, setAnalysisSessionId] = useState<string | null>(null);
+  const [showAnalysis, setShowAnalysis] = useState(false);
 
   // Toast for notifications
   const toast = useToast();
@@ -269,6 +272,116 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     setEditingROI(null);
   }, []);
 
+  // Start real-time analysis
+  const startAnalysis = useCallback(async () => {
+    if (!videoMetadata || rois.length === 0) {
+      toast({
+        title: 'Cannot Start Analysis',
+        description: 'Please configure ROI areas first',
+        status: 'warning',
+        duration: 3000
+      });
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      
+      // Prepare ROI data for analysis
+      const analysisROIs = rois.map(roi => ({
+        x: roi.x,
+        y: roi.y,
+        w: roi.w,
+        h: roi.h,
+        type: roi.type,
+        label: roi.label
+      }));
+
+      const analysisMethod = packingMethod === 'traditional' ? 'traditional' : 'qr_code';
+
+      const response = await fetch('/api/analysis-streaming/start-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_path: videoPath,
+          method: analysisMethod,
+          rois: analysisROIs
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setAnalysisSessionId(result.session_id);
+        setShowAnalysis(true);
+        
+        toast({
+          title: 'Analysis Started',
+          description: `Real-time ${packingMethod} analysis started`,
+          status: 'success',
+          duration: 3000
+        });
+      } else {
+        throw new Error(result.error || 'Failed to start analysis');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      toast({
+        title: 'Analysis Failed',
+        description: errorMessage,
+        status: 'error',
+        duration: 5000
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [videoMetadata, rois, packingMethod, videoPath, toast]);
+
+  // Stop analysis
+  const stopAnalysis = useCallback(async () => {
+    if (!analysisSessionId) return;
+
+    try {
+      await fetch(`/api/analysis-streaming/stop-analysis/${analysisSessionId}`, {
+        method: 'POST'
+      });
+      
+      setAnalysisSessionId(null);
+      setShowAnalysis(false);
+      
+      toast({
+        title: 'Analysis Stopped',
+        description: 'Real-time analysis stopped',
+        status: 'info',
+        duration: 3000
+      });
+    } catch (error) {
+      console.error('Error stopping analysis:', error);
+    }
+  }, [analysisSessionId, toast]);
+
+  // Handle analysis completion
+  const handleAnalysisComplete = useCallback((results: any) => {
+    setAnalysisSessionId(null);
+    
+    toast({
+      title: 'Analysis Complete',
+      description: 'Video analysis has been completed successfully',
+      status: 'success',
+      duration: 5000
+    });
+  }, [toast]);
+
+  // Handle analysis error
+  const handleAnalysisError = useCallback((errorMessage: string) => {
+    toast({
+      title: 'Analysis Error',
+      description: errorMessage,
+      status: 'error',
+      duration: 5000
+    });
+  }, [toast]);
+
   // Save configuration
   const handleSaveConfiguration = useCallback(async () => {
     if (!videoMetadata) {
@@ -396,8 +509,17 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       setCurrentStep(0);
       setError(null);
       setEditingROI(null);
+      setAnalysisSessionId(null);
+      setShowAnalysis(false);
+    } else {
+      // Clean up analysis session when modal closes
+      if (analysisSessionId) {
+        fetch(`/api/analysis-streaming/cleanup-session/${analysisSessionId}`, {
+          method: 'POST'
+        }).catch(console.error);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, analysisSessionId]);
 
   // Calculate overall progress
   const overallProgress = useMemo(() => {
@@ -685,6 +807,74 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                 Double-click an existing ROI to delete it. 
                 Use the controls below to navigate between configuration steps.
               </Text>
+
+              {/* Analysis Controls */}
+              {rois.length > 0 && videoMetadata && (
+                <HStack spacing="12px" mt="16px">
+                  {!showAnalysis ? (
+                    <Button
+                      colorScheme="green"
+                      size="sm"
+                      onClick={startAnalysis}
+                      isLoading={isLoading}
+                      leftIcon={<FaPlay />}
+                    >
+                      Start Real-time Analysis
+                    </Button>
+                  ) : (
+                    <>
+                      <Button
+                        colorScheme="red"
+                        size="sm"
+                        onClick={stopAnalysis}
+                        leftIcon={<FaPause />}
+                      >
+                        Stop Analysis
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => setShowAnalysis(false)}
+                        variant="outline"
+                      >
+                        Hide Analysis
+                      </Button>
+                    </>
+                  )}
+                  
+                  {analysisSessionId && !showAnalysis && (
+                    <Button
+                      colorScheme="blue"
+                      size="sm"
+                      onClick={() => setShowAnalysis(true)}
+                      leftIcon={<FaPlay />}
+                    >
+                      Show Analysis
+                    </Button>
+                  )}
+                </HStack>
+              )}
+
+              {/* Real-time Analysis Display */}
+              {showAnalysis && analysisSessionId && videoMetadata && (
+                <Box mt="20px" width={`${videoPlayerWidth}px`}>
+                  <DualAnalysisCanvas
+                    sessionId={analysisSessionId}
+                    method={packingMethod}
+                    rois={rois.map(roi => ({
+                      x: roi.x,
+                      y: roi.y,
+                      w: roi.w,
+                      h: roi.h,
+                      type: roi.type,
+                      label: roi.label
+                    }))}
+                    videoWidth={videoMetadata.resolution.width}
+                    videoHeight={videoMetadata.resolution.height}
+                    onAnalysisComplete={handleAnalysisComplete}
+                    onError={handleAnalysisError}
+                  />
+                </Box>
+              )}
 
             </Box>
 
