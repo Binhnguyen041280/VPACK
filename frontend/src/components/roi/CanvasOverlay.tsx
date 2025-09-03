@@ -43,6 +43,7 @@ interface CanvasOverlayProps {
   selectedROIId?: string | null;
   currentROIType?: ROIData['type'];
   currentROILabel?: string;
+  packingMethod?: 'traditional' | 'qr';
   disabled?: boolean;
   className?: string;
   minROISize?: number;
@@ -52,9 +53,9 @@ interface CanvasOverlayProps {
 
 // Default colors for different ROI types
 const ROI_TYPE_COLORS: Record<ROIData['type'], string> = {
-  packing_area: '#3182CE',    // Blue
-  qr_mvd: '#38A169',         // Green  
-  qr_trigger: '#D69E2E',     // Yellow
+  packing_area: '#38A169',   // Green (changed from yellow)
+  qr_mvd: '#3182CE',         // Blue  
+  qr_trigger: '#E53E3E',     // Red
   detection: '#9F7AEA'       // Purple
 };
 
@@ -71,6 +72,7 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
   selectedROIId,
   currentROIType = 'packing_area',
   currentROILabel = 'ROI',
+  packingMethod = 'traditional',
   disabled = false,
   className,
   minROISize = 20,
@@ -254,15 +256,57 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
     drawROIs();
   }, [drawROIs]);
 
-  // Find ROI at canvas coordinates
+  // Find ROI at canvas coordinates (prioritize smallest ROI if overlapping)
   const findROIAtPoint = useCallback((x: number, y: number): ROIData | null => {
-    for (let i = rois.length - 1; i >= 0; i--) {
+    const matchingROIs = [];
+    
+    for (let i = 0; i < rois.length; i++) {
       const roi = rois[i];
       const canvasPos = videoToCanvas(roi.x, roi.y);
       const canvasSize = videoToCanvas(roi.w, roi.h);
       
       if (x >= canvasPos.x && x <= canvasPos.x + canvasSize.x &&
           y >= canvasPos.y && y <= canvasPos.y + canvasSize.y) {
+        matchingROIs.push(roi);
+      }
+    }
+    
+    if (matchingROIs.length === 0) return null;
+    
+    // Return the smallest ROI (by area) if multiple matches
+    return matchingROIs.reduce((smallest, current) => {
+      const smallestArea = smallest.w * smallest.h;
+      const currentArea = current.w * current.h;
+      return currentArea < smallestArea ? current : smallest;
+    });
+  }, [rois, videoToCanvas]);
+
+  // Find ROI border at canvas coordinates (for dragging)
+  const findROIBorderAtPoint = useCallback((x: number, y: number): ROIData | null => {
+    const borderThickness = 8; // pixels
+    
+    for (let i = rois.length - 1; i >= 0; i--) {
+      const roi = rois[i];
+      const canvasPos = videoToCanvas(roi.x, roi.y);
+      const canvasSize = videoToCanvas(roi.w, roi.h);
+      
+      // Check if point is within the outer border area
+      const outerX1 = canvasPos.x - borderThickness;
+      const outerY1 = canvasPos.y - borderThickness;
+      const outerX2 = canvasPos.x + canvasSize.x + borderThickness;
+      const outerY2 = canvasPos.y + canvasSize.y + borderThickness;
+      
+      // Check if point is within the inner content area
+      const innerX1 = canvasPos.x + borderThickness;
+      const innerY1 = canvasPos.y + borderThickness;
+      const innerX2 = canvasPos.x + canvasSize.x - borderThickness;
+      const innerY2 = canvasPos.y + canvasSize.y - borderThickness;
+      
+      // Point is on border if it's in the outer area but not in the inner area
+      const inOuter = x >= outerX1 && x <= outerX2 && y >= outerY1 && y <= outerY2;
+      const inInner = x >= innerX1 && x <= innerX2 && y >= innerY1 && y <= innerY2;
+      
+      if (inOuter && !inInner) {
         return roi;
       }
     }
@@ -280,22 +324,29 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    // Check if clicking on existing ROI
-    const clickedROI = findROIAtPoint(x, y);
+    // Check if clicking on ROI border (for dragging)
+    const borderROI = findROIBorderAtPoint(x, y);
     
-    if (clickedROI) {
-      // Select existing ROI
-      onROISelect?.(clickedROI.id);
+    if (borderROI) {
+      // Select existing ROI and start drag operation
+      onROISelect?.(borderROI.id);
       
-      // Start drag operation
       setDragState({
         isDragging: true,
-        roiId: clickedROI.id,
+        roiId: borderROI.id,
         startX: x,
         startY: y,
-        originalROI: clickedROI
+        originalROI: borderROI
       });
       
+      return;
+    }
+
+    // Check if clicking inside an ROI (for selection only, no dragging)
+    const clickedROI = findROIAtPoint(x, y);
+    if (clickedROI) {
+      // Only select the ROI, don't start dragging
+      onROISelect?.(clickedROI.id);
       return;
     }
 
@@ -313,7 +364,7 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
       currentY: snappedY,
       previewROI: null
     });
-  }, [disabled, findROIAtPoint, onROISelect, snapToGrid]);
+  }, [disabled, findROIAtPoint, findROIBorderAtPoint, onROISelect, snapToGrid]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (disabled) return;
@@ -386,11 +437,19 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
     }
 
     // Handle hover effects
-    const hoveredROI = findROIAtPoint(x, y);
-    setHoveredROIId(hoveredROI?.id || null);
+    const borderROI = findROIBorderAtPoint(x, y);
+    const contentROI = findROIAtPoint(x, y);
     
-    // Update cursor
-    canvas.style.cursor = hoveredROI ? 'move' : 'crosshair';
+    setHoveredROIId(borderROI?.id || contentROI?.id || null);
+    
+    // Update cursor based on location
+    if (borderROI) {
+      canvas.style.cursor = 'move';
+    } else if (contentROI) {
+      canvas.style.cursor = 'pointer';
+    } else {
+      canvas.style.cursor = 'crosshair';
+    }
   }, [
     disabled,
     dragState,
@@ -403,7 +462,8 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
     minROISize,
     currentROIType,
     currentROILabel,
-    findROIAtPoint
+    findROIAtPoint,
+    findROIBorderAtPoint
   ]);
 
   const handleMouseUp = useCallback(() => {

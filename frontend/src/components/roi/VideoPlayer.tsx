@@ -20,8 +20,7 @@ import {
   useColorModeValue,
   Alert,
   AlertIcon,
-  Spinner,
-  Progress
+  Spinner
 } from '@chakra-ui/react';
 import { FaPlay, FaPause, FaStop, FaVolumeUp, FaVolumeMute, FaExpand } from 'react-icons/fa';
 
@@ -83,8 +82,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // State
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -92,7 +89,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isBuffering, setIsBuffering] = useState(false);
   const [videoMetadata, setVideoMetadata] = useState<VideoMetadata | null>(null);
-  const [loadProgress, setLoadProgress] = useState(0);
 
   // Theme colors
   const bgColor = useColorModeValue('white', 'gray.800');
@@ -100,14 +96,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const controlBg = useColorModeValue('gray.50', 'gray.700');
   const textColor = useColorModeValue('gray.800', 'white');
 
-  // Format time helper
-  const formatTime = useCallback((time: number): string => {
-    if (!isFinite(time) || time < 0) return '0:00';
-    
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  }, []);
 
   // Load video metadata from backend
   const loadVideoMetadata = useCallback(async () => {
@@ -147,8 +135,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const handleLoadedMetadata = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
-
-    setDuration(video.duration);
+    
     setIsLoading(false);
     setError(null);
 
@@ -159,13 +146,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     });
   }, []);
 
-  const handleTimeUpdate = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    setCurrentTime(video.currentTime);
-    onTimeUpdate?.(video.currentTime, video.duration);
-  }, [onTimeUpdate]);
 
   const handleLoadStart = useCallback(() => {
     setIsBuffering(true);
@@ -192,17 +172,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setIsBuffering(false);
   }, []);
 
-  const handleProgress = useCallback(() => {
-    const video = videoRef.current;
-    if (!video || video.buffered.length === 0) return;
-
-    const buffered = video.buffered.end(video.buffered.length - 1);
-    const duration = video.duration;
-    
-    if (duration > 0) {
-      setLoadProgress((buffered / duration) * 100);
-    }
-  }, []);
 
   const handleError = useCallback(() => {
     const video = videoRef.current;
@@ -219,19 +188,21 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, [onVideoError]);
 
   // Control handlers
-  const togglePlayPause = useCallback(() => {
+  const togglePlayPause = useCallback(async () => {
     const video = videoRef.current;
     if (!video) return;
 
-    if (isPlaying) {
-      video.pause();
-    } else {
-      video.play().catch((err) => {
-        console.error('Error playing video:', err);
-        setError('Failed to play video');
-      });
+    try {
+      if (video.paused) {
+        await video.play();
+      } else {
+        video.pause();
+      }
+    } catch (err) {
+      console.error('Error toggling playback:', err);
+      setError('Failed to control video playback');
     }
-  }, [isPlaying]);
+  }, []);
 
   const handleStop = useCallback(() => {
     const video = videoRef.current;
@@ -239,16 +210,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     video.pause();
     video.currentTime = 0;
-    setCurrentTime(0);
   }, []);
 
-  const handleSeek = useCallback((value: number) => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    video.currentTime = value;
-    setCurrentTime(value);
-  }, []);
 
   const handleVolumeChange = useCallback((value: number) => {
     const video = videoRef.current;
@@ -307,40 +270,43 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const video = videoRef.current;
     if (!video) return;
 
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
+    const handlePlay = () => {
+      console.log('Video play event');
+      setIsPlaying(true);
+    };
+    const handlePause = () => {
+      console.log('Video pause event');
+      setIsPlaying(false);
+    };
+    
+    // Sync initial state with video element
+    setIsPlaying(!video.paused);
 
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
-    video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('loadstart', handleLoadStart);
     video.addEventListener('canplay', handleCanPlay);
     video.addEventListener('waiting', handleWaiting);
     video.addEventListener('playing', handlePlaying);
-    video.addEventListener('progress', handleProgress);
     video.addEventListener('error', handleError);
 
     return () => {
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('loadstart', handleLoadStart);
       video.removeEventListener('canplay', handleCanPlay);
       video.removeEventListener('waiting', handleWaiting);
       video.removeEventListener('playing', handlePlaying);
-      video.removeEventListener('progress', handleProgress);
       video.removeEventListener('error', handleError);
     };
   }, [
     handleLoadedMetadata,
-    handleTimeUpdate,
     handleLoadStart,
     handleCanPlay,
     handleWaiting,
     handlePlaying,
-    handleProgress,
     handleError
   ]);
 
@@ -376,11 +342,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           <VStack align="start" flex="1">
             <Text fontWeight="bold">Video Error</Text>
             <Text fontSize="sm">{error}</Text>
-            {videoMetadata && (
-              <Text fontSize="xs" color="gray.600">
-                File: {videoMetadata.filename}
-              </Text>
-            )}
           </VStack>
         </Alert>
       </Box>
@@ -446,37 +407,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           borderTop="1px solid"
           borderColor={borderColor}
         >
-          <VStack spacing="12px">
-            {/* Progress Bar */}
-            <Box width="100%">
-              {/* Buffer Progress */}
-              <Progress
-                value={loadProgress}
-                size="sm"
-                colorScheme="gray"
-                bg="gray.200"
-                position="absolute"
-                width="100%"
-                borderRadius="2px"
-              />
-              
-              {/* Playback Progress */}
-              <Slider
-                value={currentTime}
-                max={duration || 100}
-                step={0.1}
-                onChange={handleSeek}
-                position="relative"
-                zIndex="2"
-              >
-                <SliderTrack bg="transparent">
-                  <SliderFilledTrack bg="blue.500" />
-                </SliderTrack>
-                <SliderThumb boxSize="12px" bg="blue.500" />
-              </Slider>
-            </Box>
-
-            {/* Control Buttons and Info */}
+            {/* Control Buttons */}
             <Flex justify="space-between" align="center" width="100%">
               {/* Left Side - Playback Controls */}
               <HStack spacing="8px">
@@ -526,11 +457,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </HStack>
               </HStack>
 
-              {/* Center - Time Display */}
-              <Text fontSize="sm" color={textColor} fontFamily="mono">
-                {formatTime(currentTime)} / {formatTime(duration)}
-              </Text>
-
               {/* Right Side - Speed and Fullscreen */}
               <HStack spacing="8px">
                 <Select
@@ -558,28 +484,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </Tooltip>
               </HStack>
             </Flex>
-          </VStack>
         </Box>
       )}
 
-      {/* Video Info Overlay (optional debug info) */}
-      {videoMetadata && process.env.NODE_ENV === 'development' && (
-        <Box
-          position="absolute"
-          top="8px"
-          right="8px"
-          bg="blackAlpha.700"
-          color="white"
-          p="4px 8px"
-          borderRadius="4px"
-          fontSize="xs"
-          fontFamily="mono"
-        >
-          <Text>{videoMetadata.resolution.width}x{videoMetadata.resolution.height}</Text>
-          <Text>{videoMetadata.fps.toFixed(1)} FPS</Text>
-          <Text>{videoMetadata.size_mb.toFixed(1)} MB</Text>
-        </Box>
-      )}
     </Box>
   );
 };

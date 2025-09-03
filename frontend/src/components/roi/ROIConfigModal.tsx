@@ -26,14 +26,13 @@ import {
   AlertTitle,
   AlertDescription,
   Spinner,
-  Progress,
   Badge,
   Divider,
   Tooltip,
   useColorModeValue,
   useToast
 } from '@chakra-ui/react';
-import { FaTrash, FaEdit, FaCheck, FaTimes, FaPlay, FaPause } from 'react-icons/fa';
+import { FaTrash, FaPlay, FaPause } from 'react-icons/fa';
 import VideoPlayer from './VideoPlayer';
 import CanvasOverlay, { ROIData } from './CanvasOverlay';
 import DualAnalysisCanvas from './DualAnalysisCanvas';
@@ -57,15 +56,6 @@ interface VideoMetadata {
   codec: string;
 }
 
-// Configuration step interface
-interface ConfigStep {
-  id: string;
-  title: string;
-  description: string;
-  roiType: ROIData['type'];
-  required: boolean;
-  completed: boolean;
-}
 
 // Component props interface
 interface ROIConfigModalProps {
@@ -84,36 +74,6 @@ interface ROIConfigModalProps {
   onError?: (error: string) => void;
 }
 
-// Configuration steps for different packing methods
-const TRADITIONAL_STEPS: ConfigStep[] = [
-  {
-    id: 'packing_area',
-    title: 'Packing Area',
-    description: 'Draw a rectangle around the main packing area where hand movements will be detected',
-    roiType: 'packing_area',
-    required: true,
-    completed: false
-  }
-];
-
-const QR_STEPS: ConfigStep[] = [
-  {
-    id: 'qr_mvd',
-    title: 'QR Movement Detection',
-    description: 'Draw a rectangle around the QR code area for movement detection',
-    roiType: 'qr_mvd',
-    required: true,
-    completed: false
-  },
-  {
-    id: 'qr_trigger',
-    title: 'QR Trigger Area',
-    description: 'Draw a rectangle around the QR trigger zone (optional for standard tables)',
-    roiType: 'qr_trigger',
-    required: false,
-    completed: false
-  }
-];
 
 const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
   isOpen,
@@ -128,11 +88,9 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
   const [videoMetadata, setVideoMetadata] = useState<VideoMetadata | null>(null);
   const [rois, setROIs] = useState<ROIData[]>([]);
   const [selectedROIId, setSelectedROIId] = useState<string | null>(null);
-  const [currentStep, setCurrentStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [editingROI, setEditingROI] = useState<{ id: string; label: string } | null>(null);
   const [analysisSessionId, setAnalysisSessionId] = useState<string | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
 
@@ -146,21 +104,11 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
   const textColor = useColorModeValue('gray.800', 'white');
   const secondaryText = useColorModeValue('gray.600', 'gray.400');
 
-  // Configuration steps based on packing method
-  const configSteps = useMemo(() => {
-    const steps = packingMethod === 'traditional' ? TRADITIONAL_STEPS : QR_STEPS;
-    return steps.map(step => ({
-      ...step,
-      completed: rois.some(roi => roi.type === step.roiType && roi.completed)
-    }));
-  }, [packingMethod, rois]);
 
-  // Current step configuration
-  const currentStepConfig = configSteps[currentStep] || configSteps[0];
 
   // Video player dimensions (maintain aspect ratio)
-  const videoPlayerWidth = 800;
-  const videoPlayerHeight = 450;
+  const videoPlayerWidth = 960;
+  const videoPlayerHeight = 540;
 
   // Handle video metadata loaded
   const handleMetadataLoaded = useCallback((metadata: VideoMetadata) => {
@@ -178,11 +126,60 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
 
   // Handle ROI creation
   const handleROICreate = useCallback((roiData: Omit<ROIData, 'id'>) => {
+    // Determine ROI type and label based on packing method
+    const getROITypeAndLabel = () => {
+      if (packingMethod === 'traditional') {
+        // Check if packing area already exists
+        const existingPackingArea = rois.some(roi => roi.type === 'packing_area');
+        if (existingPackingArea) {
+          toast({
+            title: 'Cannot Create ROI',
+            description: 'Only one Packing Area is allowed in Traditional mode',
+            status: 'warning',
+            duration: 4000,
+            isClosable: true
+          });
+          return null;
+        }
+        return { type: 'packing_area', label: 'Packing Area' };
+      } else {
+        // For QR method, allow 2 specific areas: Trigger first, then Packing
+        const existingTriggerArea = rois.some(roi => roi.type === 'qr_trigger');
+        const existingPackingArea = rois.some(roi => roi.type === 'packing_area');
+        
+        // If both areas already exist, prevent creation
+        if (existingTriggerArea && existingPackingArea) {
+          toast({
+            title: 'Cannot Create ROI',
+            description: 'Maximum of 2 areas allowed: Trigger Area and Packing Area',
+            status: 'warning',
+            duration: 4000,
+            isClosable: true
+          });
+          return null;
+        }
+        
+        // Create Trigger area first, then Packing area
+        if (!existingTriggerArea) {
+          return { type: 'qr_trigger', label: 'Trigger Area' };
+        } else {
+          return { type: 'packing_area', label: 'Packing Area' };
+        }
+      }
+    };
+
+    const roiTypeAndLabel = getROITypeAndLabel();
+    if (!roiTypeAndLabel) {
+      return; // Early return if ROI creation is not allowed
+    }
+
+    const { type, label } = roiTypeAndLabel;
+    
     const newROI: ROIData = {
       ...roiData,
       id: generateId(),
-      type: currentStepConfig.roiType,
-      label: `${currentStepConfig.title} ${rois.filter(r => r.type === currentStepConfig.roiType).length + 1}`,
+      type: type as any,
+      label: label,
       color: roiData.color
     };
 
@@ -198,7 +195,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     });
 
     console.log('ROI created:', newROI);
-  }, [currentStepConfig, rois, toast]);
+  }, [packingMethod, rois, toast]);
 
   // Handle ROI update
   const handleROIUpdate = useCallback((id: string, updates: Partial<ROIData>) => {
@@ -235,42 +232,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     console.log('ROI selected:', id);
   }, []);
 
-  // Handle step navigation
-  const handleNextStep = useCallback(() => {
-    if (currentStep < configSteps.length - 1) {
-      setCurrentStep(prev => prev + 1);
-    }
-  }, [currentStep, configSteps.length]);
 
-  const handlePrevStep = useCallback(() => {
-    if (currentStep > 0) {
-      setCurrentStep(prev => prev - 1);
-    }
-  }, [currentStep]);
-
-  // Handle ROI label editing
-  const handleStartEditLabel = useCallback((roi: ROIData) => {
-    setEditingROI({ id: roi.id, label: roi.label });
-  }, []);
-
-  const handleSaveLabel = useCallback(() => {
-    if (!editingROI) return;
-
-    handleROIUpdate(editingROI.id, { label: editingROI.label });
-    setEditingROI(null);
-
-    toast({
-      title: 'Label Updated',
-      description: 'ROI label has been updated',
-      status: 'success',
-      duration: 2000,
-      isClosable: true
-    });
-  }, [editingROI, handleROIUpdate, toast]);
-
-  const handleCancelEdit = useCallback(() => {
-    setEditingROI(null);
-  }, []);
 
   // Start real-time analysis
   const startAnalysis = useCallback(async () => {
@@ -390,12 +352,25 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     }
 
     // Validate required ROIs
-    const requiredSteps = configSteps.filter(step => step.required);
-    const missingSteps = requiredSteps.filter(step => !step.completed);
-
-    if (missingSteps.length > 0) {
-      setError(`Please complete required steps: ${missingSteps.map(s => s.title).join(', ')}`);
-      return;
+    if (packingMethod === 'traditional') {
+      const hasPackingArea = rois.some(roi => roi.type === 'packing_area');
+      if (!hasPackingArea) {
+        setError('Please draw a Packing Area ROI');
+        return;
+      }
+    } else {
+      // QR mode requires both Trigger Area and Packing Area (in this order)
+      const hasTriggerArea = rois.some(roi => roi.type === 'qr_trigger');
+      const hasPackingArea = rois.some(roi => roi.type === 'packing_area');
+      
+      if (!hasTriggerArea) {
+        setError('Please draw a Trigger Area ROI first');
+        return;
+      }
+      if (!hasPackingArea) {
+        setError('Please draw a Packing Area ROI');
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -490,7 +465,6 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     }
   }, [
     videoMetadata,
-    configSteps,
     rois,
     videoPath,
     cameraId,
@@ -506,9 +480,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     if (isOpen) {
       setROIs([]);
       setSelectedROIId(null);
-      setCurrentStep(0);
       setError(null);
-      setEditingROI(null);
       setAnalysisSessionId(null);
       setShowAnalysis(false);
     } else {
@@ -521,12 +493,15 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     }
   }, [isOpen, analysisSessionId]);
 
-  // Calculate overall progress
-  const overallProgress = useMemo(() => {
-    const completedRequired = configSteps.filter(step => step.required && step.completed).length;
-    const totalRequired = configSteps.filter(step => step.required).length;
-    return totalRequired > 0 ? (completedRequired / totalRequired) * 100 : 0;
-  }, [configSteps]);
+  // Check if all required ROIs are created
+  const allRequiredCompleted = useMemo(() => {
+    if (packingMethod === 'traditional') {
+      return rois.some(roi => roi.type === 'packing_area');
+    } else {
+      // QR mode requires both Packing Area and Trigger Area
+      return rois.some(roi => roi.type === 'packing_area') && rois.some(roi => roi.type === 'qr_trigger');
+    }
+  }, [packingMethod, rois]);
 
   return (
     <Modal 
@@ -551,12 +526,13 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
             
             {/* Left Panel - Instructions & Steps */}
             <Box 
-              w="300px" 
+              w="256px" 
               bg={panelBg} 
               borderRight="1px solid" 
               borderColor={borderColor}
-              p="20px"
+              p="16px"
               overflowY="auto"
+              h="100vh"
             >
               <VStack spacing="24px" align="stretch">
                 
@@ -573,81 +549,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                   </Text>
                 </Box>
 
-                {/* Progress */}
-                <Box>
-                  <Text fontSize="sm" fontWeight="medium" color={textColor} mb="8px">
-                    Overall Progress
-                  </Text>
-                  <Progress 
-                    value={overallProgress} 
-                    colorScheme="blue" 
-                    size="sm" 
-                    borderRadius="full"
-                  />
-                  <Text fontSize="xs" color={secondaryText} mt="4px">
-                    {Math.round(overallProgress)}% Complete
-                  </Text>
-                </Box>
 
-                {/* Steps */}
-                <Box>
-                  <Text fontSize="sm" fontWeight="medium" color={textColor} mb="12px">
-                    Configuration Steps
-                  </Text>
-                  <VStack spacing="12px" align="stretch">
-                    {configSteps.map((step, index) => (
-                      <Box
-                        key={step.id}
-                        p="12px"
-                        borderRadius="8px"
-                        border="2px solid"
-                        borderColor={index === currentStep ? 'blue.500' : 'transparent'}
-                        bg={step.completed ? 'green.50' : index === currentStep ? 'blue.50' : 'white'}
-                        cursor="pointer"
-                        onClick={() => setCurrentStep(index)}
-                        transition="all 0.2s"
-                      >
-                        <HStack justify="space-between">
-                          <VStack align="start" spacing="2px" flex="1">
-                            <HStack>
-                              <Text fontSize="sm" fontWeight="medium">
-                                {step.title}
-                              </Text>
-                              {step.required && (
-                                <Badge size="sm" colorScheme="red">Required</Badge>
-                              )}
-                            </HStack>
-                            <Text fontSize="xs" color={secondaryText} lineHeight="short">
-                              {step.description}
-                            </Text>
-                          </VStack>
-                          {step.completed ? (
-                            <FaCheck color="green" />
-                          ) : index === currentStep ? (
-                            <Box w="12px" h="12px" borderRadius="full" bg="blue.500" />
-                          ) : (
-                            <Box w="12px" h="12px" borderRadius="full" border="2px solid" borderColor="gray.300" />
-                          )}
-                        </HStack>
-                      </Box>
-                    ))}
-                  </VStack>
-                </Box>
-
-                {/* Current Step Instructions */}
-                <Box>
-                  <Text fontSize="sm" fontWeight="medium" color={textColor} mb="8px">
-                    Current Step
-                  </Text>
-                  <Box p="12px" bg="blue.50" borderRadius="8px" border="1px solid" borderColor="blue.200">
-                    <Text fontSize="sm" fontWeight="medium" color="blue.700" mb="4px">
-                      {currentStepConfig.title}
-                    </Text>
-                    <Text fontSize="xs" color="blue.600" lineHeight="tall">
-                      {currentStepConfig.description}
-                    </Text>
-                  </Box>
-                </Box>
 
                 {/* ROI List */}
                 {rois.length > 0 && (
@@ -669,59 +571,21 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                         >
                           <HStack justify="space-between">
                             <VStack align="start" spacing="2px" flex="1">
-                              {editingROI?.id === roi.id ? (
-                                <HStack spacing="4px" width="100%">
-                                  <Input
-                                    value={editingROI.label}
-                                    onChange={(e) => setEditingROI(prev => 
-                                      prev ? { ...prev, label: e.target.value } : null
-                                    )}
-                                    size="xs"
-                                    flex="1"
-                                  />
-                                  <IconButton
-                                    aria-label="Save label"
-                                    icon={<FaCheck />}
-                                    size="xs"
-                                    colorScheme="green"
-                                    onClick={handleSaveLabel}
-                                  />
-                                  <IconButton
-                                    aria-label="Cancel edit"
-                                    icon={<FaTimes />}
-                                    size="xs"
-                                    variant="ghost"
-                                    onClick={handleCancelEdit}
-                                  />
-                                </HStack>
-                              ) : (
-                                <Text fontSize="sm" fontWeight="medium">
-                                  {roi.label}
-                                </Text>
-                              )}
+                              <Text fontSize="sm" fontWeight="medium">
+                                {roi.label}
+                              </Text>
                               <Text fontSize="xs" color={secondaryText}>
                                 {roi.type} • {roi.w}×{roi.h}px
                               </Text>
                             </VStack>
-                            {editingROI?.id !== roi.id && (
-                              <HStack spacing="4px">
-                                <IconButton
-                                  aria-label="Edit label"
-                                  icon={<FaEdit />}
-                                  size="xs"
-                                  variant="ghost"
-                                  onClick={() => handleStartEditLabel(roi)}
-                                />
-                                <IconButton
-                                  aria-label="Delete ROI"
-                                  icon={<FaTrash />}
-                                  size="xs"
-                                  colorScheme="red"
-                                  variant="ghost"
-                                  onClick={() => handleROIDelete(roi.id)}
-                                />
-                              </HStack>
-                            )}
+                            <IconButton
+                              aria-label="Delete ROI"
+                              icon={<FaTrash />}
+                              size="xs"
+                              colorScheme="red"
+                              variant="ghost"
+                              onClick={() => handleROIDelete(roi.id)}
+                            />
                           </HStack>
                         </Box>
                       ))}
@@ -729,26 +593,40 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                   </Box>
                 )}
 
+                {/* Action Buttons */}
+                <VStack spacing="12px" align="stretch">
+                  <Button
+                    colorScheme="blue"
+                    size="md"
+                    onClick={handleSaveConfiguration}
+                    isLoading={isSaving}
+                    loadingText="Saving..."
+                    isDisabled={!allRequiredCompleted}
+                  >
+                    Save Configuration
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    size="md"
+                    onClick={onClose}
+                    isDisabled={isSaving}
+                  >
+                    Cancel
+                  </Button>
+                  
+                  {!allRequiredCompleted && (
+                    <Text fontSize="xs" color="orange.500" textAlign="center">
+                      Complete all required steps to save
+                    </Text>
+                  )}
+                </VStack>
+
               </VStack>
             </Box>
 
             {/* Center Panel - Video & Canvas */}
             <Box flex="1" p="20px" display="flex" flexDirection="column" alignItems="center" justifyContent="center">
-              
-              {/* Video Title */}
-              <VStack spacing="16px" mb="20px">
-                <Text fontSize="lg" fontWeight="medium" color={textColor}>
-                  Video Configuration
-                </Text>
-                {videoMetadata && (
-                  <HStack spacing="24px" fontSize="sm" color={secondaryText}>
-                    <Text>{videoMetadata.filename}</Text>
-                    <Text>{videoMetadata.resolution.width}×{videoMetadata.resolution.height}</Text>
-                    <Text>{videoMetadata.duration_formatted}</Text>
-                    <Text>{videoMetadata.size_mb.toFixed(1)} MB</Text>
-                  </HStack>
-                )}
-              </VStack>
 
               {/* Error Alert */}
               {error && (
@@ -795,8 +673,10 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                     onROIDelete={handleROIDelete}
                     onROISelect={handleROISelect}
                     selectedROIId={selectedROIId}
-                    currentROIType={currentStepConfig.roiType}
-                    currentROILabel={currentStepConfig.title}
+                    currentROIType={packingMethod === 'traditional' ? 'packing_area' : (!rois.some(roi => roi.type === 'qr_trigger') ? 'qr_trigger' : 'packing_area')}
+                    currentROILabel={packingMethod === 'traditional' ? 'Packing Area' : (!rois.some(roi => roi.type === 'qr_trigger') ? 'Trigger Area' : 'Packing Area')}
+                    packingMethod={packingMethod}
+                    disabled={(packingMethod === 'traditional' && rois.some(roi => roi.type === 'packing_area')) || (packingMethod === 'qr' && rois.some(roi => roi.type === 'qr_trigger') && rois.some(roi => roi.type === 'packing_area'))}
                   />
                 )}
               </Box>
@@ -878,116 +758,6 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
 
             </Box>
 
-            {/* Right Panel - Controls */}
-            <Box 
-              w="250px" 
-              bg={panelBg} 
-              borderLeft="1px solid" 
-              borderColor={borderColor}
-              p="20px"
-              display="flex"
-              flexDirection="column"
-              justifyContent="space-between"
-            >
-              
-              {/* Step Navigation */}
-              <VStack spacing="16px" align="stretch">
-                <Text fontSize="sm" fontWeight="medium" color={textColor}>
-                  Step Navigation
-                </Text>
-                
-                <HStack spacing="8px">
-                  <Button
-                    size="sm"
-                    onClick={handlePrevStep}
-                    isDisabled={currentStep === 0}
-                    leftIcon={<Text>←</Text>}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleNextStep}
-                    isDisabled={currentStep >= configSteps.length - 1}
-                    rightIcon={<Text>→</Text>}
-                  >
-                    Next
-                  </Button>
-                </HStack>
-
-                <Text fontSize="xs" color={secondaryText} textAlign="center">
-                  Step {currentStep + 1} of {configSteps.length}
-                </Text>
-
-                <Divider />
-
-                {/* Drawing Instructions */}
-                <Box>
-                  <Text fontSize="sm" fontWeight="medium" color={textColor} mb="8px">
-                    Drawing Instructions
-                  </Text>
-                  <VStack spacing="4px" align="start" fontSize="xs" color={secondaryText}>
-                    <Text>• Click and drag to create ROI</Text>
-                    <Text>• Click existing ROI to select</Text>
-                    <Text>• Drag selected ROI to move</Text>
-                    <Text>• Double-click ROI to delete</Text>
-                  </VStack>
-                </Box>
-
-                {selectedROIId && (
-                  <>
-                    <Divider />
-                    <Box>
-                      <Text fontSize="sm" fontWeight="medium" color={textColor} mb="8px">
-                        Selected ROI
-                      </Text>
-                      {(() => {
-                        const selectedROI = rois.find(r => r.id === selectedROIId);
-                        return selectedROI ? (
-                          <VStack spacing="4px" align="start" fontSize="xs" color={secondaryText}>
-                            <Text>Type: {selectedROI.type}</Text>
-                            <Text>Position: {selectedROI.x}, {selectedROI.y}</Text>
-                            <Text>Size: {selectedROI.w} × {selectedROI.h}</Text>
-                            <Text>Label: {selectedROI.label}</Text>
-                          </VStack>
-                        ) : null;
-                      })()}
-                    </Box>
-                  </>
-                )}
-
-              </VStack>
-
-              {/* Action Buttons */}
-              <VStack spacing="12px" align="stretch">
-                <Button
-                  colorScheme="blue"
-                  size="md"
-                  onClick={handleSaveConfiguration}
-                  isLoading={isSaving}
-                  loadingText="Saving..."
-                  isDisabled={overallProgress < 100}
-                >
-                  Save Configuration
-                </Button>
-                
-                <Button
-                  variant="outline"
-                  size="md"
-                  onClick={onClose}
-                  isDisabled={isSaving}
-                >
-                  Cancel
-                </Button>
-                
-                {overallProgress < 100 && (
-                  <Text fontSize="xs" color="orange.500" textAlign="center">
-                    Complete all required steps to save
-                  </Text>
-                )}
-              </VStack>
-
-            </Box>
           </Flex>
         </ModalBody>
       </ModalContent>
