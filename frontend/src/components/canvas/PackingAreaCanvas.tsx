@@ -24,6 +24,7 @@ import { useState, useEffect } from 'react';
 import React from 'react';
 import { stepConfigService, VideoValidationResponse } from '@/services/stepConfigService';
 import ROIConfigModal from '@/components/roi/ROIConfigModal';
+import SampleVideoModal from '@/components/roi/SampleVideoModal';
 
 // Height breakpoints for adaptive behavior
 type HeightMode = 'compact' | 'normal' | 'spacious';
@@ -98,6 +99,9 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   // ROI configuration modal state
   const [showROIModal, setShowROIModal] = useState(false);
   const [roiVideoPath, setROIVideoPath] = useState<string>('');
+  
+  // Sample Video Modal state
+  const [showSampleVideoModal, setShowSampleVideoModal] = useState(false);
   
   // Helper function to check if a camera is currently being configured
   const isCameraConfiguring = (cameraId: string): boolean => {
@@ -257,216 +261,8 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
     loadCamerasFromProcessingConfig();
   };
   
-  // Default input path for traditional method
-  const getDefaultInputPath = () => {
-    const platform = navigator.platform.toLowerCase();
-    if (platform.includes('win')) {
-      return 'C:\\Users\\%USERNAME%\\Videos\\Input';
-    } else if (platform.includes('mac')) {
-      return '/Users/%USER%/Movies/Input';
-    } else {
-      return '/home/%USER%/Videos/Input';
-    }
-  };
-  
-  const [traditionalInputPath, setTraditionalInputPath] = useState(getDefaultInputPath());
-  const [qrInputPath, setQrInputPath] = useState(getDefaultInputPath());
 
-  // Video validation states
-  const [traditionalValidation, setTraditionalValidation] = useState<VideoValidationResponse | null>(null);
-  const [traditionalValidating, setTraditionalValidating] = useState(false);
-  const [qrValidation, setQrValidation] = useState<VideoValidationResponse | null>(null);
-  const [qrValidating, setQrValidating] = useState(false);
 
-  // Debounced validation function
-  const debounceRef = React.useRef<NodeJS.Timeout | null>(null);
-
-  // Video validation function with auto-open modal
-  const validateVideo = async (filePath: string, videoType: 'traditional' | 'qr') => {
-    if (!filePath || filePath.trim() === '' || filePath === getDefaultInputPath()) {
-      // Clear validation state for empty paths
-      if (videoType === 'traditional') {
-        setTraditionalValidation(null);
-      } else {
-        setQrValidation(null);
-      }
-      return;
-    }
-
-    try {
-      // Set loading state
-      if (videoType === 'traditional') {
-        setTraditionalValidating(true);
-      } else {
-        setQrValidating(true);
-      }
-
-      console.log(`🔍 Validating ${videoType} video:`, filePath);
-      const result = await stepConfigService.validatePackingVideo(filePath, videoType);
-      
-      console.log(`✅ Validation result for ${videoType}:`, result);
-      
-      // Update validation state
-      if (videoType === 'traditional') {
-        setTraditionalValidation(result);
-      } else {
-        setQrValidation(result);
-      }
-
-      // 🎯 AUTO OPEN ROI MODAL: If validation successful, auto-open modal after 1 second
-      console.log('🔍 Auto-open modal check:', {
-        result_success: result.success,
-        video_file_valid: result.video_file?.valid,
-        configuringCameraId: configuringCameraId,
-        selectedPackingMethod: selectedPackingMethod,
-        videoType: videoType,
-        condition_match: selectedPackingMethod === videoType
-      });
-      
-      if (result.success && result.video_file?.valid && configuringCameraId && selectedPackingMethod === videoType) {
-        console.log(`🚀 Auto-opening ROI modal in 1s for ${videoType} video`);
-        console.log('🎯 Modal will open with:', { filePath, configuringCameraId, selectedPackingMethod });
-        setTimeout(() => {
-          console.log(`🎯 Opening ROI configuration modal automatically`);
-          setROIVideoPath(filePath);
-          setShowROIModal(true);
-        }, 1000);
-      } else {
-        console.warn('❌ Auto-open modal conditions not met:', {
-          success: result.success,
-          valid: result.video_file?.valid,
-          cameraId: configuringCameraId,
-          method: selectedPackingMethod,
-          type: videoType,
-          methodMatch: selectedPackingMethod === videoType
-        });
-      }
-
-    } catch (error) {
-      console.error(`❌ Error validating ${videoType} video:`, error);
-      
-      // Set error validation state
-      const errorResult: VideoValidationResponse = {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        video_file: {
-          filename: filePath.split('/').pop() || '',
-          path: filePath,
-          duration_seconds: 0,
-          duration_formatted: '0s',
-          valid: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          file_size_mb: 0,
-          format: 'unknown'
-        },
-        summary: {
-          valid: false,
-          duration_seconds: 0,
-          scan_time_ms: 0
-        },
-        file_info: {
-          exists: false,
-          readable: false
-        }
-      };
-      
-      if (videoType === 'traditional') {
-        setTraditionalValidation(errorResult);
-      } else {
-        setQrValidation(errorResult);
-      }
-    } finally {
-      // Clear loading state
-      if (videoType === 'traditional') {
-        setTraditionalValidating(false);
-      } else {
-        setQrValidating(false);
-      }
-    }
-  };
-
-  // Debounced validation handler
-  const handleVideoPathChange = (filePath: string, videoType: 'traditional' | 'qr') => {
-    // Clear previous debounce
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-
-    // Set new debounced validation
-    debounceRef.current = setTimeout(() => {
-      validateVideo(filePath, videoType);
-    }, 1000); // 1 second delay
-  };
-
-  // Cleanup debounce on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-    };
-  }, []);
-
-  // Helper function to render validation result
-  const renderValidationResult = (validation: VideoValidationResponse | null, isLoading: boolean) => {
-    if (isLoading) {
-      return (
-        <HStack spacing="8px" mt="8px">
-          <Text fontSize="16px">⏳</Text>
-          <Text fontSize="sm" color="gray.500">
-            Validating video file...
-          </Text>
-        </HStack>
-      );
-    }
-
-    if (!validation) {
-      return null;
-    }
-
-    const { video_file, file_info } = validation;
-
-    if (validation.success && video_file.valid) {
-      return (
-        <HStack spacing="8px" mt="8px" p="8px" bg="green.50" borderRadius="6px" border="1px solid" borderColor="green.200">
-          <Text fontSize="16px">✅</Text>
-          <VStack align="start" spacing="2px" flex="1">
-            <Text fontSize="sm" color="green.700" fontWeight="500">
-              Valid video ({video_file.duration_formatted})
-            </Text>
-            <Text fontSize="xs" color="green.600">
-              {video_file.filename} • {video_file.file_size_mb}MB • {video_file.format.toUpperCase()}
-            </Text>
-          </VStack>
-        </HStack>
-      );
-    } else {
-      // Error cases
-      const isFileIssue = !file_info.exists || !file_info.readable;
-      const icon = isFileIssue ? "❌" : "⚠️";
-      const bgColor = isFileIssue ? "red.50" : "orange.50";
-      const borderColor = isFileIssue ? "red.200" : "orange.200";
-      const textColor = isFileIssue ? "red.700" : "orange.700";
-      const secondaryColor = isFileIssue ? "red.600" : "orange.600";
-
-      return (
-        <HStack spacing="8px" mt="8px" p="8px" bg={bgColor} borderRadius="6px" border="1px solid" borderColor={borderColor}>
-          <Text fontSize="16px">{icon}</Text>
-          <VStack align="start" spacing="2px" flex="1">
-            <Text fontSize="sm" color={textColor} fontWeight="500">
-              {video_file.error || validation.error || 'Unknown error'}
-            </Text>
-            {video_file.filename && (
-              <Text fontSize="xs" color={secondaryColor}>
-                {video_file.filename}
-                {video_file.duration_seconds > 0 && ` • ${video_file.duration_formatted}`}
-              </Text>
-            )}
-          </VStack>
-        </HStack>
-      );
-    }
-  };
 
   return (
     <Box
@@ -547,12 +343,21 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                     </Text>
                   </HStack>
                   <Button 
-                    size="xs" 
-                    colorScheme="orange" 
-                    variant="outline"
+                    className="chatgpt-button-primary chatgpt-hover-lift"
+                    bg="var(--chatgpt-purple-primary)"
+                    color="var(--chatgpt-white)"
+                    size="sm" 
+                    fontSize="sm"
+                    fontFamily="var(--chatgpt-font-family)"
+                    fontWeight="var(--chatgpt-font-weight-medium)"
                     onClick={cancelCameraConfiguration}
+                    _hover={{
+                      bg: 'var(--chatgpt-purple-light)',
+                      transform: 'translateY(-2px)',
+                      boxShadow: 'var(--chatgpt-shadow-lg)'
+                    }}
                   >
-                    Cancel Configuration
+                    Cancel
                   </Button>
                 </Flex>
               </Box>
@@ -642,338 +447,35 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
           </Box>
         </Box>
         
-        {/* Traditional Video Input Path Selection - Show when traditional method is selected */}
-        {selectedPackingMethod === 'traditional' && (
-          <Box 
-            animation="pulse 2s infinite"
-            sx={{
-              '@keyframes pulse': {
-                '0%, 100%': { opacity: 1 },
-                '50%': { opacity: 0.7 }
-              }
-            }}
-          >
-            <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="8px">
-              📂 Sample Video for Traditional Detection Setup
+        {/* Sample Video Configuration Button */}
+        {selectedPackingMethod && (
+          <Box>
+            <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
+              🎬 Video Configuration
             </Text>
-            <Box bg={cardBg} p="16px" borderRadius="12px" border="2px solid" borderColor="orange.300" maxW="100%" overflow="hidden">
-              <VStack spacing="8px" align="stretch" mb="12px" maxW="100%">
-                <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-                  📝 Choose where your traditional packing videos are stored for processing
+            <Box bg={cardBg} p="16px" borderRadius="12px" border="1px solid" borderColor={borderColor}>
+              <VStack spacing="12px">
+                <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} textAlign="center">
+                  Configure sample videos for {selectedPackingMethod === 'traditional' ? 'Traditional Detection' : 'QR Code Packing Table (Trigger)'}
                 </Text>
-                <Text fontSize={adaptiveConfig.fontSize.small} color="blue.500" fontWeight="500">
-                  ⏱️ Video Requirements: Minimum 1 minute - Maximum 5 minutes duration
-                </Text>
-                <Text fontSize={adaptiveConfig.fontSize.small} color="orange.500" fontStyle="italic">
-                  💡 Tip: Open folder in explorer, copy path from address bar and paste here
-                </Text>
-              </VStack>
-              <Input
-                value={traditionalInputPath}
-                placeholder="Copy and paste traditional video folder path here..."
-                size="sm"
-                borderColor={borderColor}
-                _focus={{ borderColor: currentColors.brand500 }}
-                bg={bgColor}
-                mb="12px"
-                onFocus={(e) => {
-                  // Clear input when user clicks to enter new path
-                  if (traditionalInputPath === getDefaultInputPath()) {
-                    setTraditionalInputPath('');
+                <Button
+                  colorScheme="brand"
+                  size="lg"
+                  leftIcon={<Text>📹</Text>}
+                  onClick={() => setShowSampleVideoModal(true)}
+                  _hover={{ transform: 'translateY(-2px)', boxShadow: 'lg' }}
+                >
+                  {selectedPackingMethod === 'traditional' 
+                    ? 'Configure Traditional Detection Setup' 
+                    : 'Configure QR Code Packing Table (Trigger)'
                   }
-                  e.target.select(); // Select all text for easy replacement
-                }}
-                onChange={(e) => {
-                  const newPath = e.target.value;
-                  setTraditionalInputPath(newPath);
-                  
-                  // Trigger debounced validation
-                  handleVideoPathChange(newPath, 'traditional');
-                  
-                  onStepChange?.('packing_area', { 
-                    traditionalInputPath: newPath,
-                    packingMethod: 'traditional'
-                  });
-                }}
-              />
-              <Text 
-                fontSize={adaptiveConfig.fontSize.small} 
-                color={secondaryText}
-                maxW="400px"
-                overflow="hidden"
-                textOverflow="ellipsis"
-                whiteSpace="nowrap"
-                textAlign="right"
-                title={traditionalInputPath || 'No path specified'}
-              >
-                📋 Traditional training video path: {traditionalInputPath || 'No path specified'}
-              </Text>
-              
-              {/* Validation Result */}
-              {renderValidationResult(traditionalValidation, traditionalValidating)}
-            </Box>
-          </Box>
-        )}
-
-        {/* TimeGo QR Code Display - Show when qr method is selected */}
-        {selectedPackingMethod === 'qr' && (
-          <Box 
-            animation="pulse 2s infinite"
-            sx={{
-              '@keyframes pulse': {
-                '0%, 100%': { opacity: 1 },
-                '50%': { opacity: 0.7 }
-              }
-            }}
-          >
-            <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="8px">
-              🏷️ TimeGo QR Code for Printing
-            </Text>
-            <Box bg={cardBg} p="16px" borderRadius="12px" border="2px solid" borderColor="green.300">
-              <VStack spacing="12px" align="center">
-                <VStack spacing="8px">
-                  <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} textAlign="center">
-                    📋 Print this QR code and place it in the center of your packing area
-                  </Text>
-                  <Text fontSize="xs" color="blue.600" textAlign="center">
-                    💡 Click QR image to download • Use Print button for direct printing
-                  </Text>
-                </VStack>
-                
-                {/* QR Code Image */}
-                <Box 
-                  p="16px" 
-                  bg="white" 
-                  borderRadius="8px" 
-                  border="2px solid" 
-                  borderColor="gray.200"
-                  boxShadow="md"
-                  position="relative"
-                  cursor="pointer"
-                  _hover={{
-                    transform: 'scale(1.05)',
-                    boxShadow: 'xl',
-                    '& .download-hint': {
-                      opacity: 1
-                    }
-                  }}
-                  transition="all 0.2s ease"
-                  onClick={() => {
-                    // Download QR code image
-                    const link = document.createElement('a');
-                    link.href = '/images/TimeGo-qr.png';
-                    link.download = 'TimeGo-QR-Code.png';
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                  }}
-                >
-                  <img 
-                    src="/images/TimeGo-qr.png" 
-                    alt="TimeGo QR Code" 
-                    style={{
-                      width: '200px',
-                      height: '200px',
-                      display: 'block'
-                    }}
-                  />
-                  
-                  {/* Download Hint Overlay */}
-                  <Box
-                    className="download-hint"
-                    position="absolute"
-                    top="0"
-                    left="0"
-                    right="0"
-                    bottom="0"
-                    bg="rgba(0,0,0,0.8)"
-                    borderRadius="8px"
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="center"
-                    opacity="0"
-                    transition="opacity 0.2s ease"
-                    color="white"
-                    fontSize="sm"
-                    fontWeight="600"
-                    textAlign="center"
-                    flexDirection="column"
-                  >
-                    <Text fontSize="lg" mb="4px">📥</Text>
-                    <Text>Click to Download</Text>
-                    <Text fontSize="xs" opacity="0.8">for offline printing</Text>
-                  </Box>
-                </Box>
-                
-                {/* Print Button */}
-                <Button 
-                  leftIcon={<Text>🖨️</Text>}
-                  colorScheme="green" 
-                  size="md"
-                  onClick={() => {
-                    // Create print window for QR code
-                    const printWindow = window.open('', '_blank');
-                    if (printWindow) {
-                      printWindow.document.write(`
-                        <html>
-                          <head>
-                            <title>TimeGo QR Code - Print</title>
-                            <style>
-                              @page {
-                                margin: 0;
-                                size: A4;
-                              }
-                              * {
-                                margin: 0;
-                                padding: 0;
-                                box-sizing: border-box;
-                              }
-                              body { 
-                                width: 100vw;
-                                height: 100vh;
-                                display: flex;
-                                justify-content: center;
-                                align-items: center;
-                                background: white;
-                              }
-                              .qr-container { 
-                                width: 90vmin;
-                                height: 90vmin;
-                                display: flex;
-                                justify-content: center;
-                                align-items: center;
-                              }
-                              .qr-container img { 
-                                width: 90vmin;
-                                height: 90vmin;
-                                object-fit: contain;
-                                border: 3px solid #333;
-                              }
-                              @media print {
-                                body { 
-                                  width: 100%;
-                                  height: 100vh;
-                                  margin: 0;
-                                  padding: 10mm;
-                                  display: flex;
-                                  justify-content: center;
-                                  align-items: center;
-                                }
-                                .qr-container {
-                                  width: auto;
-                                  height: auto;
-                                  display: flex;
-                                  justify-content: center;
-                                  align-items: center;
-                                }
-                                .qr-container img {
-                                  width: 70vmin;
-                                  height: 70vmin;
-                                  object-fit: contain;
-                                  border: 2px solid #000;
-                                }
-                              }
-                            </style>
-                          </head>
-                          <body>
-                            <div class="qr-container">
-                              <img src="/images/TimeGo-qr.png" alt="TimeGo QR Code" />
-                            </div>
-                          </body>
-                        </html>
-                      `);
-                      printWindow.document.close();
-                      printWindow.focus();
-                      setTimeout(() => {
-                        printWindow.print();
-                        printWindow.close();
-                      }, 250);
-                    }
-                  }}
-                >
-                  Print QR Code
                 </Button>
-                
-                <Text fontSize={adaptiveConfig.fontSize.small} color="blue.600" textAlign="center">
-                  💡 After printing, place the QR code in the center of your packing area where packages will cover/uncover it, then record packing activities to create analysis videos
-                </Text>
               </VStack>
             </Box>
           </Box>
         )}
 
-        {/* QR Code Video Input Path Selection - Show when qr method is selected */}
-        {selectedPackingMethod === 'qr' && (
-          <Box 
-            animation="pulse 2s infinite"
-            sx={{
-              '@keyframes pulse': {
-                '0%, 100%': { opacity: 1 },
-                '50%': { opacity: 0.7 }
-              }
-            }}
-          >
-            <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="8px">
-              📂 Sample Video for QR Detection Setup
-            </Text>
-            <Box bg={cardBg} p="16px" borderRadius="12px" border="2px solid" borderColor="blue.300" maxW="100%" overflow="hidden">
-              <VStack spacing="8px" align="stretch" mb="12px" maxW="100%">
-                <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-                  📝 Choose where your QR code packing videos are stored for processing
-                </Text>
-                <Text fontSize={adaptiveConfig.fontSize.small} color="green.500" fontWeight="500">
-                  ⏱️ Video Requirements: Minimum 1 minute - Maximum 5 minutes duration
-                </Text>
-                <Text fontSize={adaptiveConfig.fontSize.small} color="orange.500" fontStyle="italic">
-                  💡 Tip: Open folder in explorer, copy path from address bar and paste here
-                </Text>
-              </VStack>
-              <Input
-                value={qrInputPath}
-                placeholder="Copy and paste QR video folder path here..."
-                size="sm"
-                borderColor={borderColor}
-                _focus={{ borderColor: currentColors.brand500 }}
-                bg={bgColor}
-                mb="12px"
-                onFocus={(e) => {
-                  // Clear input when user clicks to enter new path
-                  if (qrInputPath === getDefaultInputPath()) {
-                    setQrInputPath('');
-                  }
-                  e.target.select(); // Select all text for easy replacement
-                }}
-                onChange={(e) => {
-                  const newPath = e.target.value;
-                  setQrInputPath(newPath);
-                  
-                  // Trigger debounced validation
-                  handleVideoPathChange(newPath, 'qr');
-                  
-                  onStepChange?.('packing_area', { 
-                    qrInputPath: newPath,
-                    packingMethod: 'qr'
-                  });
-                }}
-              />
-              <Text 
-                fontSize={adaptiveConfig.fontSize.small} 
-                color={secondaryText}
-                maxW="400px"
-                overflow="hidden"
-                textOverflow="ellipsis"
-                whiteSpace="nowrap"
-                textAlign="right"
-                title={qrInputPath || 'No path specified'}
-              >
-                📋 QR training video path: {qrInputPath || 'No path specified'}
-              </Text>
-              
-              {/* Validation Result */}
-              {renderValidationResult(qrValidation, qrValidating)}
-            </Box>
-          </Box>
-        )}
+
 
         {/* ROI Configuration Status */}
         {configuringCameraId && selectedPackingMethod && (
@@ -1004,52 +506,18 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                   <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} mb="4px">
                     Training Video Status:
                   </Text>
-                  {(() => {
-                    const validation = selectedPackingMethod === 'traditional' ? traditionalValidation : qrValidation;
-                    const isValidating = selectedPackingMethod === 'traditional' ? traditionalValidating : qrValidating;
-                    
-                    if (isValidating) {
-                      return (
-                        <HStack spacing="8px">
-                          <Spinner size="sm" color="blue.500" />
-                          <Text fontSize="sm" color="blue.500">Validating video...</Text>
-                        </HStack>
-                      );
-                    }
-                    
-                    if (validation?.success && validation.video_file?.valid) {
-                      return (
-                        <VStack align="start" spacing="4px">
-                          <HStack spacing="8px">
-                            <Text fontSize="16px">✅</Text>
-                            <Text fontSize="sm" color="green.600" fontWeight="500">
-                              Video validated - Opening ROI modal in 1s...
-                            </Text>
-                          </HStack>
-                          <Text fontSize="xs" color="green.500">
-                            {validation.video_file.filename} • {validation.video_file.duration_formatted}
-                          </Text>
-                        </VStack>
-                      );
-                    }
-                    
-                    if (validation && !validation.success) {
-                      return (
-                        <HStack spacing="8px">
-                          <Text fontSize="16px">❌</Text>
-                          <Text fontSize="sm" color="red.600">
-                            {validation.error}
-                          </Text>
-                        </HStack>
-                      );
-                    }
-                    
-                    return (
-                      <Text fontSize="sm" color="orange.500">
-                        Please provide a valid training video path above
+                  {roiVideoPath ? (
+                    <HStack spacing="8px">
+                      <Text fontSize="16px">✅</Text>
+                      <Text fontSize="sm" color="green.600" fontWeight="500">
+                        Video configured and ready for ROI setup
                       </Text>
-                    );
-                  })()}
+                    </HStack>
+                  ) : (
+                    <Text fontSize="sm" color="orange.500">
+                      Please configure training video using the button above
+                    </Text>
+                  )}
                 </Box>
                 
                 {/* Instructions */}
@@ -1115,9 +583,10 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 _hover={{ transform: 'translateY(-2px)', boxShadow: 'lg' }}
                 transition="all 0.2s ease"
                 onClick={() => {
-                  console.log('🎯 Traditional method selected');
+                  console.log('🎯 Traditional method selected - Opening Sample Video Modal');
                   setSelectedPackingMethod('traditional');
-                  setShowCameraPopup(false); // Close popup but keep configuringCameraId
+                  setShowCameraPopup(false);
+                  setShowSampleVideoModal(true);
                   onStepChange?.('packing_area', { 
                     packingMethod: 'traditional',
                     selectedCameras,
@@ -1173,9 +642,10 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 transition="all 0.2s ease"
                 position="relative"
                 onClick={() => {
-                  console.log('🎯 QR method selected');
+                  console.log('🎯 QR method selected - Opening Sample Video Modal');
                   setSelectedPackingMethod('qr');
-                  setShowCameraPopup(false); // Close popup but keep configuringCameraId
+                  setShowCameraPopup(false);
+                  setShowSampleVideoModal(true);
                   onStepChange?.('packing_area', { 
                     packingMethod: 'qr',
                     selectedCameras,
@@ -1200,7 +670,7 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 </Box>
                 
                 <Text fontSize="lg" fontWeight="600" color={textColor} mb="16px">
-                  🎯 QR Code Packing Table (TimeGo)
+                  🎯 QR Code Packing Table (Trigger)
                 </Text>
                 
                 <VStack spacing="16px" align="stretch">
@@ -1209,7 +679,7 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                       🏷️ Description:
                     </Text>
                     <Text fontSize="sm" color={secondaryText} lineHeight="tall">
-                      Paste QR Code (TimeGo) in the center of packing area. When packages move to cover/uncover the QR code, 
+                      Paste QR Code (Trigger) in the center of packing area. When packages move to cover/uncover the QR code, 
                       the system will accurately identify the start and end times of packing events.
                     </Text>
                   </Box>
@@ -1305,6 +775,26 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
           </ModalBody>
         </ModalContent>
       </Modal>
+
+      {/* Sample Video Configuration Modal */}
+      <SampleVideoModal
+        isOpen={showSampleVideoModal}
+        onClose={() => setShowSampleVideoModal(false)}
+        onVideoSelected={(videoPath, method) => {
+          console.log('📹 Video selected:', { videoPath, method });
+          setROIVideoPath(videoPath);
+          // Auto-open ROI modal after video selection
+          setTimeout(() => {
+            setShowROIModal(true);
+          }, 500);
+        }}
+        onPackingMethodSelected={(method) => {
+          console.log('📦 Packing method selected:', method);
+          setSelectedPackingMethod(method);
+        }}
+        selectedPackingMethod={selectedPackingMethod}
+        configuringCameraId={configuringCameraId}
+      />
 
       {/* ROI Configuration Modal */}
       {console.log('🔍 ROI Modal render check:', {
