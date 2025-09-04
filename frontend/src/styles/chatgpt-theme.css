@@ -368,3 +368,114 @@
   background-color: rgba(72, 187, 120, 0.1);
   border-color: var(--chatgpt-success);
 }
+
+/* Fixed Sidebar Layout - Zoom Compatible */
+.fixed-sidebar-layout {
+  position: relative;
+  min-height: 100vh;
+  overflow-x: hidden; /* Prevent horizontal scroll during zoom */
+}
+
+.fixed-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  z-index: 1000;
+  /* Ensure sidebar stays visible during zoom */
+  max-width: none;
+  min-width: fit-content;
+}
+
+.main-content-area {
+  min-height: 100vh;
+  overflow-x: auto;
+  overflow-y: auto;
+  position: relative;
+  /* Use relative units for better zoom scaling */
+  width: auto;
+  max-width: none;
+}
+
+/* Zoom-responsive breakpoints */
+@media screen and (max-zoom: 0.75) {
+  .main-content-area {
+    padding: 1rem;
+  }
+}
+
+@media screen and (min-zoom: 1.25) {
+  .main-content-area {
+    padding: 1.5rem;
+  }
+  
+  .fixed-sidebar {
+    /* Ensure sidebar remains accessible at high zoom */
+    max-height: 100vh;
+    overflow-y: auto;
+  }
+}
+
+@media screen and (min-zoom: 1.5) {
+  .main-content-area {
+    padding: 2rem;
+    font-size: 0.95rem; /* Slightly smaller text at high zoom to fit more content */
+  }
+}
+
+/* Responsive canvas elements for zoom */
+.zoom-responsive-canvas {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  /* Allow content to reflow naturally */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.zoom-responsive-canvas .chakra-box,
+.zoom-responsive-canvas .chakra-stack,
+.zoom-responsive-canvas .chakra-flex {
+  max-width: 100%;
+  overflow: visible;
+}
+
+/* Form elements zoom compatibility */
+.zoom-responsive-forms input,
+.zoom-responsive-forms textarea,
+.zoom-responsive-forms select,
+.zoom-responsive-forms button {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Video and media elements zoom scaling */
+.zoom-responsive-media {
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+/* Toast notifications positioning for fixed sidebar */
+.chakra-toast-manager {
+  margin-left: 272px; /* Default sidebar width */
+  transition: margin-left 0.3s ease;
+}
+
+.sidebar-collapsed .chakra-toast-manager {
+  margin-left: 79px; /* Collapsed sidebar width */
+}
+
+/* High contrast mode support for zoom accessibility */
+@media (prefers-contrast: high) {
+  .fixed-sidebar,
+  .main-content-area {
+    border: 2px solid var(--chatgpt-gray-600);
+  }
+  
+  .chatgpt-card,
+  .chatgpt-button-primary,
+  .chatgpt-button-secondary {
+    border-width: 2px;
+  }
+}

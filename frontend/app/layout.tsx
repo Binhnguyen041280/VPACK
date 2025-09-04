@@ -13,6 +13,7 @@ import '@/styles/Contact.css';
 import '@/styles/Plugins.css';
 import '@/styles/MiniCalendar.css';
 import '@/styles/cursor.css';
+import '@/styles/chatgpt-theme.css';
 import AppWrappers from './AppWrappers';
 import { ColorThemeProvider } from '@/contexts/ColorThemeContext';
 import { UserProvider } from '@/contexts/UserContext';
@@ -42,38 +43,50 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               toggleSidebar: sidebarCollapsed, 
               setToggleSidebar: setSidebarCollapsed 
             }}>
-            <Box>
-              <Sidebar routes={routes} collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
-              <ToggleButtons />
+            <Box 
+              className={`fixed-sidebar-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}
+              position="relative" 
+              minHeight="100vh"
+            >
+              {/* Fixed Sidebar - Always visible and positioned */}
               <Box
-                float="right"
-                minHeight="100vh"
+                className="fixed-sidebar"
+                position="fixed"
+                top="0"
+                left="0"
                 height="100vh"
+                zIndex="1000"
+                transition="all 0.3s cubic-bezier(0.685, 0.0473, 0.346, 1)"
+              >
+                <Sidebar routes={routes} collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
+              </Box>
+              
+              {/* Toggle Buttons */}
+              <ToggleButtons />
+              
+              {/* Main Content Area - Dynamic margin based on sidebar state */}
+              <Box
+                className="main-content-area zoom-responsive-canvas"
+                minHeight="100vh"
                 overflow="auto"
+                marginLeft={{ 
+                  base: '0px', 
+                  xl: sidebarCollapsed ? '79px' : '272px' 
+                }}
+                transition="margin-left 0.3s cubic-bezier(0.685, 0.0473, 0.346, 1)"
                 position="relative"
-                maxHeight="100vh"
-                w={{ 
-                  base: '100%', 
-                  xl: sidebarCollapsed ? 'calc( 100% - 79px )' : 'calc( 100% - 272px )' 
-                }}
-                maxWidth={{ 
-                  base: '100%', 
-                  xl: sidebarCollapsed ? 'calc( 100% - 79px )' : 'calc( 100% - 272px )' 
-                }}
-                transition="all 0.33s cubic-bezier(0.685, 0.0473, 0.346, 1)"
-                transitionDuration=".2s, .2s, .35s"
-                transitionProperty="top, bottom, width"
-                transitionTimingFunction="linear, linear, ease"
+                width="auto"
+                maxWidth="none"
               >
                 <Box
-                  mx="auto"
+                  className="zoom-responsive-forms"
                   p={{ base: '20px', md: '30px' }}
                   pe="20px"
-                  h="100%"
-                  overflow="hidden"
+                  minHeight="100vh"
+                  maxWidth="100%"
+                  overflow="auto"
                 >
                   {children}
-                  {/* <Component apiKeyApp={apiKey} {...pageProps} /> */}
                 </Box>
               </Box>
             </Box>
