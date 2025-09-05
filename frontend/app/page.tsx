@@ -1577,7 +1577,7 @@ export default function Chat(props: { apiKeyApp: string }) {
       
       {/* Conditional Layout Rendering */}
       {showConfigLayout ? (
-        // 3-Panel Configuration Layout  
+        // 3-Panel Configuration Layout - Pure Percentage Approach
         <Flex
           direction="row"
           h="100vh"
@@ -1586,14 +1586,32 @@ export default function Chat(props: { apiKeyApp: string }) {
           position="fixed"
           top="0"
           left={toggleSidebar ? "95px" : "288px"}
-          right="0"
+          w={`calc(100vw - ${toggleSidebar ? "95px" : "288px"})`}
+          minW="900px"
           transition="left 0.2s linear"
+          overflowX="auto"
+          css={{
+            '&::-webkit-scrollbar': {
+              height: '8px',
+            },
+            '&::-webkit-scrollbar-track': {
+              background: 'var(--chakra-colors-gray-100)',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              background: 'var(--chakra-colors-gray-300)',
+              borderRadius: '4px',
+            },
+            '&::-webkit-scrollbar-thumb:hover': {
+              background: 'var(--chakra-colors-gray-400)',
+            },
+          }}
         >
           {/* Column 1: Chat History + Chat Input - 40% */}
           <Flex
-            flex="2"
+            flex="4"
             direction="column"
             gap="20px"
+            minW="300px"
           >
             {/* Top: Chat History */}
             <Box
@@ -1829,8 +1847,9 @@ export default function Chat(props: { apiKeyApp: string }) {
 
           {/* Column 2: Canvas - 40% */}
           <Flex
-            flex="2"
+            flex="4"
             direction="column"
+            minW="400px"
           >
             <Box
               bg={chatBg}
@@ -1839,7 +1858,22 @@ export default function Chat(props: { apiKeyApp: string }) {
               borderColor={chatBorderColor}
               p="20px"
               h="100%"
-              overflow="hidden"
+              overflow="auto"
+              css={{
+                '&::-webkit-scrollbar': {
+                  width: '6px',
+                },
+                '&::-webkit-scrollbar-track': {
+                  background: 'var(--chakra-colors-gray-100)',
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  background: 'var(--chakra-colors-gray-300)',
+                  borderRadius: '3px',
+                },
+                '&::-webkit-scrollbar-thumb:hover': {
+                  background: 'var(--chakra-colors-gray-400)',
+                },
+              }}
             >
               <CanvasMessage 
                 configStep={configStep} 
@@ -1856,8 +1890,9 @@ export default function Chat(props: { apiKeyApp: string }) {
 
           {/* Column 3: Navigator - 20% */}
           <Flex
-            flex="1"
+            flex="2"
             direction="column"
+            minW="200px"
           >
             <Box
               bg={chatBg}

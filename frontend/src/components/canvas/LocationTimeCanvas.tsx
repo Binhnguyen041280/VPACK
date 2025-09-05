@@ -60,10 +60,10 @@ export default function LocationTimeCanvas({
 }: LocationTimeCanvasProps) {
   const { currentColors } = useColorTheme();
   const bgColor = useColorModeValue('white', 'navy.800');
-  const borderColor = useColorModeValue('gray.200', 'whiteAlpha.300');
+  const borderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
   const textColor = useColorModeValue('navy.700', 'white');
   const secondaryText = useColorModeValue('gray.600', 'gray.400');
-  const labelColor = useColorModeValue('navy.700', 'white');
+  const cardBg = useColorModeValue('gray.50', 'navy.700');
 
   // Debug logging for workdays
   console.log('🔄 Step 2 Canvas - locationTimeData:', locationTimeData);
@@ -144,199 +144,196 @@ export default function LocationTimeCanvas({
   return (
     <Box
       w="100%"
-      minH="100%"
-      position="relative"
+      minH="fit-content"
+      maxW="450px"
+      mx="auto"
+      css={{
+        '@media (max-width: 450px)': {
+          maxW: '100%',
+          px: '12px',
+        }
+      }}
     >
-      {/* Header - Priority Content */}
-      <VStack spacing={adaptiveConfig.spacing.section} align="stretch">
-        <Flex align="center" justify="space-between">
-          <Text
-            fontSize={adaptiveConfig.fontSize.header}
-            fontWeight="700"
-            color={textColor}
-          >
-            📍 Step 2: Location & Time Configuration
-          </Text>
-          {isLoading && adaptiveConfig.showOptional && (
-            <HStack spacing="8px">
-              <Spinner size="sm" color={currentColors.brand500} />
-              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>Loading...</Text>
-            </HStack>
-          )}
-        </Flex>
+      {/* Header */}
+      <Text fontSize={adaptiveConfig.fontSize.header} fontWeight="700" color={textColor} mb={adaptiveConfig.spacing.section}>
+        📍 Step 2: Location & Time Configuration
+      </Text>
 
-        {/* Location Settings - Priority Content */}
-        <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
-          {adaptiveConfig.mode !== 'compact' && (
-            <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={labelColor}>
-              🌍 Location & Language
-            </Text>
-          )}
-          
-          <SimpleGrid 
-            columns={adaptiveConfig.mode === 'compact' ? 1 : { base: 1, md: 3 }} 
-            spacing={adaptiveConfig.spacing.item}
-            maxW="100%"
-          >
-            {/* Country - Essential */}
-            <VStack align="stretch" spacing="6px">
-              <HStack>
-                <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={labelColor}>
+      <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
+
+        {/* Location Settings */}
+        <Box>
+          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
+            🌍 Location & Language
+          </Text>
+          <Box bg={cardBg} p="16px" borderRadius="12px">
+            <SimpleGrid 
+              columns={adaptiveConfig.mode === 'compact' ? 1 : { base: 1, md: 3 }} 
+              spacing="12px"
+              maxW="100%"
+            >
+              {/* Country - Essential */}
+              <VStack align="stretch" spacing="6px">
+                <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor}>
                   Country
                 </Text>
-              </HStack>
-              <Select
-                value={displayData.country}
-                onChange={(e) => {
-                  onStepChange?.('location_time', { country: e.target.value });
-                }}
-                size="sm"
-                borderColor={borderColor}
-                _focus={{ borderColor: currentColors.brand500 }}
-              >
-                {countryOptions.map(country => (
-                  <option key={country} value={country}>{country}</option>
-                ))}
-              </Select>
-            </VStack>
+                <Select
+                  value={displayData.country}
+                  onChange={(e) => {
+                    onStepChange?.('location_time', { country: e.target.value });
+                  }}
+                  size="sm"
+                  borderColor={borderColor}
+                  _focus={{ borderColor: currentColors.brand500 }}
+                >
+                  {countryOptions.map(country => (
+                    <option key={country} value={country}>{country}</option>
+                  ))}
+                </Select>
+              </VStack>
 
-            {/* Timezone */}
-            <VStack align="stretch" spacing="8px">
-              <HStack>
-                <Text fontSize="sm" fontWeight="500" color={labelColor}>
+              {/* Timezone */}
+              <VStack align="stretch" spacing="6px">
+                <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor}>
                   Timezone
                 </Text>
-              </HStack>
-              <Select
-                value={displayData.timezone}
-                onChange={(e) => {
-                  onStepChange?.('location_time', { timezone: e.target.value });
-                }}
-                size="sm"
-                borderColor={borderColor}
-                _focus={{ borderColor: currentColors.brand500 }}
-              >
-                {timezoneOptions.map(timezone => (
-                  <option key={timezone} value={timezone}>
-                    {timezoneDisplayNames[timezone] || timezone}
-                  </option>
-                ))}
-              </Select>
-            </VStack>
+                <Select
+                  value={displayData.timezone}
+                  onChange={(e) => {
+                    onStepChange?.('location_time', { timezone: e.target.value });
+                  }}
+                  size="sm"
+                  borderColor={borderColor}
+                  _focus={{ borderColor: currentColors.brand500 }}
+                >
+                  {timezoneOptions.map(timezone => (
+                    <option key={timezone} value={timezone}>
+                      {timezoneDisplayNames[timezone] || timezone}
+                    </option>
+                  ))}
+                </Select>
+              </VStack>
 
-            {/* Language */}
-            <VStack align="stretch" spacing="8px">
-              <HStack>
-                <Text fontSize="sm" fontWeight="500" color={labelColor}>
+              {/* Language */}
+              <VStack align="stretch" spacing="6px">
+                <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor}>
                   Language
                 </Text>
-              </HStack>
-              <Select
-                value={displayData.language}
-                onChange={(e) => {
-                  onStepChange?.('location_time', { language: e.target.value });
-                }}
-                size="sm"
-                borderColor={borderColor}
-                _focus={{ borderColor: currentColors.brand500 }}
-              >
-                {languageOptions.map(language => (
-                  <option key={language} value={language}>{language}</option>
-                ))}
-              </Select>
-            </VStack>
-          </SimpleGrid>
-        </VStack>
+                <Select
+                  value={displayData.language}
+                  onChange={(e) => {
+                    onStepChange?.('location_time', { language: e.target.value });
+                  }}
+                  size="sm"
+                  borderColor={borderColor}
+                  _focus={{ borderColor: currentColors.brand500 }}
+                >
+                  {languageOptions.map(language => (
+                    <option key={language} value={language}>{language}</option>
+                  ))}
+                </Select>
+              </VStack>
+            </SimpleGrid>
+          </Box>
+        </Box>
 
-        {/* Work Schedule - Conditional based on height */}
+        {/* Work Schedule */}
         {adaptiveConfig.showOptional && (
-          <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
-            <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={labelColor}>
+          <Box>
+            <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
               ⏰ Work Schedule
             </Text>
-          
-          {/* Work Hours */}
-          <HStack spacing="16px" align="center" wrap="wrap">
-            <Text fontSize="sm" fontWeight="500" color={labelColor} minW="60px">
-              Hours:
-            </Text>
-            <HStack spacing="8px">
-              <Input
-                type="time"
-                value={displayData.workStartTime}
-                onChange={(e) => {
-                  onStepChange?.('location_time', { workStartTime: e.target.value });
-                }}
-                size="sm"
-                w="120px"
-                borderColor={borderColor}
-                _focus={{ borderColor: currentColors.brand500 }}
-              />
-              <Text fontSize="sm" color={secondaryText}>to</Text>
-              <Input
-                type="time"
-                value={displayData.workEndTime}
-                onChange={(e) => {
-                  onStepChange?.('location_time', { workEndTime: e.target.value });
-                }}
-                size="sm"
-                w="120px"
-                borderColor={borderColor}
-                _focus={{ borderColor: currentColors.brand500 }}
-              />
-            </HStack>
-          </HStack>
+            <Box bg={cardBg} p="16px" borderRadius="12px">
+              <VStack spacing="16px" align="stretch">
+                {/* Work Hours */}
+                <HStack spacing="16px" align="center" wrap="wrap">
+                  <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} minW="60px">
+                    Hours:
+                  </Text>
+                  <HStack spacing="8px">
+                    <Input
+                      type="time"
+                      value={displayData.workStartTime}
+                      onChange={(e) => {
+                        onStepChange?.('location_time', { workStartTime: e.target.value });
+                      }}
+                      size="sm"
+                      w="120px"
+                      borderColor={borderColor}
+                      _focus={{ borderColor: currentColors.brand500 }}
+                    />
+                    <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText}>to</Text>
+                    <Input
+                      type="time"
+                      value={displayData.workEndTime}
+                      onChange={(e) => {
+                        onStepChange?.('location_time', { workEndTime: e.target.value });
+                      }}
+                      size="sm"
+                      w="120px"
+                      borderColor={borderColor}
+                      _focus={{ borderColor: currentColors.brand500 }}
+                    />
+                  </HStack>
+                </HStack>
 
-          {/* Work Days */}
-          <VStack align="stretch" spacing="8px">
-            <Text fontSize="sm" fontWeight="500" color={labelColor}>
-              Days:
-            </Text>
-            <SimpleGrid columns={{ base: 4, md: 7 }} spacing="8px" maxW="100%">
-              {dayLabels.map(({ key, label }) => (
-                <Checkbox
-                  key={key}
-                  isChecked={displayData.workDays[key as keyof typeof displayData.workDays]}
-                  onChange={() => {
-                    onStepChange?.('location_time', { workDay: key });
-                  }}
-                  colorScheme="brand"
-                  size="sm"
-                >
-                  <Text fontSize="sm">{label}</Text>
-                </Checkbox>
-              ))}
-            </SimpleGrid>
-          </VStack>
-          </VStack>
+                {/* Work Days */}
+                <VStack align="stretch" spacing="8px">
+                  <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor}>
+                    Days:
+                  </Text>
+                  <SimpleGrid columns={{ base: 4, md: 7 }} spacing="8px" maxW="100%">
+                    {dayLabels.map(({ key, label }) => (
+                      <Checkbox
+                        key={key}
+                        isChecked={displayData.workDays[key as keyof typeof displayData.workDays]}
+                        onChange={() => {
+                          onStepChange?.('location_time', { workDay: key });
+                        }}
+                        colorScheme="brand"
+                        size="sm"
+                      >
+                        <Text fontSize={adaptiveConfig.fontSize.small}>{label}</Text>
+                      </Checkbox>
+                    ))}
+                  </SimpleGrid>
+                </VStack>
+              </VStack>
+            </Box>
+          </Box>
         )}
 
-        {/* Current Summary - Always show as essential */}
-        <Box
-          bg={useColorModeValue('gray.50', 'whiteAlpha.100')}
-          borderRadius="12px"
-          p={adaptiveConfig.spacing.item}
-          border="1px solid"
-          borderColor={borderColor}
-        >
-          <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={labelColor} mb="8px">
-            📋 Current Configuration:
+        {/* Current Configuration Summary */}
+        <Box>
+          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
+            📋 Current Configuration
           </Text>
-          <VStack align="stretch" spacing="4px">
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              <strong>Location:</strong> {displayData.country}, {displayData.timezone}
-            </Text>
-            {adaptiveConfig.showOptional && (
-              <>
-                <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-                  <strong>Language:</strong> {displayData.language}
-                </Text>
-                <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-                  <strong>Work Schedule:</strong> {displayData.workStartTime} - {displayData.workEndTime}, {Object.values(displayData.workDays).filter(Boolean).length} days/week
-                </Text>
-              </>
-            )}
-          </VStack>
+          <Box
+            bg={cardBg}
+            borderRadius="12px"
+            p="16px"
+            border="1px solid"
+            borderColor={borderColor}
+          >
+            <VStack align="stretch" spacing="4px">
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                <strong>Location:</strong> {displayData.country}, {displayData.timezone}
+              </Text>
+              {adaptiveConfig.showOptional && (
+                <>
+                  <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                    <strong>Language:</strong> {displayData.language}
+                  </Text>
+                  <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                    <strong>Work Schedule:</strong> {displayData.workStartTime} - {displayData.workEndTime}, {Object.values(displayData.workDays).filter(Boolean).length} days/week
+                  </Text>
+                </>
+              )}
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} fontStyle="italic" mt="8px">
+                💡 Change values above to update configuration, or click Continue to proceed
+              </Text>
+            </VStack>
+          </Box>
         </Box>
       </VStack>
     </Box>

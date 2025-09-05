@@ -56,12 +56,21 @@ function BrandnameCanvas({ adaptiveConfig, brandName = 'Alan_go', isLoading = fa
   const bgColor = useColorModeValue('white', 'navy.800');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
   const textColor = useColorModeValue('navy.700', 'white');
+  const secondaryText = useColorModeValue('gray.600', 'gray.400');
   const cardBg = useColorModeValue('gray.50', 'navy.700');
 
   return (
     <Box
       w="100%"
       minH="fit-content"
+      maxW="450px"
+      mx="auto"
+      css={{
+        '@media (max-width: 450px)': {
+          maxW: '100%',
+          px: '12px',
+        }
+      }}
     >
       {/* Header - Priority Content */}
       <Text fontSize={adaptiveConfig.fontSize.header} fontWeight="700" color={textColor} mb={adaptiveConfig.spacing.section}>
@@ -81,20 +90,20 @@ function BrandnameCanvas({ adaptiveConfig, brandName = 'Alan_go', isLoading = fa
           
           <Box
             bg={cardBg}
-            p={adaptiveConfig.spacing.item}
+            p="16px"
             borderRadius="12px"
             textAlign="center"
           >
-            <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor} mb={adaptiveConfig.spacing.item}>
+            <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor} mb="12px">
               Company/Brand Name
             </Text>
             {adaptiveConfig.showOptional && (
-              <Text fontSize={adaptiveConfig.fontSize.small} color="gray.500" mb={adaptiveConfig.spacing.item}>
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} mb="12px">
                 Type your company name in the chat below and click Submit
               </Text>
             )}
             {adaptiveConfig.mode !== 'compact' && (
-              <Text fontSize={adaptiveConfig.fontSize.small} color="gray.400" fontStyle="italic">
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} fontStyle="italic">
                 Example: "TechCorp Manufacturing"
               </Text>
             )}
@@ -104,27 +113,32 @@ function BrandnameCanvas({ adaptiveConfig, brandName = 'Alan_go', isLoading = fa
         {adaptiveConfig.showOptional && <Divider />}
 
         {/* Current Brand Name Display - Essential Content */}
-        <Box
-          bg={cardBg}
-          p={adaptiveConfig.spacing.item}
-          borderRadius="12px"
-          textAlign="center"
-        >
-          <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor} mb="4px">
-            Current Brand Name:
+        <Box>
+          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
+            📋 Current Configuration
           </Text>
-          {isLoading ? (
-            <Text fontSize={adaptiveConfig.fontSize.small} color="gray.500">
-              Loading...
+          <Box
+            bg={cardBg}
+            p="16px"
+            borderRadius="12px"
+            textAlign="center"
+          >
+            <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor} mb="4px">
+              Current Brand Name:
             </Text>
-          ) : (
-            <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="700" color={currentColors.brand500} mb="8px">
-              "{brandName}"
+            {isLoading ? (
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                Loading...
+              </Text>
+            ) : (
+              <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="700" color={currentColors.brand500} mb="8px">
+                "{brandName}"
+              </Text>
+            )}
+            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+              💡 Type new company name in chat and click Submit, or click Continue to proceed
             </Text>
-          )}
-          <Text fontSize={adaptiveConfig.fontSize.small} color="gray.500">
-            💡 Type new company name in chat and click Submit, or click Continue to proceed
-          </Text>
+          </Box>
         </Box>
       </VStack>
     </Box>

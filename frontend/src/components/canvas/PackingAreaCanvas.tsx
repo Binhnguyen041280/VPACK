@@ -428,6 +428,14 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
     <Box
       w="100%"
       minH="fit-content"
+      maxW="450px"
+      mx="auto"
+      css={{
+        '@media (max-width: 450px)': {
+          maxW: '100%',
+          px: '12px',
+        }
+      }}
     >
       {/* Header */}
       <Text fontSize={adaptiveConfig.fontSize.header} fontWeight="700" color={textColor} mb={adaptiveConfig.spacing.section}>
@@ -806,9 +814,6 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                       </Text>
                       <Text fontSize="sm" color="blue.500" fontWeight="500">
                         ⏱️ Video Requirements: Minimum 1 minute - Maximum 5 minutes duration
-                      </Text>
-                      <Text fontSize="sm" color="orange.500" fontStyle="italic">
-                        💡 Tip: Open folder in explorer, copy path from address bar and paste here
                       </Text>
                       
                       <Input

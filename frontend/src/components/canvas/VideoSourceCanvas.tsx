@@ -65,7 +65,7 @@ interface CanvasComponentProps {
   locationTimeLoading?: boolean;
 }
 
-// Step 4: Video Source Canvas
+// Step 3: Video Source Canvas
 function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProps) {
   const { currentColors } = useColorTheme();
   const bgColor = useColorModeValue('white', 'navy.800');
@@ -73,7 +73,6 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   const textColor = useColorModeValue('navy.700', 'white');
   const secondaryText = useColorModeValue('gray.600', 'gray.400');
   const cardBg = useColorModeValue('gray.50', 'navy.700');
-  const selectionBoxBg = useColorModeValue('gray.50', 'navy.600');
 
   // State for selected source type and input path
   const [selectedSourceType, setSelectedSourceType] = useState<'local_storage' | 'cloud_storage'>('local_storage');
@@ -513,9 +512,15 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   return (
     <Box
       w="100%"
-      maxW="100%"
+      maxW="450px"
       minH="fit-content"
-      overflow="hidden"
+      mx="auto"
+      css={{
+        '@media (max-width: 450px)': {
+          maxW: '100%',
+          px: '12px',
+        }
+      }}
     >
       {/* Header */}
       <Text fontSize={adaptiveConfig.fontSize.header} fontWeight="700" color={textColor} mb={adaptiveConfig.spacing.section}>
@@ -559,63 +564,64 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
       <VStack spacing={adaptiveConfig.spacing.item} align="stretch" maxW="100%">
         {/* Source Type Selection */}
         <Box>
-          <HStack justify="space-between" align="center" mb="8px">
-            <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor}>
-              🎥 Video Source Type
-            </Text>
-            {currentActiveSource && (
-              <Text fontSize="xs" color="orange.600" fontWeight="500">
-                💡 Selecting a new source will replace the current one
-              </Text>
-            )}
-          </HStack>
-          <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} mb="12px">
-            📁 Choose where your video files are located for processing
+          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
+            🎥 Video Source Type
           </Text>
-          <SimpleGrid columns={2} spacing="12px" maxW="100%">
-            <Box 
-              bg={cardBg} 
-              p="16px" 
-              borderRadius="12px" 
-              border="2px solid" 
-              borderColor={selectedSourceType === 'local_storage' ? currentColors.brand500 : borderColor}
-              cursor="pointer"
-              onClick={() => {
-                setSelectedSourceType('local_storage');
-                // Clear cloud storage state when switching to local
-                setSelectedTreeFolders([]);
-                onStepChange?.('video_source', { sourceType: 'local_storage' });
-              }}
-            >
+          {currentActiveSource && (
+            <Text fontSize="xs" color="orange.600" fontWeight="500" mb="8px">
+              💡 Selecting a new source will replace the current one
+            </Text>
+          )}
+          <Box bg={cardBg} p="16px" borderRadius="12px">
+            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} mb="12px">
+              📁 Choose where your video files are located for processing
+            </Text>
+            <SimpleGrid columns={2} spacing="12px" maxW="100%">
+              <Box 
+                bg={bgColor} 
+                p="16px" 
+                borderRadius="12px" 
+                border="2px solid" 
+                borderColor={selectedSourceType === 'local_storage' ? currentColors.brand500 : borderColor}
+                cursor="pointer"
+                onClick={() => {
+                  setSelectedSourceType('local_storage');
+                  // Clear cloud storage state when switching to local
+                  setSelectedTreeFolders([]);
+                  onStepChange?.('video_source', { sourceType: 'local_storage' });
+                }}
+              >
               <Text fontSize="24px" mb="8px">💾</Text>
               <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor}>Local Storage</Text>
               <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>PC, External Drive, Network Mount</Text>
             </Box>
             
-            <Box 
-              bg={cardBg} 
-              p="16px" 
-              borderRadius="12px" 
-              border="2px solid" 
-              borderColor={selectedSourceType === 'cloud_storage' ? currentColors.brand500 : borderColor}
-              cursor="pointer"
-              onClick={() => {
-                setSelectedSourceType('cloud_storage');
-                // Clear local storage state when switching to cloud
-                setInputPath('');
-                setDetectedFolders([]);
-                setSelectedCameras([]);
-                onStepChange?.('video_source', { sourceType: 'cloud_storage' });
-              }}
-            >
-              <Text fontSize={adaptiveConfig.fontSize.header} mb="8px">☁️</Text>
-              <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor}>Cloud Storage</Text>
-              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>Google Drive (OAuth2)</Text>
-              {selectedSourceType === 'cloud_storage' && (
-                <Text fontSize="10px" color="green.500" mt="4px">✓ Selected</Text>
-              )}
-            </Box>
-          </SimpleGrid>
+              
+              <Box 
+                bg={bgColor} 
+                p="16px" 
+                borderRadius="12px" 
+                border="2px solid" 
+                borderColor={selectedSourceType === 'cloud_storage' ? currentColors.brand500 : borderColor}
+                cursor="pointer"
+                onClick={() => {
+                  setSelectedSourceType('cloud_storage');
+                  // Clear local storage state when switching to cloud
+                  setInputPath('');
+                  setDetectedFolders([]);
+                  setSelectedCameras([]);
+                  onStepChange?.('video_source', { sourceType: 'cloud_storage' });
+                }}
+              >
+                <Text fontSize="24px" mb="8px">☁️</Text>
+                <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor}>Cloud Storage</Text>
+                <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>Google Drive (OAuth2)</Text>
+                {selectedSourceType === 'cloud_storage' && (
+                  <Text fontSize="10px" color="green.500" mt="4px">✓ Selected</Text>
+                )}
+              </Box>
+            </SimpleGrid>
+          </Box>
         </Box>
 
         {/* Video Input Directory - Show only when Local Storage is selected */}

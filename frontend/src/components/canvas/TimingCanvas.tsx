@@ -95,6 +95,14 @@ function TimingCanvas({ adaptiveConfig, onStepChange, timingStorageData, timingS
     <Box
       w="100%"
       minH="fit-content"
+      maxW="450px"
+      mx="auto"
+      css={{
+        '@media (max-width: 450px)': {
+          maxW: '100%',
+          px: '12px',
+        }
+      }}
     >
       {/* Header */}
       <Text fontSize={adaptiveConfig.fontSize.header} fontWeight="700" color={textColor} mb={adaptiveConfig.spacing.section}>
@@ -290,6 +298,35 @@ function TimingCanvas({ adaptiveConfig, onStepChange, timingStorageData, timingS
               </Text>
             </Box>
           </SimpleGrid>
+        </Box>
+
+        {/* Configuration Summary */}
+        <Box>
+          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
+            📋 Current Configuration
+          </Text>
+          <Box bg={cardBg} p="16px" borderRadius="12px" border="1px solid" borderColor={borderColor}>
+            <VStack align="stretch" spacing="4px">
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                <strong>Output Path:</strong> {currentData.output_path || 'Not specified'}
+              </Text>
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                <strong>File Retention:</strong> {currentData.storage_duration} days auto-delete
+              </Text>
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                <strong>Buffer Settings:</strong> {currentData.video_buffer} seconds before/after events
+              </Text>
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                <strong>Packing Time:</strong> {currentData.min_packing_time}s - {currentData.max_packing_time}s limits
+              </Text>
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                <strong>Performance:</strong> {currentData.frame_rate} fps, skip {currentData.frame_interval} frames
+              </Text>
+              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} fontStyle="italic" mt="8px">
+                💡 Adjust values above to optimize performance, or click Continue to proceed
+              </Text>
+            </VStack>
+          </Box>
         </Box>
 
       </VStack>
