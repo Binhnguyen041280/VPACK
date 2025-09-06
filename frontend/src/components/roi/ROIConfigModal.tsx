@@ -34,8 +34,7 @@ import {
 } from '@chakra-ui/react';
 import { FaTrash, FaPlay, FaPause } from 'react-icons/fa';
 import VideoPlayer from './VideoPlayer';
-import CanvasOverlay, { ROIData } from './CanvasOverlay';
-import DualAnalysisCanvas from './DualAnalysisCanvas';
+import CanvasOverlay, { ROIData, HandLandmarks } from './CanvasOverlay';
 // Generate unique IDs without external dependency
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -91,8 +90,10 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [analysisSessionId, setAnalysisSessionId] = useState<string | null>(null);
-  const [showAnalysis, setShowAnalysis] = useState(false);
+  const [handLandmarks, setHandLandmarks] = useState<HandLandmarks | null>(null);
+  const [isDetecting, setIsDetecting] = useState(false);
+  const [lastProcessedTime, setLastProcessedTime] = useState<number>(0);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
 
   // Toast for notifications
   const toast = useToast();
@@ -234,115 +235,69 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
 
 
 
-  // Start real-time analysis
-  const startAnalysis = useCallback(async () => {
-    if (!videoMetadata || rois.length === 0) {
-      toast({
-        title: 'Cannot Start Analysis',
-        description: 'Please configure ROI areas first',
-        status: 'warning',
-        duration: 3000
-      });
+  // Simple hand detection at current video time with throttling
+  const detectHandsAtCurrentTime = useCallback(async (currentTime: number) => {
+    if (!videoMetadata || rois.length === 0 || !isVideoPlaying || isDetecting) {
+      return;
+    }
+
+    // Throttle API calls - only process every 500ms
+    const timeDiff = Math.abs(currentTime - lastProcessedTime);
+    if (timeDiff < 0.5) {
+      return;
+    }
+
+    // Only detect for packing areas in traditional method
+    const packingROI = rois.find(roi => roi.type === 'packing_area');
+    if (!packingROI || packingMethod !== 'traditional') {
       return;
     }
 
     try {
-      setIsLoading(true);
-      
-      // Prepare ROI data for analysis
-      const analysisROIs = rois.map(roi => ({
-        x: roi.x,
-        y: roi.y,
-        w: roi.w,
-        h: roi.h,
-        type: roi.type,
-        label: roi.label
-      }));
+      setIsDetecting(true);
+      setLastProcessedTime(currentTime);
 
-      const analysisMethod = packingMethod === 'traditional' ? 'traditional' : 'qr_code';
-
-      const response = await fetch('/api/analysis-streaming/start-analysis', {
+      const response = await fetch('http://localhost:8080/api/hand-detection/process-frame', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           video_path: videoPath,
-          method: analysisMethod,
-          rois: analysisROIs
+          time_seconds: currentTime,
+          roi_config: {
+            x: packingROI.x,
+            y: packingROI.y,
+            w: packingROI.w,
+            h: packingROI.h
+          }
         })
       });
 
       const result = await response.json();
       
-      if (result.success) {
-        setAnalysisSessionId(result.session_id);
-        setShowAnalysis(true);
-        
-        toast({
-          title: 'Analysis Started',
-          description: `Real-time ${packingMethod} analysis started`,
-          status: 'success',
-          duration: 3000
+      if (result.success && result.landmarks && result.landmarks.length > 0) {
+        setHandLandmarks({
+          landmarks: result.landmarks,
+          confidence: result.confidence,
+          hands_detected: result.hands_detected
         });
       } else {
-        throw new Error(result.error || 'Failed to start analysis');
+        setHandLandmarks(null);
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      toast({
-        title: 'Analysis Failed',
-        description: errorMessage,
-        status: 'error',
-        duration: 5000
-      });
+      console.error('Hand detection error:', error);
+      setHandLandmarks(null);
     } finally {
-      setIsLoading(false);
+      setIsDetecting(false);
     }
-  }, [videoMetadata, rois, packingMethod, videoPath, toast]);
+  }, [videoMetadata, rois, packingMethod, videoPath, isVideoPlaying, isDetecting, lastProcessedTime]);
 
-  // Stop analysis
-  const stopAnalysis = useCallback(async () => {
-    if (!analysisSessionId) return;
-
-    try {
-      await fetch(`/api/analysis-streaming/stop-analysis/${analysisSessionId}`, {
-        method: 'POST'
-      });
-      
-      setAnalysisSessionId(null);
-      setShowAnalysis(false);
-      
-      toast({
-        title: 'Analysis Stopped',
-        description: 'Real-time analysis stopped',
-        status: 'info',
-        duration: 3000
-      });
-    } catch (error) {
-      console.error('Error stopping analysis:', error);
+  // Handle video play/pause state changes
+  const handleVideoPlayStateChange = useCallback((isPlaying: boolean) => {
+    setIsVideoPlaying(isPlaying);
+    if (!isPlaying) {
+      setHandLandmarks(null); // Clear landmarks when video is paused
     }
-  }, [analysisSessionId, toast]);
-
-  // Handle analysis completion
-  const handleAnalysisComplete = useCallback((results: any) => {
-    setAnalysisSessionId(null);
-    
-    toast({
-      title: 'Analysis Complete',
-      description: 'Video analysis has been completed successfully',
-      status: 'success',
-      duration: 5000
-    });
-  }, [toast]);
-
-  // Handle analysis error
-  const handleAnalysisError = useCallback((errorMessage: string) => {
-    toast({
-      title: 'Analysis Error',
-      description: errorMessage,
-      status: 'error',
-      duration: 5000
-    });
-  }, [toast]);
+  }, []);
 
   // Save configuration
   const handleSaveConfiguration = useCallback(async () => {
@@ -481,17 +436,10 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       setROIs([]);
       setSelectedROIId(null);
       setError(null);
-      setAnalysisSessionId(null);
-      setShowAnalysis(false);
-    } else {
-      // Clean up analysis session when modal closes
-      if (analysisSessionId) {
-        fetch(`/api/analysis-streaming/cleanup-session/${analysisSessionId}`, {
-          method: 'POST'
-        }).catch(console.error);
-      }
+      setHandLandmarks(null);
+      setIsVideoPlaying(false);
     }
-  }, [isOpen, analysisSessionId]);
+  }, [isOpen]);
 
   // Check if all required ROIs are created
   const allRequiredCompleted = useMemo(() => {
@@ -575,7 +523,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                                 {roi.label}
                               </Text>
                               <Text fontSize="xs" color={secondaryText}>
-                                {roi.type} • {roi.w}×{roi.h}px
+                                {roi.type} • Tọa độ: ({roi.x}, {roi.y}) • Kích thước: {roi.w}×{roi.h}px
                               </Text>
                             </VStack>
                             <IconButton
@@ -653,6 +601,8 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                 <VideoPlayer
                   videoPath={videoPath}
                   onMetadataLoaded={handleMetadataLoaded}
+                  onTimeUpdate={(currentTime) => detectHandsAtCurrentTime(currentTime)}
+                  onPlayStateChange={handleVideoPlayStateChange}
                   onVideoError={handleVideoError}
                   width={`${videoPlayerWidth}px`}
                   height={`${videoPlayerHeight}px`}
@@ -677,84 +627,30 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                     currentROILabel={packingMethod === 'traditional' ? 'Packing Area' : (!rois.some(roi => roi.type === 'qr_trigger') ? 'Trigger Area' : 'Packing Area')}
                     packingMethod={packingMethod}
                     disabled={(packingMethod === 'traditional' && rois.some(roi => roi.type === 'packing_area')) || (packingMethod === 'qr' && rois.some(roi => roi.type === 'qr_trigger') && rois.some(roi => roi.type === 'packing_area'))}
+                    handLandmarks={handLandmarks}
+                    showHandLandmarks={isVideoPlaying && rois.length > 0}
+                    landmarksColor="#00FF00"
+                    landmarksSize={4}
                   />
                 )}
               </Box>
 
               {/* Instructions */}
-              <Text fontSize="sm" color={secondaryText} mt="16px" textAlign="center" maxW={`${videoPlayerWidth}px`}>
-                Click and drag on the video to create ROI rectangles. 
-                Double-click an existing ROI to delete it. 
-                Use the controls below to navigate between configuration steps.
-              </Text>
-
-              {/* Analysis Controls */}
-              {rois.length > 0 && videoMetadata && (
-                <HStack spacing="12px" mt="16px">
-                  {!showAnalysis ? (
-                    <Button
-                      colorScheme="green"
-                      size="sm"
-                      onClick={startAnalysis}
-                      isLoading={isLoading}
-                      leftIcon={<FaPlay />}
-                    >
-                      Start Real-time Analysis
-                    </Button>
-                  ) : (
-                    <>
-                      <Button
-                        colorScheme="red"
-                        size="sm"
-                        onClick={stopAnalysis}
-                        leftIcon={<FaPause />}
-                      >
-                        Stop Analysis
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => setShowAnalysis(false)}
-                        variant="outline"
-                      >
-                        Hide Analysis
-                      </Button>
-                    </>
-                  )}
-                  
-                  {analysisSessionId && !showAnalysis && (
-                    <Button
-                      colorScheme="blue"
-                      size="sm"
-                      onClick={() => setShowAnalysis(true)}
-                      leftIcon={<FaPlay />}
-                    >
-                      Show Analysis
-                    </Button>
-                  )}
-                </HStack>
+              {rois.length === 0 && (
+                <Text fontSize="sm" color={secondaryText} mt="16px" textAlign="center" maxW={`${videoPlayerWidth}px`}>
+                  Click and drag on the video to create ROI rectangles. 
+                  Double-click an existing ROI to delete it.
+                </Text>
               )}
 
-              {/* Real-time Analysis Display */}
-              {showAnalysis && analysisSessionId && videoMetadata && (
-                <Box mt="20px" width={`${videoPlayerWidth}px`}>
-                  <DualAnalysisCanvas
-                    sessionId={analysisSessionId}
-                    method={packingMethod}
-                    rois={rois.map(roi => ({
-                      x: roi.x,
-                      y: roi.y,
-                      w: roi.w,
-                      h: roi.h,
-                      type: roi.type,
-                      label: roi.label
-                    }))}
-                    videoWidth={videoMetadata.resolution.width}
-                    videoHeight={videoMetadata.resolution.height}
-                    onAnalysisComplete={handleAnalysisComplete}
-                    onError={handleAnalysisError}
-                  />
-                </Box>
+              {/* Hand Detection Instructions */}
+              {rois.length > 0 && videoMetadata && packingMethod === 'traditional' && !isVideoPlaying && (
+                <Text fontSize="sm" color="blue.500" mt="16px" textAlign="center" maxW={`${videoPlayerWidth}px`}>
+                  Bấm nút Play để chạy phân tích tay trên video
+                </Text>
               )}
+              
+
 
             </Box>
 

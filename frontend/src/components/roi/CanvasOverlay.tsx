@@ -29,6 +29,19 @@ interface DrawingState {
   previewROI: ROIData | null;
 }
 
+// Hand landmarks interface
+interface HandLandmarks {
+  landmarks: Array<Array<{
+    x: number;      // ROI-relative coordinates [0,1]
+    y: number;
+    z: number;
+    x_norm: number; // Full frame normalized coordinates [0,1]  
+    y_norm: number;
+  }>>;
+  confidence: number;
+  hands_detected: number;
+}
+
 // Component props interface
 interface CanvasOverlayProps {
   width: number;
@@ -49,6 +62,11 @@ interface CanvasOverlayProps {
   minROISize?: number;
   gridSnap?: boolean;
   snapSize?: number;
+  // Hand landmarks props
+  handLandmarks?: HandLandmarks | null;
+  showHandLandmarks?: boolean;
+  landmarksColor?: string;
+  landmarksSize?: number;
 }
 
 // Default colors for different ROI types
@@ -77,7 +95,12 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
   className,
   minROISize = 20,
   gridSnap = false,
-  snapSize = 10
+  snapSize = 10,
+  // Hand landmarks props with defaults
+  handLandmarks = null,
+  showHandLandmarks = true,
+  landmarksColor = '#00FF00',
+  landmarksSize = 4
 }) => {
   // Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -160,7 +183,7 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
     const context = contextRef.current;
     if (!context) return;
 
-    // Clear canvas
+    // Clear canvas before drawing
     context.clearRect(0, 0, width, height);
 
     // Draw existing ROIs
@@ -251,10 +274,97 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
     videoToCanvas
   ]);
 
+  // Draw hand landmarks on canvas (after ROIs)
+  const drawHandLandmarks = useCallback(() => {
+    const context = contextRef.current;
+    if (!context || !handLandmarks || !showHandLandmarks) return;
+
+    const { landmarks, confidence } = handLandmarks;
+    
+    // Draw each hand
+    landmarks.forEach((hand, handIndex) => {
+      if (!hand || hand.length === 0) return;
+
+      // Set drawing styles based on confidence
+      const alpha = Math.max(0.5, confidence);
+      const color = confidence > 0.7 ? landmarksColor : '#FFAA00';
+      
+      context.fillStyle = color;
+      context.strokeStyle = color;
+      context.globalAlpha = alpha;
+      context.lineWidth = 2;
+
+      // Draw landmark points
+      hand.forEach((landmark) => {
+        const canvasX = landmark.x_norm * width;
+        const canvasY = landmark.y_norm * height;
+        
+        context.beginPath();
+        context.arc(canvasX, canvasY, landmarksSize, 0, 2 * Math.PI);
+        context.fill();
+      });
+
+      // Draw hand skeleton connections
+      const handConnections = [
+        [0, 1], [1, 2], [2, 3], [3, 4], // Thumb
+        [0, 5], [5, 6], [6, 7], [7, 8], // Index
+        [0, 9], [9, 10], [10, 11], [11, 12], // Middle
+        [0, 13], [13, 14], [14, 15], [15, 16], // Ring
+        [0, 17], [17, 18], [18, 19], [19, 20], // Pinky
+        [5, 9], [9, 13], [13, 17] // Palm
+      ];
+
+      handConnections.forEach(([startIdx, endIdx]) => {
+        if (startIdx < hand.length && endIdx < hand.length) {
+          const startPoint = hand[startIdx];
+          const endPoint = hand[endIdx];
+          
+          const startX = startPoint.x_norm * width;
+          const startY = startPoint.y_norm * height;
+          const endX = endPoint.x_norm * width;
+          const endY = endPoint.y_norm * height;
+          
+          context.beginPath();
+          context.moveTo(startX, startY);
+          context.lineTo(endX, endY);
+          context.stroke();
+        }
+      });
+    });
+
+    // Reset global alpha
+    context.globalAlpha = 1.0;
+    
+    // Draw confidence indicator at bottom-right
+    if (landmarks.length > 0) {
+      const indicatorX = width - 160;
+      const indicatorY = height - 30;
+      
+      context.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      context.fillRect(indicatorX, indicatorY, 150, 25);
+      
+      context.fillStyle = landmarksColor;
+      context.font = '11px Arial';
+      context.fillText(
+        `${landmarks.length} hand${landmarks.length > 1 ? 's' : ''} | ${(confidence * 100).toFixed(0)}%`, 
+        indicatorX + 5, 
+        indicatorY + 16
+      );
+    }
+  }, [handLandmarks, showHandLandmarks, landmarksColor, landmarksSize, width, height]);
+
+  // Combined redraw function
+  const redrawCanvas = useCallback(() => {
+    drawROIs(); // This clears canvas and draws ROIs
+    if (handLandmarks && showHandLandmarks) {
+      drawHandLandmarks(); // Then draw hand landmarks on top
+    }
+  }, [drawROIs, drawHandLandmarks, handLandmarks, showHandLandmarks]);
+
   // Redraw canvas when dependencies change
   useEffect(() => {
-    drawROIs();
-  }, [drawROIs]);
+    redrawCanvas();
+  }, [redrawCanvas]);
 
   // Find ROI at canvas coordinates (prioritize smallest ROI if overlapping)
   const findROIAtPoint = useCallback((x: number, y: number): ROIData | null => {
@@ -597,5 +707,8 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
     </Box>
   );
 };
+
+// Export interfaces for use in other components
+export type { HandLandmarks };
 
 export default CanvasOverlay;

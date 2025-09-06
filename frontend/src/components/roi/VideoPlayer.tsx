@@ -47,6 +47,11 @@ interface VideoPlayerProps {
   onMetadataLoaded?: (metadata: VideoMetadata) => void;
   onTimeUpdate?: (currentTime: number, duration: number) => void;
   onVideoError?: (error: string) => void;
+  onPlay?: () => void;
+  onPause?: () => void;
+  onSeek?: (currentTime: number) => void;
+  onSpeedChange?: (speed: number) => void;
+  onPlayStateChange?: (isPlaying: boolean) => void;
   className?: string;
   width?: string;
   height?: string;
@@ -70,6 +75,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onMetadataLoaded,
   onTimeUpdate,
   onVideoError,
+  onPlay,
+  onPause,
+  onSeek,
+  onSpeedChange,
+  onPlayStateChange,
   className,
   width = '100%',
   height = '400px',
@@ -85,6 +95,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isBuffering, setIsBuffering] = useState(false);
@@ -104,7 +116,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       setError(null);
 
       const response = await fetch(
-        `/api/config/step4/roi/video-info?video_path=${encodeURIComponent(videoPath)}`
+        `http://localhost:8080/api/config/step4/roi/video-info?video_path=${encodeURIComponent(videoPath)}`
       );
 
       if (!response.ok) {
@@ -131,11 +143,34 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [videoPath, onMetadataLoaded, onVideoError]);
 
+  // Calculate current frame from video time
+  const getCurrentFrame = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || !videoMetadata) return 0;
+    
+    const fps = videoMetadata.fps || 30;
+    return Math.floor(video.currentTime * fps);
+  }, [videoMetadata]);
+
+  // Seek to specific frame
+  const seekToFrame = useCallback((frameNumber: number) => {
+    const video = videoRef.current;
+    if (!video || !videoMetadata) return;
+    
+    const fps = videoMetadata.fps || 30;
+    const targetTime = frameNumber / fps;
+    
+    video.currentTime = Math.min(targetTime, video.duration);
+    setCurrentTime(video.currentTime);
+    onSeek?.(video.currentTime);
+  }, [videoMetadata, onSeek]);
+
   // Video event handlers
   const handleLoadedMetadata = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
     
+    setDuration(video.duration);
     setIsLoading(false);
     setError(null);
 
@@ -145,6 +180,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       height: video.videoHeight
     });
   }, []);
+
+  const handleTimeUpdate = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    setCurrentTime(video.currentTime);
+    onTimeUpdate?.(video.currentTime, video.duration);
+  }, [onTimeUpdate]);
 
 
   const handleLoadStart = useCallback(() => {
@@ -243,7 +286,18 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     video.playbackRate = speedValue;
     setPlaybackSpeed(speedValue);
-  }, []);
+    onSpeedChange?.(speedValue);
+  }, [onSpeedChange]);
+
+  // Seek handler with callback
+  const handleSeek = useCallback((value: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    
+    video.currentTime = value;
+    setCurrentTime(value);
+    onSeek?.(value);
+  }, [onSeek]);
 
   const toggleFullscreen = useCallback(() => {
     const container = containerRef.current;
@@ -273,10 +327,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const handlePlay = () => {
       console.log('Video play event');
       setIsPlaying(true);
+      onPlay?.();
+      onPlayStateChange?.(true);
     };
     const handlePause = () => {
       console.log('Video pause event');
       setIsPlaying(false);
+      onPause?.();
+      onPlayStateChange?.(false);
     };
     
     // Sync initial state with video element
@@ -290,6 +348,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     video.addEventListener('waiting', handleWaiting);
     video.addEventListener('playing', handlePlaying);
     video.addEventListener('error', handleError);
+    video.addEventListener('timeupdate', handleTimeUpdate);
 
     return () => {
       video.removeEventListener('play', handlePlay);
@@ -300,6 +359,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       video.removeEventListener('waiting', handleWaiting);
       video.removeEventListener('playing', handlePlaying);
       video.removeEventListener('error', handleError);
+      video.removeEventListener('timeupdate', handleTimeUpdate);
     };
   }, [
     handleLoadedMetadata,
@@ -307,7 +367,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     handleCanPlay,
     handleWaiting,
     handlePlaying,
-    handleError
+    handleError,
+    handleTimeUpdate,
+    onPlay,
+    onPause,
+    onPlayStateChange
   ]);
 
   // Render loading state
@@ -370,7 +434,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           objectFit: 'contain',
           backgroundColor: '#000'
         }}
-        src={`/api/config/step4/roi/stream-video?video_path=${encodeURIComponent(videoPath)}`}
+        src={`http://localhost:8080/api/config/step4/roi/stream-video?video_path=${encodeURIComponent(videoPath)}`}
         autoPlay={autoPlay}
         muted={isMuted}
         playsInline
@@ -407,6 +471,20 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           borderTop="1px solid"
           borderColor={borderColor}
         >
+          <VStack spacing="8px" width="100%">
+            {/* Seek Bar */}
+            <Slider
+              value={currentTime}
+              max={duration}
+              onChange={handleSeek}
+              width="100%"
+            >
+              <SliderTrack>
+                <SliderFilledTrack />
+              </SliderTrack>
+              <SliderThumb boxSize="12px" />
+            </Slider>
+
             {/* Control Buttons */}
             <Flex justify="space-between" align="center" width="100%">
               {/* Left Side - Playback Controls */}
@@ -484,6 +562,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </Tooltip>
               </HStack>
             </Flex>
+
+            {/* Time Display */}
+            <HStack justify="space-between" width="100%" fontSize="xs">
+              <Text>
+                {Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, '0')} / {Math.floor(duration / 60)}:{Math.floor(duration % 60).toString().padStart(2, '0')}
+              </Text>
+              {videoMetadata && (
+                <Text>Frame: {getCurrentFrame()} / {videoMetadata.frame_count}</Text>
+              )}
+            </HStack>
+          </VStack>
         </Box>
       )}
 

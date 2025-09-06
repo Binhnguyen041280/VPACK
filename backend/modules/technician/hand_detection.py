@@ -319,6 +319,151 @@ def finalize_roi(video_path: str, camera_id: str, rois: list) -> Dict[str, Any]:
         logging.error(f"Lỗi trong finalize_roi: {str(e)}")
         return {"success": False, "error": f"Lỗi hệ thống: {str(e)}"}
 
+def detect_hands_at_time(video_path: str, time_seconds: float, roi_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Detect hands at specific time in video for web interface
+    Based on the simple pattern from 2hand_detection.py
+    
+    Args:
+        video_path (str): Path to video file
+        time_seconds (float): Video time in seconds 
+        roi_config (dict, optional): ROI configuration {'x': int, 'y': int, 'w': int, 'h': int}
+        
+    Returns:
+        dict: {
+            'success': bool,
+            'landmarks': list,  # Hand landmarks in normalized coordinates  
+            'confidence': float,
+            'frame_number': int,
+            'video_time': float,
+            'hands_detected': int,
+            'error': str (if error)
+        }
+    """
+    try:
+        logging.debug(f"Detecting hands at time {time_seconds}s in {video_path}")
+        
+        # Open video
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            return {
+                "success": False,
+                "error": "Cannot open video file"
+            }
+        
+        try:
+            # Get video properties
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            if fps <= 0:
+                fps = 30.0  # Default FPS
+                
+            # Calculate frame number from time
+            frame_number = int(time_seconds * fps)
+            
+            # Set video position to specific frame
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+            ret, frame = cap.read()
+            
+            if not ret:
+                return {
+                    "success": False, 
+                    "error": f"Cannot read frame at time {time_seconds}s"
+                }
+            
+            # Apply ROI if provided
+            if roi_config:
+                x, y, w, h = roi_config["x"], roi_config["y"], roi_config["w"], roi_config["h"]
+                # Ensure ROI is within frame bounds
+                frame_height, frame_width = frame.shape[:2]
+                x = max(0, min(x, frame_width - 1))
+                y = max(0, min(y, frame_height - 1))
+                w = max(1, min(w, frame_width - x))
+                h = max(1, min(h, frame_height - y))
+                
+                roi_frame = frame[y:y+h, x:x+w]
+            else:
+                roi_frame = frame
+                x, y = 0, 0
+            
+            # Convert BGR to RGB for MediaPipe
+            rgb_frame = cv2.cvtColor(roi_frame, cv2.COLOR_BGR2RGB)
+            
+            # Initialize MediaPipe Hands
+            with mp_hands.Hands(
+                static_image_mode=True,  # Process single image
+                max_num_hands=2,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5
+            ) as hands:
+                
+                # Process frame
+                results = hands.process(rgb_frame)
+                
+                # Extract landmarks
+                landmarks_list = []
+                hands_detected = 0
+                confidence_scores = []
+                
+                if results.multi_hand_landmarks:
+                    hands_detected = len(results.multi_hand_landmarks)
+                    
+                    for idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
+                        hand_points = []
+                        
+                        # Extract landmarks and convert to full frame coordinates
+                        for landmark in hand_landmarks.landmark:
+                            if roi_config:
+                                # Transform from ROI-relative to full frame coordinates
+                                full_x = (x + landmark.x * w) / frame.shape[1]  # Normalize to [0,1]
+                                full_y = (y + landmark.y * h) / frame.shape[0]  # Normalize to [0,1]
+                            else:
+                                full_x = landmark.x
+                                full_y = landmark.y
+                            
+                            hand_points.append({
+                                'x': landmark.x,  # ROI-relative coordinates
+                                'y': landmark.y,
+                                'z': landmark.z,
+                                'x_norm': full_x,  # Full frame normalized coordinates
+                                'y_norm': full_y
+                            })
+                        
+                        landmarks_list.append(hand_points)
+                        
+                        # Get confidence from handedness if available
+                        if results.multi_handedness and idx < len(results.multi_handedness):
+                            confidence = results.multi_handedness[idx].classification[0].score
+                            confidence_scores.append(confidence)
+                        else:
+                            confidence_scores.append(0.85)  # Default confidence
+                
+                # Calculate overall confidence
+                overall_confidence = float(sum(confidence_scores) / len(confidence_scores)) if confidence_scores else 0.0
+                
+                logging.debug(f"Hand detection complete: {hands_detected} hands detected, confidence: {overall_confidence:.2f}")
+                
+                return {
+                    "success": True,
+                    "landmarks": landmarks_list,
+                    "confidence": overall_confidence,
+                    "frame_number": frame_number,
+                    "video_time": time_seconds,
+                    "hands_detected": hands_detected,
+                    "roi_applied": roi_config is not None,
+                    "roi_config": roi_config
+                }
+                
+        finally:
+            cap.release()
+            
+    except Exception as e:
+        error_msg = f"Error in hand detection at time {time_seconds}s: {str(e)}"
+        logging.error(error_msg)
+        return {
+            "success": False,
+            "error": error_msg
+        }
+
 if __name__ == "__main__":
     import sys
     # ✅ SUPPORT: Accept both 2 and 3 arguments, with optional step parameter
