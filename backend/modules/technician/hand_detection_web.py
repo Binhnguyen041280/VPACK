@@ -13,6 +13,7 @@ from typing import Dict, Any, Optional, List, Callable
 from dataclasses import dataclass
 
 from modules.config.logging_config import get_logger
+from modules.technician.landmark_mapper import LandmarkMapper, ROIConfig, VideoDimensions, CanvasDimensions
 
 logger = get_logger(__name__)
 
@@ -76,7 +77,10 @@ class HandDetectionWeb:
 
     def detect_hands_in_frame(self, 
                             frame: np.ndarray, 
-                            frame_number: int) -> Optional[Dict[str, Any]]:
+                            frame_number: int,
+                            roi_offset: Optional[Dict[str, int]] = None,
+                            video_dims: Optional[Dict[str, int]] = None,
+                            canvas_dims: Optional[Dict[str, int]] = None) -> Optional[Dict[str, Any]]:
         """
         Detect hands in a single frame for streaming output
         Maintains exact same MediaPipe processing as original
@@ -84,12 +88,25 @@ class HandDetectionWeb:
         Args:
             frame: Input frame (BGR format)
             frame_number: Frame sequence number
+            roi_offset: ROI offset coordinates for absolute positioning
+            video_dims: Original video dimensions for coordinate mapping
+            canvas_dims: Canvas dimensions for display coordinate mapping
             
         Returns:
-            dict: Detection results or None if no hands detected
+            dict: Detection results with optional canvas_landmarks field
         """
         try:
             if frame is None or frame.size == 0:
+                logger.warning(f"Frame {frame_number}: Invalid frame (None or empty)")
+                return None
+            
+            # Check frame dimensions for MediaPipe compatibility
+            if len(frame.shape) != 3 or frame.shape[2] != 3:
+                logger.warning(f"Frame {frame_number}: Invalid frame shape {frame.shape}, expected (H,W,3)")
+                return None
+                
+            if frame.shape[0] < 10 or frame.shape[1] < 10:
+                logger.warning(f"Frame {frame_number}: Frame too small {frame.shape[:2]}, may not contain detectable hands")
                 return None
                 
             # Convert BGR to RGB - exact same as hand_detection.py
@@ -99,6 +116,7 @@ class HandDetectionWeb:
             results = self.hands.process(rgb_frame)
             
             if not results.multi_hand_landmarks:
+                logger.debug(f"Frame {frame_number}: No hands detected by MediaPipe in ROI frame {frame.shape[:2]}")
                 return None
                 
             # Extract detection data - same structure as original
@@ -153,7 +171,8 @@ class HandDetectionWeb:
             # Calculate average confidence
             avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
             
-            return {
+            # Create base response
+            result = {
                 'timestamp': time.time(),
                 'frame_number': frame_number,
                 'hands_detected': hands_detected,
@@ -162,6 +181,65 @@ class HandDetectionWeb:
                 'bounding_boxes': bounding_boxes,
                 'hand_labels': hand_labels
             }
+            
+            # Add canvas_landmarks if mapping parameters provided
+            if roi_offset and video_dims and canvas_dims:
+                try:
+                    # Convert landmarks to format expected by LandmarkMapper
+                    mapper_landmarks = []
+                    for hand_landmarks in landmarks_list:
+                        hand_data = []
+                        for landmark in hand_landmarks:
+                            hand_data.append({
+                                'x': landmark.x,
+                                'y': landmark.y,
+                                'z': landmark.z
+                            })
+                        mapper_landmarks.append(hand_data)
+                    
+                    # Create mapping objects
+                    roi = ROIConfig(
+                        x=roi_offset['x'],
+                        y=roi_offset['y'],
+                        w=roi_offset['w'],
+                        h=roi_offset['h']
+                    )
+                    video_dimensions = VideoDimensions(
+                        width=video_dims['width'],
+                        height=video_dims['height']
+                    )
+                    canvas_dimensions = CanvasDimensions(
+                        width=canvas_dims['width'],
+                        height=canvas_dims['height']
+                    )
+                    
+                    # Generate canvas landmarks with fixed sizing
+                    canvas_response = LandmarkMapper.create_canvas_landmarks_response(
+                        mapper_landmarks, roi, video_dimensions, canvas_dimensions
+                    )
+                    
+                    if canvas_response['success']:
+                        result['canvas_landmarks'] = canvas_response['canvas_landmarks']
+                        result['fixed_sizes'] = canvas_response['fixed_sizes']
+                        result['mapping_algorithm'] = 'fixed_size_mapping'
+                        
+                        # Debug: Log first landmark coordinate verification
+                        if canvas_response['canvas_landmarks'] and len(canvas_response['canvas_landmarks']) > 0:
+                            first_hand = canvas_response['canvas_landmarks'][0]
+                            if len(first_hand) > 0:
+                                first_landmark = first_hand[0]
+                                logger.debug(f"🔍 Coordinate Verification - First landmark:")
+                                logger.debug(f"  ROI-relative: ({first_landmark.get('x_rel', 0):.3f}, {first_landmark.get('y_rel', 0):.3f})")
+                                logger.debug(f"  Video pixel (TC Gốc): ({first_landmark.get('x_orig', 0):.1f}, {first_landmark.get('y_orig', 0):.1f})")
+                                logger.debug(f"  Canvas display: ({first_landmark.get('x_disp', 0):.1f}, {first_landmark.get('y_disp', 0):.1f})")
+                                logger.debug(f"  Video size: {video_dims['width']}x{video_dims['height']}, Canvas: {canvas_dims['width']}x{canvas_dims['height']}")
+                    else:
+                        logger.warning(f"Canvas landmark mapping failed: {canvas_response.get('error')}")
+                        
+                except Exception as e:
+                    logger.error(f"Error generating canvas landmarks: {e}")
+            
+            return result
             
         except Exception as e:
             logger.error(f"Error in detect_hands_in_frame: {str(e)}")
@@ -215,13 +293,36 @@ class HandDetectionWeb:
                     if not ret:
                         break
 
-                    # Cắt video theo ROI - exact same as original
-                    roi_frame = frame[y:y+h, x:x+w]
+                    # Get frame dimensions first for ROI bounds checking
+                    frame_height, frame_width = frame.shape[:2]
+                    
+                    # Apply ROI bounds checking - CRITICAL FIX!
+                    # Same logic as hand_detection.py to prevent out of bounds errors
+                    x_safe = max(0, min(x, frame_width - 1))
+                    y_safe = max(0, min(y, frame_height - 1))
+                    w_safe = max(1, min(w, frame_width - x_safe))
+                    h_safe = max(1, min(h, frame_height - y_safe))
+                    
+                    # Cắt video theo ROI với bounds checking
+                    roi_frame = frame[y_safe:y_safe+h_safe, x_safe:x_safe+w_safe]
 
                     # Chỉ xử lý mỗi FRAME_STEP frame - EXACT SAME LOGIC as hand_detection.py
                     if frame_count % FRAME_STEP == 0:
-                        # Detect hands using our streaming method
-                        detection_result = self.detect_hands_in_frame(roi_frame, frame_count)
+                        
+                        # Debug logging for coordinate accuracy verification
+                        logger.debug(f"Frame {frame_count}: Video dimensions {frame_width}x{frame_height}, "
+                                   f"ROI original: ({x},{y},{w},{h}) → ROI safe: ({x_safe},{y_safe},{w_safe},{h_safe}), "
+                                   f"Scale factors: X={960/frame_width:.3f}, Y={540/frame_height:.3f}")
+                        
+                        # Detect hands using our streaming method with coordinate mapping
+                        # IMPORTANT: Use safe coordinates for accurate mapping
+                        detection_result = self.detect_hands_in_frame(
+                            roi_frame, 
+                            frame_count,
+                            roi_offset={'x': x_safe, 'y': y_safe, 'w': w_safe, 'h': h_safe},
+                            video_dims={'width': frame_width, 'height': frame_height},
+                            canvas_dims={'width': 960, 'height': 540}  # Default canvas size
+                        )
                         
                         if detection_result:
                             hand_detected = True

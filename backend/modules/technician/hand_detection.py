@@ -410,22 +410,31 @@ def detect_hands_at_time(video_path: str, time_seconds: float, roi_config: Optio
                     for idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
                         hand_points = []
                         
-                        # Extract landmarks and convert to full frame coordinates
+                        # Extract landmarks with TC Gốc coordinate transformation
                         for landmark in hand_landmarks.landmark:
                             if roi_config:
-                                # Transform from ROI-relative to full frame coordinates
-                                full_x = (x + landmark.x * w) / frame.shape[1]  # Normalize to [0,1]
-                                full_y = (y + landmark.y * h) / frame.shape[0]  # Normalize to [0,1]
+                                # Step 2: MediaPipe runs on ROI - transform to TC Gốc (pixel thực)
+                                x_orig = x + landmark.x * w  # Pixel thực trong video gốc
+                                y_orig = y + landmark.y * h  # Pixel thực trong video gốc
+                                
+                                # Calculate normalized coordinates for reference
+                                full_x_norm = x_orig / frame.shape[1]
+                                full_y_norm = y_orig / frame.shape[0]
                             else:
-                                full_x = landmark.x
-                                full_y = landmark.y
+                                # Full frame processing
+                                x_orig = landmark.x * frame.shape[1]  # Convert to pixel coordinates
+                                y_orig = landmark.y * frame.shape[0]
+                                full_x_norm = landmark.x
+                                full_y_norm = landmark.y
                             
                             hand_points.append({
-                                'x': landmark.x,  # ROI-relative coordinates
+                                'x': landmark.x,      # ROI-relative coordinates
                                 'y': landmark.y,
                                 'z': landmark.z,
-                                'x_norm': full_x,  # Full frame normalized coordinates
-                                'y_norm': full_y
+                                'x_orig': x_orig,     # TC Gốc - pixel thực trong video gốc
+                                'y_orig': y_orig,     # TC Gốc - pixel thực trong video gốc
+                                'x_norm': full_x_norm,  # Reference normalized coordinates
+                                'y_norm': full_y_norm   # Reference normalized coordinates
                             })
                         
                         landmarks_list.append(hand_points)
@@ -458,6 +467,217 @@ def detect_hands_at_time(video_path: str, time_seconds: float, roi_config: Optio
             
     except Exception as e:
         error_msg = f"Error in hand detection at time {time_seconds}s: {str(e)}"
+        logging.error(error_msg)
+        return {
+            "success": False,
+            "error": error_msg
+        }
+
+def preprocess_video_hands(video_path: str, roi_config: Dict[str, Any], fps: int = 5, progress_callback=None) -> Dict[str, Any]:
+    """
+    Pre-process entire video for hand detection at specified fps
+    Cache results for perfect synchronization during playback
+    
+    Args:
+        video_path (str): Path to video file
+        roi_config (dict): ROI configuration {'x': int, 'y': int, 'w': int, 'h': int}
+        fps (int): Detection fps (default 5fps = every 0.2s)
+        progress_callback (callable): Function to call with progress updates
+        
+    Returns:
+        dict: {
+            'success': bool,
+            'detections': [{'timestamp': float, 'landmarks': list, 'confidence': float}],
+            'metadata': dict,
+            'total_frames_processed': int,
+            'error': str (if error)
+        }
+    """
+    try:
+        logging.info(f"Pre-processing video {video_path} at {fps}fps with ROI {roi_config}")
+        
+        # Open video
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            return {
+                "success": False,
+                "error": "Cannot open video file"
+            }
+        
+        try:
+            # Get video properties
+            video_fps = cap.get(cv2.CAP_PROP_FPS)
+            if video_fps <= 0:
+                video_fps = 30.0  # Default FPS
+                
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            duration = total_frames / video_fps
+            
+            # Calculate frame intervals for target fps
+            frame_interval = max(1, int(video_fps / fps))  # Every N frames
+            processing_timestamps = []
+            
+            # Generate timestamps for processing (every 1/fps seconds)
+            current_time = 0.0
+            while current_time <= duration:
+                processing_timestamps.append(current_time)
+                current_time += 1.0 / fps
+            
+            logging.info(f"Will process {len(processing_timestamps)} frames at {fps}fps for {duration:.1f}s video")
+            
+            # ROI bounds validation
+            x, y, w, h = roi_config["x"], roi_config["y"], roi_config["w"], roi_config["h"]
+            
+            # Initialize MediaPipe Hands
+            detections = []
+            processed_count = 0
+            
+            with mp_hands.Hands(
+                static_image_mode=True,
+                max_num_hands=2,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5
+            ) as hands:
+                
+                for timestamp in processing_timestamps:
+                    try:
+                        # Calculate frame number for this timestamp
+                        frame_number = int(timestamp * video_fps)
+                        
+                        # Set video position
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+                        ret, frame = cap.read()
+                        
+                        if not ret:
+                            logging.warning(f"Cannot read frame at timestamp {timestamp}")
+                            continue
+                            
+                        # Apply ROI
+                        frame_height, frame_width = frame.shape[:2]
+                        x_safe = max(0, min(x, frame_width - 1))
+                        y_safe = max(0, min(y, frame_height - 1))
+                        w_safe = max(1, min(w, frame_width - x_safe))
+                        h_safe = max(1, min(h, frame_height - y_safe))
+                        
+                        roi_frame = frame[y_safe:y_safe+h_safe, x_safe:x_safe+w_safe]
+                        
+                        # Convert to RGB for MediaPipe
+                        rgb_frame = cv2.cvtColor(roi_frame, cv2.COLOR_BGR2RGB)
+                        
+                        # Process frame
+                        results = hands.process(rgb_frame)
+                        
+                        # Extract landmarks if hands detected
+                        if results.multi_hand_landmarks and len(results.multi_hand_landmarks) > 0:
+                            landmarks_list = []
+                            confidence_scores = []
+                            
+                            for idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
+                                hand_points = []
+                                
+                                # Extract landmarks with TC Gốc coordinate transformation
+                                for landmark_idx, landmark in enumerate(hand_landmarks.landmark):
+                                    # Step 2: MediaPipe runs on ROI - transform to TC Gốc (pixel thực)
+                                    x_orig = x_safe + landmark.x * w_safe  # Pixel thực trong video gốc
+                                    y_orig = y_safe + landmark.y * h_safe  # Pixel thực trong video gốc
+                                    
+                                    # Calculate normalized coordinates for reference/debugging
+                                    full_x_norm = x_orig / frame_width
+                                    full_y_norm = y_orig / frame_height
+                                    
+                                    # Debug logging for first landmark of first hand
+                                    if idx == 0 and landmark_idx == 0:
+                                        logging.info(f"TC Gốc Backend Transform - Timestamp: {timestamp:.2f}s")
+                                        logging.info(f"ROI_orig: x={x_safe}, y={y_safe}, w={w_safe}, h={h_safe}")
+                                        logging.info(f"MediaPipe ROI coords: x={landmark.x:.3f}, y={landmark.y:.3f}")
+                                        logging.info(f"TC Gốc pixel: x={x_orig:.1f}, y={y_orig:.1f}")
+                                        logging.info(f"Video size: {frame_width}x{frame_height}")
+                                        logging.info(f"Normalized reference: x={full_x_norm:.3f}, y={full_y_norm:.3f}")
+                                    
+                                    hand_points.append({
+                                        'x': landmark.x,      # ROI-relative coordinates [0,1]
+                                        'y': landmark.y,
+                                        'z': landmark.z,
+                                        'x_orig': x_orig,     # TC Gốc - pixel thực trong video gốc
+                                        'y_orig': y_orig,     # TC Gốc - pixel thực trong video gốc
+                                        'x_norm': full_x_norm,  # Reference normalized coordinates
+                                        'y_norm': full_y_norm   # Reference normalized coordinates
+                                    })
+                                
+                                landmarks_list.append(hand_points)
+                                
+                                # Get confidence from handedness if available
+                                if results.multi_handedness and idx < len(results.multi_handedness):
+                                    confidence = results.multi_handedness[idx].classification[0].score
+                                    confidence_scores.append(confidence)
+                                else:
+                                    confidence_scores.append(0.85)  # Default confidence
+                            
+                            # Calculate overall confidence
+                            overall_confidence = float(sum(confidence_scores) / len(confidence_scores))
+                            
+                            # Only add to detections if hands found
+                            detections.append({
+                                'timestamp': round(timestamp, 2),  # Round to 0.01s precision
+                                'landmarks': landmarks_list,
+                                'confidence': overall_confidence,
+                                'hands_detected': len(landmarks_list)
+                            })
+                            
+                            logging.debug(f"Timestamp {timestamp:.2f}s: {len(landmarks_list)} hands detected")
+                        
+                        processed_count += 1
+                        
+                        # Update progress callback every frame
+                        progress = (processed_count / len(processing_timestamps)) * 100
+                        
+                        # Pass new detections to callback for progressive accumulation
+                        new_detection = None
+                        if results.multi_hand_landmarks and len(results.multi_hand_landmarks) > 0:
+                            # We just added a detection, pass it to callback
+                            new_detection = [detections[-1]] if len(detections) > 0 else None
+                        
+                        if progress_callback:
+                            if new_detection:
+                                # Pass the single new detection for immediate accumulation
+                                progress_callback(progress, processed_count, len(processing_timestamps), new_detection)
+                            else:
+                                # Update progress even if no detection found
+                                progress_callback(progress, processed_count, len(processing_timestamps))
+                        
+                        # Log progress every 25 frames
+                        if processed_count % 25 == 0:
+                            total_detections_so_far = len(detections)
+                            logging.info(f"Processing progress: {progress:.1f}% ({processed_count}/{len(processing_timestamps)} frames), Detections: {total_detections_so_far}")
+                    
+                    except Exception as e:
+                        logging.warning(f"Error processing frame at {timestamp}s: {str(e)}")
+                        continue
+            
+            # Final results
+            logging.info(f"Pre-processing complete: {len(detections)} detections found in {processed_count} frames")
+            
+            return {
+                "success": True,
+                "detections": detections,
+                "metadata": {
+                    "video_path": video_path,
+                    "duration": duration,
+                    "total_frames": total_frames,
+                    "video_fps": video_fps,
+                    "detection_fps": fps,
+                    "roi_config": roi_config,
+                    "frames_processed": processed_count,
+                    "hands_detected_count": len(detections)
+                },
+                "total_frames_processed": processed_count
+            }
+            
+        finally:
+            cap.release()
+            
+    except Exception as e:
+        error_msg = f"Error in video pre-processing: {str(e)}"
         logging.error(error_msg)
         return {
             "success": False,

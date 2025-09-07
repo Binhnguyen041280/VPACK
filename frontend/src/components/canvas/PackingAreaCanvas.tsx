@@ -343,7 +343,7 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
     });
     
     // Complete the camera configuration workflow (reset states)
-    completeCameraConfiguration();
+   // completeCameraConfiguration();
   };
   
   const handleROIConfigError = (error: string) => {

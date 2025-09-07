@@ -73,6 +73,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   const textColor = useColorModeValue('navy.700', 'white');
   const secondaryText = useColorModeValue('gray.600', 'gray.400');
   const cardBg = useColorModeValue('gray.50', 'navy.700');
+  const selectionBoxBg = useColorModeValue('gray.50', 'navy.700');
 
   // State for selected source type and input path
   const [selectedSourceType, setSelectedSourceType] = useState<'local_storage' | 'cloud_storage'>('local_storage');

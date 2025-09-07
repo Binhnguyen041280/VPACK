@@ -29,14 +29,16 @@ interface DrawingState {
   previewROI: ROIData | null;
 }
 
-// Hand landmarks interface
+// Hand landmarks interface with TC Gốc coordinates
 interface HandLandmarks {
   landmarks: Array<Array<{
-    x: number;      // ROI-relative coordinates [0,1]
+    x: number;        // ROI-relative coordinates [0,1]
     y: number;
     z: number;
-    x_norm: number; // Full frame normalized coordinates [0,1]  
-    y_norm: number;
+    x_orig: number;   // TC Gốc - pixel thực trong video gốc
+    y_orig: number;   // TC Gốc - pixel thực trong video gốc  
+    x_norm: number;   // Reference normalized coordinates [0,1]
+    y_norm: number;   // Reference normalized coordinates [0,1]
   }>>;
   confidence: number;
   hands_detected: number;
@@ -274,12 +276,48 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
     videoToCanvas
   ]);
 
+  // Calculate dynamic sizes based on video/canvas scale - 2D scaling approach
+  const calculateDynamicSizes = useCallback(() => {
+    const scaleX = width / videoWidth;     // Scale factor cho X axis
+    const scaleY = height / videoHeight;   // Scale factor cho Y axis
+    const averageScale = (scaleX + scaleY) / 2;  // Average scale cho uniform sizing
+    
+    // Base size proportional to video resolution - điều chỉnh về kích thước nhỏ hơn
+    const baseSize = Math.max(videoWidth, videoHeight) / 400;  // Trở lại 400 như ban đầu
+    
+    // Sử dụng average scale để giữ landmarks circular (không méo)
+    const calculatedSize = Math.max(2, Math.round(baseSize * averageScale));  // Minimum 2px
+    const calculatedLineWidth = Math.max(1, Math.round(baseSize * averageScale * 0.5));  // Minimum 1px
+    
+    // Debug logging với thông tin chi tiết hơn
+    console.log('Dynamic Size Calculation (2D Scale):', {
+      videoSize: `${videoWidth}x${videoHeight}`,
+      canvasSize: `${width}x${height}`,
+      scaleX: scaleX.toFixed(3),
+      scaleY: scaleY.toFixed(3), 
+      averageScale: averageScale.toFixed(3),
+      baseSize: baseSize.toFixed(1),
+      landmarksSize: calculatedSize,
+      lineWidth: calculatedLineWidth,
+      aspectRatioVideo: (videoWidth / videoHeight).toFixed(2),
+      aspectRatioCanvas: (width / height).toFixed(2)
+    });
+    
+    return {
+      landmarksSize: calculatedSize,
+      lineWidth: calculatedLineWidth,
+      scaleX: scaleX,      // Trả về cả 2 scale factors
+      scaleY: scaleY       // Để có thể dùng riêng biệt nếu cần
+    };
+  }, [width, height, videoWidth, videoHeight]);
+
   // Draw hand landmarks on canvas (after ROIs)
   const drawHandLandmarks = useCallback(() => {
     const context = contextRef.current;
     if (!context || !handLandmarks || !showHandLandmarks) return;
 
     const { landmarks, confidence } = handLandmarks;
+    const { landmarksSize: dynamicLandmarksSize, lineWidth: dynamicLineWidth } = calculateDynamicSizes();
     
     // Draw each hand
     landmarks.forEach((hand, handIndex) => {
@@ -292,15 +330,29 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
       context.fillStyle = color;
       context.strokeStyle = color;
       context.globalAlpha = alpha;
-      context.lineWidth = 2;
+      context.lineWidth = dynamicLineWidth;
 
-      // Draw landmark points
-      hand.forEach((landmark) => {
-        const canvasX = landmark.x_norm * width;
-        const canvasY = landmark.y_norm * height;
+      // Draw landmark points using TC Gốc coordinate transform
+      hand.forEach((landmark, idx) => {
+        // Step 3: Convert TC Gốc (pixel thực) → TCFE (canvas display)
+        const canvasX = (landmark.x_orig / videoWidth) * width;
+        const canvasY = (landmark.y_orig / videoHeight) * height;
+        
+        // Debug logging for first landmark of first hand
+        if (handIndex === 0 && idx === 0) {
+          console.log('🔍 COORDINATE VERIFICATION:', {
+            'Step 1 - Original video pixel': `${landmark.x_orig}, ${landmark.y_orig}`,
+            'Step 2 - Canvas transform': `${canvasX.toFixed(1)}, ${canvasY.toFixed(1)}`,
+            'Step 3 - Reverse check': `${(canvasX/width*videoWidth).toFixed(1)}, ${(canvasY/height*videoHeight).toFixed(1)}`,
+            'Video size': `${videoWidth}x${videoHeight}`,
+            'Canvas size': `${width}x${height}`,
+            'Scale factors': `X=${(width/videoWidth).toFixed(3)}, Y=${(height/videoHeight).toFixed(3)}`,
+            'Accuracy check': Math.abs(landmark.x_orig - (canvasX/width*videoWidth)) < 1 ? '✅ ACCURATE' : '❌ ERROR'
+          });
+        }
         
         context.beginPath();
-        context.arc(canvasX, canvasY, landmarksSize, 0, 2 * Math.PI);
+        context.arc(canvasX, canvasY, dynamicLandmarksSize, 0, 2 * Math.PI);
         context.fill();
       });
 
@@ -319,10 +371,11 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
           const startPoint = hand[startIdx];
           const endPoint = hand[endIdx];
           
-          const startX = startPoint.x_norm * width;
-          const startY = startPoint.y_norm * height;
-          const endX = endPoint.x_norm * width;
-          const endY = endPoint.y_norm * height;
+          // Use TC Gốc coordinates for line drawing
+          const startX = (startPoint.x_orig / videoWidth) * width;
+          const startY = (startPoint.y_orig / videoHeight) * height;
+          const endX = (endPoint.x_orig / videoWidth) * width;
+          const endY = (endPoint.y_orig / videoHeight) * height;
           
           context.beginPath();
           context.moveTo(startX, startY);
@@ -351,7 +404,7 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
         indicatorY + 16
       );
     }
-  }, [handLandmarks, showHandLandmarks, landmarksColor, landmarksSize, width, height]);
+  }, [handLandmarks, showHandLandmarks, landmarksColor, width, height, calculateDynamicSizes]);
 
   // Combined redraw function
   const redrawCanvas = useCallback(() => {

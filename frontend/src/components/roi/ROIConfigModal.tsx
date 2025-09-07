@@ -3,7 +3,7 @@
  * Full-screen modal for ROI configuration with video player and interactive canvas
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Modal,
   ModalOverlay,
@@ -74,6 +74,10 @@ interface ROIConfigModalProps {
 }
 
 
+// Video player dimensions (define as constants outside component)
+const VIDEO_PLAYER_WIDTH = 960;
+const VIDEO_PLAYER_HEIGHT = 540;
+
 const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
   isOpen,
   onClose,
@@ -91,9 +95,30 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [handLandmarks, setHandLandmarks] = useState<HandLandmarks | null>(null);
-  const [isDetecting, setIsDetecting] = useState(false);
-  const [lastProcessedTime, setLastProcessedTime] = useState<number>(0);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [preprocessingState, setPreprocessingState] = useState<{
+    isProcessing: boolean;
+    progress: number;
+    cacheKey: string | null;
+    completed: boolean;
+    error: string | null;
+  }>({
+    isProcessing: false,
+    progress: 0,
+    cacheKey: null,
+    completed: false,
+    error: null
+  });
+
+  // Full screen state
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [fullScreenDimensions, setFullScreenDimensions] = useState<{
+    width: number;
+    height: number;
+  }>({
+    width: VIDEO_PLAYER_WIDTH,
+    height: VIDEO_PLAYER_HEIGHT
+  });
 
   // Toast for notifications
   const toast = useToast();
@@ -107,9 +132,91 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
 
 
 
-  // Video player dimensions (maintain aspect ratio)
-  const videoPlayerWidth = 960;
-  const videoPlayerHeight = 540;
+
+  // Full screen functions
+  const enterFullScreen = useCallback(async () => {
+    try {
+      const modalContent = document.querySelector('[data-testid="modal-content"]') || document.documentElement;
+      if (modalContent.requestFullscreen) {
+        await modalContent.requestFullscreen();
+      }
+    } catch (error) {
+      console.warn('Cannot enter fullscreen:', error);
+      toast({
+        title: 'Cannot enter fullscreen',
+        description: 'Browser does not support or blocked fullscreen',
+        status: 'warning',
+        duration: 3000
+      });
+    }
+  }, [toast]);
+
+  const exitFullScreen = useCallback(async () => {
+    try {
+      if (document.exitFullscreen) {
+        await document.exitFullscreen();
+      }
+    } catch (error) {
+      console.warn('Cannot exit fullscreen:', error);
+    }
+  }, []);
+
+  // Full screen change detection
+  useEffect(() => {
+    const handleFullScreenChange = () => {
+      const isFS = document.fullscreenElement !== null;
+      setIsFullScreen(isFS);
+      
+      if (isFS) {
+        // Calculate full screen dimensions maintaining aspect ratio
+        const screenWidth = window.screen.width;
+        const screenHeight = window.screen.height;
+        const screenAspectRatio = screenWidth / screenHeight;
+        
+        if (videoMetadata) {
+          const videoAspectRatio = videoMetadata.resolution.width / videoMetadata.resolution.height;
+          
+          let displayWidth, displayHeight;
+          if (videoAspectRatio > screenAspectRatio) {
+            // Video wider than screen - fit to width
+            displayWidth = screenWidth;
+            displayHeight = screenWidth / videoAspectRatio;
+          } else {
+            // Video taller than screen - fit to height  
+            displayHeight = screenHeight;
+            displayWidth = screenHeight * videoAspectRatio;
+          }
+          
+          setFullScreenDimensions({
+            width: displayWidth,
+            height: displayHeight
+          });
+          
+          console.log('Full Screen Mode:', {
+            screen: `${screenWidth}x${screenHeight}`,
+            video: `${videoMetadata.resolution.width}x${videoMetadata.resolution.height}`,
+            display: `${displayWidth.toFixed(0)}x${displayHeight.toFixed(0)}`
+          });
+        }
+      } else {
+        // Reset to normal dimensions
+        setFullScreenDimensions({
+          width: VIDEO_PLAYER_WIDTH,
+          height: VIDEO_PLAYER_HEIGHT
+        });
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullScreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullScreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullScreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullScreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullScreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullScreenChange);
+    };
+  }, [videoMetadata]);
 
   // Handle video metadata loaded
   const handleMetadataLoaded = useCallback((metadata: VideoMetadata) => {
@@ -196,6 +303,15 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     });
 
     console.log('ROI created:', newROI);
+
+    // Set flag to trigger preprocessing after ROI creation
+    if (packingMethod === 'traditional' && type === 'packing_area') {
+      // Use setTimeout to trigger preprocessing after ROI state is updated
+      setTimeout(() => {
+        // Call preprocessing function directly - will be defined below
+        triggerPreprocessing();
+      }, 500);
+    }
   }, [packingMethod, rois, toast]);
 
   // Handle ROI update
@@ -203,7 +319,31 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     setROIs(prev => prev.map(roi => 
       roi.id === id ? { ...roi, ...updates } : roi
     ));
-  }, []);
+    
+    // Clear cache when ROI is modified - data is no longer valid
+    if (preprocessingState.cacheKey) {
+      // Clear cache on backend
+      fetch(`http://localhost:8080/api/hand-detection/clear-cache/${preprocessingState.cacheKey}`, {
+        method: 'DELETE'
+      }).catch(error => console.warn('Failed to clear backend cache:', error));
+      
+      setPreprocessingState(prev => ({
+        ...prev,
+        completed: false,
+        cacheKey: null,
+        error: null
+      }));
+      
+      setHandLandmarks(null);
+      
+      toast({
+        title: 'ROI Changed',
+        description: 'Hand detection needs to be reprocessed for new ROI',
+        status: 'info',
+        duration: 3000
+      });
+    }
+  }, [preprocessingState.cacheKey, toast]);
 
   // Handle ROI deletion
   const handleROIDelete = useCallback((id: string) => {
@@ -216,16 +356,42 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       setSelectedROIId(null);
     }
 
-    toast({
-      title: 'ROI Deleted',
-      description: `${roiToDelete.label} has been deleted`,
-      status: 'info',
-      duration: 3000,
-      isClosable: true
-    });
+    // Clear cache when ROI is deleted - especially important for packing areas
+    if (preprocessingState.cacheKey && roiToDelete.type === 'packing_area') {
+      // Clear cache on backend
+      fetch(`http://localhost:8080/api/hand-detection/clear-cache/${preprocessingState.cacheKey}`, {
+        method: 'DELETE'
+      }).catch(error => console.warn('Failed to clear backend cache:', error));
+      
+      setPreprocessingState(prev => ({
+        ...prev,
+        completed: false,
+        cacheKey: null,
+        error: null,
+        isProcessing: false,
+        progress: 0
+      }));
+      
+      setHandLandmarks(null);
+      
+      toast({
+        title: 'ROI Deleted',
+        description: 'Hand detection cache cleared. Draw new ROI to start again.',
+        status: 'info',
+        duration: 4000
+      });
+    } else {
+      toast({
+        title: 'ROI Deleted',
+        description: `${roiToDelete.label} has been deleted`,
+        status: 'info',
+        duration: 3000,
+        isClosable: true
+      });
+    }
 
     console.log('ROI deleted:', roiToDelete);
-  }, [rois, selectedROIId, toast]);
+  }, [rois, selectedROIId, preprocessingState.cacheKey, toast]);
 
   // Handle ROI selection
   const handleROISelect = useCallback((id: string | null) => {
@@ -235,40 +401,27 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
 
 
 
-  // Simple hand detection at current video time with throttling
-  const detectHandsAtCurrentTime = useCallback(async (currentTime: number) => {
-    if (!videoMetadata || rois.length === 0 || !isVideoPlaying || isDetecting) {
-      return;
-    }
-
-    // Throttle API calls - only process every 500ms
-    const timeDiff = Math.abs(currentTime - lastProcessedTime);
-    if (timeDiff < 0.5) {
+  // Get landmarks from cached results based on current video time (PROGRESSIVE DISPLAY)
+  const getLandmarksAtCurrentTime = useCallback(async (currentTime: number) => {
+    if (!videoMetadata || rois.length === 0 || !isVideoPlaying || !preprocessingState.cacheKey) {
+      setHandLandmarks(null);
       return;
     }
 
     // Only detect for packing areas in traditional method
     const packingROI = rois.find(roi => roi.type === 'packing_area');
     if (!packingROI || packingMethod !== 'traditional') {
+      setHandLandmarks(null);
       return;
     }
 
     try {
-      setIsDetecting(true);
-      setLastProcessedTime(currentTime);
-
-      const response = await fetch('http://localhost:8080/api/hand-detection/process-frame', {
+      const response = await fetch('http://localhost:8080/api/hand-detection/get-cached-landmarks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          video_path: videoPath,
-          time_seconds: currentTime,
-          roi_config: {
-            x: packingROI.x,
-            y: packingROI.y,
-            w: packingROI.w,
-            h: packingROI.h
-          }
+          cache_key: preprocessingState.cacheKey,
+          timestamp: currentTime
         })
       });
 
@@ -278,24 +431,189 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
         setHandLandmarks({
           landmarks: result.landmarks,
           confidence: result.confidence,
-          hands_detected: result.hands_detected
+          hands_detected: result.landmarks.length
         });
       } else {
         setHandLandmarks(null);
       }
     } catch (error) {
-      console.error('Hand detection error:', error);
+      // Don't log error for incomplete processing - this is expected
+      if (!preprocessingState.completed) {
+        console.debug('Cache not ready yet for current timestamp:', currentTime);
+      } else {
+        console.error('Error getting cached landmarks:', error);
+      }
       setHandLandmarks(null);
-    } finally {
-      setIsDetecting(false);
     }
-  }, [videoMetadata, rois, packingMethod, videoPath, isVideoPlaying, isDetecting, lastProcessedTime]);
+  }, [videoMetadata, rois, packingMethod, isVideoPlaying, preprocessingState.cacheKey, preprocessingState.completed]);
 
   // Handle video play/pause state changes
   const handleVideoPlayStateChange = useCallback((isPlaying: boolean) => {
     setIsVideoPlaying(isPlaying);
     if (!isPlaying) {
       setHandLandmarks(null); // Clear landmarks when video is paused
+    }
+  }, []);
+
+  // Poll for preprocessing progress
+  const pollPreprocessingProgress = useCallback(async (cacheKey: string) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`http://localhost:8080/api/hand-detection/preprocess-status/${cacheKey}`);
+        const result = await response.json();
+        
+        if (result.success) {
+          if (result.status === 'completed') {
+            clearInterval(pollInterval);
+            setPreprocessingState(prev => ({
+              ...prev,
+              isProcessing: false,
+              progress: 100,
+              completed: true
+            }));
+            
+            toast({
+              title: 'Analysis Complete',
+              description: `Processed ${result.detections?.length || 0} frames. Press Play to see results!`,
+              status: 'success',
+              duration: 4000
+            });
+          } else if (result.status === 'in_progress') {
+            setPreprocessingState(prev => ({
+              ...prev,
+              progress: result.progress || 0
+            }));
+            
+            // Log progress for debugging
+            if (result.processed_count && result.total_frames) {
+              console.log(`Processing progress: Frame ${result.processed_count}/${result.total_frames} (${result.progress?.toFixed(1)}%)`);
+            }
+          }
+        } else {
+          clearInterval(pollInterval);
+          setPreprocessingState(prev => ({
+            ...prev,
+            isProcessing: false,
+            error: result.error
+          }));
+        }
+      } catch (error) {
+        console.error('Polling error:', error);
+        clearInterval(pollInterval);
+        setPreprocessingState(prev => ({
+          ...prev,
+          isProcessing: false,
+          error: 'Failed to check processing status'
+        }));
+      }
+    }, 2000); // Poll every 2 seconds
+  }, [toast]);
+
+  // Start pre-processing when ROI is created
+  const startPreprocessing = useCallback(async () => {
+    if (!videoMetadata || rois.length === 0 || packingMethod !== 'traditional') {
+      return;
+    }
+
+    const packingROI = rois.find(roi => roi.type === 'packing_area');
+    if (!packingROI) {
+      return;
+    }
+
+    try {
+      setPreprocessingState(prev => ({
+        ...prev,
+        isProcessing: true,
+        progress: 0,
+        error: null,
+        completed: false
+      }));
+
+      // Step 1: Transform ROI_disp → ROI_orig (Canvas coordinates → Video coordinates)
+      const roi_orig = {
+        x: Math.round(packingROI.x * videoMetadata.resolution.width / VIDEO_PLAYER_WIDTH),
+        y: Math.round(packingROI.y * videoMetadata.resolution.height / VIDEO_PLAYER_HEIGHT),
+        w: Math.round(packingROI.w * videoMetadata.resolution.width / VIDEO_PLAYER_WIDTH),
+        h: Math.round(packingROI.h * videoMetadata.resolution.height / VIDEO_PLAYER_HEIGHT)
+      };
+
+      console.log('ROI Transform:', {
+        'ROI_disp (canvas)': packingROI,
+        'ROI_orig (video)': roi_orig,
+        'Video size': `${videoMetadata.resolution.width}x${videoMetadata.resolution.height}`,
+        'Canvas size': `${VIDEO_PLAYER_WIDTH}x${VIDEO_PLAYER_HEIGHT}`,
+        'Scale factor': `${videoMetadata.resolution.width / VIDEO_PLAYER_WIDTH}x${videoMetadata.resolution.height / VIDEO_PLAYER_HEIGHT}`
+      });
+
+      const response = await fetch('http://localhost:8080/api/hand-detection/preprocess-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_path: videoPath,
+          roi_config: roi_orig,  // Send ROI_orig instead of ROI_disp
+          fps: 5
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setPreprocessingState(prev => ({
+          ...prev,
+          cacheKey: result.cache_key
+        }));
+
+        if (result.status === 'completed') {
+          // Pre-processing already completed (cached)
+          setPreprocessingState(prev => ({
+            ...prev,
+            isProcessing: false,
+            progress: 100,
+            completed: true
+          }));
+          
+          toast({
+            title: 'Analysis Ready',
+            description: 'Hand detection data is ready. Press Play to see results!',
+            status: 'success',
+            duration: 3000
+          });
+        } else {
+          // Start polling for progress
+          pollPreprocessingProgress(result.cache_key);
+        }
+      } else {
+        throw new Error(result.error || 'Failed to start preprocessing');
+      }
+    } catch (error) {
+      console.error('Preprocessing error:', error);
+      setPreprocessingState(prev => ({
+        ...prev,
+        isProcessing: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }));
+      
+      toast({
+        title: 'Processing Error',
+        description: 'Cannot process hand detection. Please try again.',
+        status: 'error',
+        duration: 5000
+      });
+    }
+  }, [videoMetadata, rois, packingMethod, videoPath, toast, pollPreprocessingProgress]);
+
+  // Use ref to store preprocessing function to avoid circular dependency
+  const startPreprocessingRef = useRef<(() => Promise<void>) | null>(null);
+
+  // Update ref when startPreprocessing changes
+  useEffect(() => {
+    startPreprocessingRef.current = startPreprocessing;
+  }, [startPreprocessing]);
+
+  // Helper function to trigger preprocessing (used in setTimeout)
+  const triggerPreprocessing = useCallback(() => {
+    if (startPreprocessingRef.current) {
+      startPreprocessingRef.current();
     }
   }, []);
 
@@ -438,6 +756,13 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       setError(null);
       setHandLandmarks(null);
       setIsVideoPlaying(false);
+      setPreprocessingState({
+        isProcessing: false,
+        progress: 0,
+        cacheKey: null,
+        completed: false,
+        error: null
+      });
     }
   }, [isOpen]);
 
@@ -466,6 +791,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
         m="0" 
         borderRadius="0"
         bg={bgColor}
+        data-testid="modal-content"
       >
         <ModalCloseButton size="lg" />
         
@@ -523,7 +849,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                                 {roi.label}
                               </Text>
                               <Text fontSize="xs" color={secondaryText}>
-                                {roi.type} • Tọa độ: ({roi.x}, {roi.y}) • Kích thước: {roi.w}×{roi.h}px
+                                {roi.type} • Position: ({roi.x}, {roi.y}) • Size: {roi.w}×{roi.h}px
                               </Text>
                             </VStack>
                             <IconButton
@@ -578,7 +904,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
 
               {/* Error Alert */}
               {error && (
-                <Alert status="error" borderRadius="8px" mb="20px" maxW={`${videoPlayerWidth}px`}>
+                <Alert status="error" borderRadius="8px" mb="20px" maxW={`${fullScreenDimensions.width}px`}>
                   <AlertIcon />
                   <Box>
                     <AlertTitle>Configuration Error</AlertTitle>
@@ -590,22 +916,23 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
               {/* Video Player Container */}
               <Box 
                 position="relative"
-                width={`${videoPlayerWidth}px`}
-                height={`${videoPlayerHeight}px`}
-                borderRadius="8px"
+                width={`${fullScreenDimensions.width}px`}
+                height={`${fullScreenDimensions.height}px`}
+                borderRadius={isFullScreen ? "0" : "8px"}
                 overflow="hidden"
-                border="2px solid"
+                border={isFullScreen ? "none" : "2px solid"}
                 borderColor={borderColor}
+                margin="0 auto"  // Center trong full screen
               >
                 {/* Video Player */}
                 <VideoPlayer
                   videoPath={videoPath}
                   onMetadataLoaded={handleMetadataLoaded}
-                  onTimeUpdate={(currentTime) => detectHandsAtCurrentTime(currentTime)}
+                  onTimeUpdate={(currentTime) => getLandmarksAtCurrentTime(currentTime)}
                   onPlayStateChange={handleVideoPlayStateChange}
                   onVideoError={handleVideoError}
-                  width={`${videoPlayerWidth}px`}
-                  height={`${videoPlayerHeight}px`}
+                  width={`${fullScreenDimensions.width}px`}
+                  height={`${fullScreenDimensions.height}px`}
                   showControls={true}
                   autoPlay={true}
                 />
@@ -613,8 +940,8 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                 {/* Canvas Overlay */}
                 {videoMetadata && (
                   <CanvasOverlay
-                    width={videoPlayerWidth}
-                    height={videoPlayerHeight - 80} // Account for video controls
+                    width={fullScreenDimensions.width}
+                    height={fullScreenDimensions.height - (isFullScreen ? 120 : 80)} // More space for controls in full screen
                     videoWidth={videoMetadata.resolution.width}
                     videoHeight={videoMetadata.resolution.height}
                     rois={rois}
@@ -635,19 +962,78 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                 )}
               </Box>
 
+
               {/* Instructions */}
               {rois.length === 0 && (
-                <Text fontSize="sm" color={secondaryText} mt="16px" textAlign="center" maxW={`${videoPlayerWidth}px`}>
+                <Text fontSize="sm" color={secondaryText} mt="16px" textAlign="center" maxW={`${fullScreenDimensions.width}px`}>
                   Click and drag on the video to create ROI rectangles. 
                   Double-click an existing ROI to delete it.
                 </Text>
               )}
 
-              {/* Hand Detection Instructions */}
-              {rois.length > 0 && videoMetadata && packingMethod === 'traditional' && !isVideoPlaying && (
-                <Text fontSize="sm" color="blue.500" mt="16px" textAlign="center" maxW={`${videoPlayerWidth}px`}>
-                  Bấm nút Play để chạy phân tích tay trên video
-                </Text>
+
+              {/* Pre-processing Status */}
+              {rois.length > 0 && videoMetadata && packingMethod === 'traditional' && (
+                <Box mt="16px" width={`${fullScreenDimensions.width}px`}>
+                  {preprocessingState.isProcessing && (
+                    <Box p="16px" bg={panelBg} borderRadius="8px">
+                      <Text fontSize="sm" fontWeight="medium" mb="8px">
+                        🤖 Processing hand analysis...
+                      </Text>
+                      <Box w="100%" bg="gray.200" borderRadius="4px" h="8px" mb="8px">
+                        <Box 
+                          w={`${preprocessingState.progress}%`} 
+                          bg="blue.500" 
+                          borderRadius="4px" 
+                          h="100%" 
+                          transition="width 0.3s ease"
+                        />
+                      </Box>
+                      <Text fontSize="xs" color={secondaryText}>
+                        Progress: {preprocessingState.progress.toFixed(1)}% - Please wait...
+                      </Text>
+                    </Box>
+                  )}
+
+                  {preprocessingState.completed && !isVideoPlaying && (
+                    <Box p="16px" bg="green.50" borderColor="green.200" border="1px solid" borderRadius="8px">
+                      <Text fontSize="sm" fontWeight="medium" color="green.700" mb="4px">
+                        ✅ Analysis Ready
+                      </Text>
+                      <Text fontSize="xs" color="green.600">
+                        Press Play to see perfectly synchronized hand detection results!
+                      </Text>
+                    </Box>
+                  )}
+
+                  {preprocessingState.error && (
+                    <Box p="16px" bg="red.50" borderColor="red.200" border="1px solid" borderRadius="8px">
+                      <Text fontSize="sm" fontWeight="medium" color="red.700" mb="4px">
+                        ❌ Processing Error
+                      </Text>
+                      <Text fontSize="xs" color="red.600">
+                        {preprocessingState.error}
+                      </Text>
+                      <Button size="xs" colorScheme="red" variant="outline" mt="8px" onClick={startPreprocessing}>
+                        Try Again
+                      </Button>
+                    </Box>
+                  )}
+
+                  {!preprocessingState.isProcessing && !preprocessingState.completed && !preprocessingState.error && rois.some(roi => roi.type === 'packing_area') && (
+                    <Box p="16px" bg="blue.50" borderColor="blue.200" border="1px solid" borderRadius="8px">
+                      <Text fontSize="sm" fontWeight="medium" color="blue.700" mb="4px">
+                        🎯 ROI Created
+                      </Text>
+                      <Text fontSize="xs" color="blue.600" mb="8px">
+                        Click the button below to start hand detection processing
+                      </Text>
+                      <Button size="sm" colorScheme="blue" onClick={startPreprocessing}>
+                        Start Analysis
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
               )}
               
 
