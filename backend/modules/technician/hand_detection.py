@@ -103,6 +103,27 @@ def select_roi(video_path: str, camera_id: str, step: str = "packing") -> Dict[s
                     logging.debug("ROI không hợp lệ, hiển thị lại frame gốc để vẽ lại.")
                     continue  # Hiển thị lại frame gốc, không lưu file
                 
+                # ✅ GIỚI HẠN ROI TRONG KHUNG VIDEO - Clamp ROI to frame boundaries
+                frame_height, frame_width = frame.shape[:2]
+                
+                # Clamp coordinates to frame boundaries
+                x_clamped = max(0, min(x, frame_width - 1))
+                y_clamped = max(0, min(y, frame_height - 1))
+                
+                # Adjust width and height to stay within frame
+                w_clamped = max(1, min(w, frame_width - x_clamped))
+                h_clamped = max(1, min(h, frame_height - y_clamped))
+                
+                # Update ROI values if clamping occurred
+                if x != x_clamped or y != y_clamped or w != w_clamped or h != h_clamped:
+                    logging.info(f"ROI được điều chỉnh để nằm trong khung video:")
+                    logging.info(f"  Gốc: x={x}, y={y}, w={w}, h={h}")
+                    logging.info(f"  Điều chỉnh: x={x_clamped}, y={y_clamped}, w={w_clamped}, h={h_clamped}")
+                    logging.info(f"  Khung video: {frame_width}x{frame_height}")
+                    
+                    # Update variables with clamped values
+                    x, y, w, h = x_clamped, y_clamped, w_clamped, h_clamped
+                
                 # Vẽ ROI lên frame
                 color = (0, 255, 0) if step == "packing" else (0, 255, 255)
                 cv2.rectangle(current_frame, (x, y), (x + w, y + h), color, 2)
@@ -413,9 +434,17 @@ def detect_hands_at_time(video_path: str, time_seconds: float, roi_config: Optio
                         # Extract landmarks with TC Gốc coordinate transformation
                         for landmark in hand_landmarks.landmark:
                             if roi_config:
+                                # ✅ CLAMP MEDIAPIPE COORDINATES - Prevent landmarks outside ROI from causing invalid coordinates
+                                landmark_x_clamped = max(0.0, min(1.0, landmark.x))
+                                landmark_y_clamped = max(0.0, min(1.0, landmark.y))
+                                
                                 # Step 2: MediaPipe runs on ROI - transform to TC Gốc (pixel thực)
-                                x_orig = x + landmark.x * w  # Pixel thực trong video gốc
-                                y_orig = y + landmark.y * h  # Pixel thực trong video gốc
+                                x_orig = x + landmark_x_clamped * w  # Pixel thực trong video gốc
+                                y_orig = y + landmark_y_clamped * h  # Pixel thực trong video gốc
+                                
+                                # ✅ FINAL BOUNDARY CHECK - Ensure coordinates stay within video frame
+                                x_orig = max(0, min(frame.shape[1] - 1, x_orig))
+                                y_orig = max(0, min(frame.shape[0] - 1, y_orig))
                                 
                                 # Calculate normalized coordinates for reference
                                 full_x_norm = x_orig / frame.shape[1]
@@ -577,9 +606,17 @@ def preprocess_video_hands(video_path: str, roi_config: Dict[str, Any], fps: int
                                 
                                 # Extract landmarks with TC Gốc coordinate transformation
                                 for landmark_idx, landmark in enumerate(hand_landmarks.landmark):
+                                    # ✅ CLAMP MEDIAPIPE COORDINATES - Prevent landmarks outside ROI from causing invalid coordinates
+                                    landmark_x_clamped = max(0.0, min(1.0, landmark.x))
+                                    landmark_y_clamped = max(0.0, min(1.0, landmark.y))
+                                    
                                     # Step 2: MediaPipe runs on ROI - transform to TC Gốc (pixel thực)
-                                    x_orig = x_safe + landmark.x * w_safe  # Pixel thực trong video gốc
-                                    y_orig = y_safe + landmark.y * h_safe  # Pixel thực trong video gốc
+                                    x_orig = x_safe + landmark_x_clamped * w_safe  # Pixel thực trong video gốc
+                                    y_orig = y_safe + landmark_y_clamped * h_safe  # Pixel thực trong video gốc
+                                    
+                                    # ✅ FINAL BOUNDARY CHECK - Ensure coordinates stay within video frame
+                                    x_orig = max(0, min(frame_width - 1, x_orig))
+                                    y_orig = max(0, min(frame_height - 1, y_orig))
                                     
                                     # Calculate normalized coordinates for reference/debugging
                                     full_x_norm = x_orig / frame_width
@@ -590,6 +627,8 @@ def preprocess_video_hands(video_path: str, roi_config: Dict[str, Any], fps: int
                                         logging.info(f"TC Gốc Backend Transform - Timestamp: {timestamp:.2f}s")
                                         logging.info(f"ROI_orig: x={x_safe}, y={y_safe}, w={w_safe}, h={h_safe}")
                                         logging.info(f"MediaPipe ROI coords: x={landmark.x:.3f}, y={landmark.y:.3f}")
+                                        if landmark.x != landmark_x_clamped or landmark.y != landmark_y_clamped:
+                                            logging.info(f"✅ CLAMPED MediaPipe coords: x={landmark_x_clamped:.3f}, y={landmark_y_clamped:.3f}")
                                         logging.info(f"TC Gốc pixel: x={x_orig:.1f}, y={y_orig:.1f}")
                                         logging.info(f"Video size: {frame_width}x{frame_height}")
                                         logging.info(f"Normalized reference: x={full_x_norm:.3f}, y={full_y_norm:.3f}")

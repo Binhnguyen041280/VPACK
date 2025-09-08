@@ -33,10 +33,31 @@ import {
   useToast
 } from '@chakra-ui/react';
 import { FaTrash, FaPlay, FaPause } from 'react-icons/fa';
-import VideoPlayer from './VideoPlayer';
-import CanvasOverlay, { ROIData, HandLandmarks } from './CanvasOverlay';
+// Simplified 2-canvas architecture  
+import PureVideoCanvas from './PureVideoCanvas';
+import VideoControlsBar, { VideoControlState } from './VideoControlsBar';
+import { ROIData, HandLandmarks } from './CanvasOverlay';
 // Generate unique IDs without external dependency
 const generateId = () => Math.random().toString(36).substr(2, 9);
+
+// Height breakpoints for adaptive behavior (copied from CanvasMessage.tsx)
+type HeightMode = 'compact' | 'normal' | 'spacious';
+
+interface AdaptiveConfig {
+  mode: HeightMode;
+  fontSize: {
+    header: string;
+    title: string;
+    body: string;
+    small: string;
+  };
+  spacing: {
+    section: string;
+    item: string;
+    padding: string;
+  };
+  showOptional: boolean;
+}
 
 // Video metadata interface
 interface VideoMetadata {
@@ -96,6 +117,16 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [handLandmarks, setHandLandmarks] = useState<HandLandmarks | null>(null);
+  
+  // Adaptive height detection state (copied from CanvasMessage.tsx)
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [availableHeight, setAvailableHeight] = useState(0);
+  const [adaptiveConfig, setAdaptiveConfig] = useState<AdaptiveConfig>({
+    mode: 'normal',
+    fontSize: { header: 'xl', title: 'sm', body: 'sm', small: 'xs' },
+    spacing: { section: '24px', item: '16px', padding: '16px' },
+    showOptional: true
+  });
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [preprocessingState, setPreprocessingState] = useState<{
     isProcessing: boolean;
@@ -132,6 +163,14 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
 
   // Toast for notifications
   const toast = useToast();
+
+  // Video controls state and ref
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [videoControlsState, setVideoControlsState] = useState<VideoControlState>({
+    isPlaying: false,
+    currentTime: 0,
+    duration: 0,
+  });
 
   // Calculate available viewport space for video display
   const calculateAvailableSpace = useCallback(() => {
@@ -174,6 +213,59 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
   const panelBg = useColorModeValue('gray.50', 'gray.700');
   const textColor = useColorModeValue('gray.800', 'white');
   const secondaryText = useColorModeValue('gray.600', 'gray.400');
+  
+  // Adaptive height detection and configuration (copied from CanvasMessage.tsx)
+  useEffect(() => {
+    const updateHeight = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const height = rect.height;
+        setAvailableHeight(height);
+        
+        // Determine adaptive config based on height
+        let newConfig: AdaptiveConfig;
+        
+        if (height < 600) {
+          // Compact mode - small modal height
+          newConfig = {
+            mode: 'compact',
+            fontSize: { header: 'lg', title: 'sm', body: 'sm', small: 'xs' },
+            spacing: { section: '16px', item: '12px', padding: '12px' },
+            showOptional: false
+          };
+        } else if (height < 800) {
+          // Normal mode - medium modal height
+          newConfig = {
+            mode: 'normal',
+            fontSize: { header: 'xl', title: 'sm', body: 'sm', small: 'xs' },
+            spacing: { section: '24px', item: '16px', padding: '16px' },
+            showOptional: true
+          };
+        } else {
+          // Spacious mode - large modal height
+          newConfig = {
+            mode: 'spacious',
+            fontSize: { header: 'xl', title: 'md', body: 'sm', small: 'xs' },
+            spacing: { section: '32px', item: '20px', padding: '20px' },
+            showOptional: true
+          };
+        }
+        
+        setAdaptiveConfig(newConfig);
+      }
+    };
+
+    // Initial measurement
+    updateHeight();
+    
+    // Listen for resize events
+    const resizeObserver = new ResizeObserver(updateHeight);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+    
+    return () => resizeObserver.disconnect();
+  }, []);
 
 
 
@@ -842,21 +934,21 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
               bg={panelBg} 
               borderRight="1px solid" 
               borderColor={borderColor}
-              p="16px"
+              p={adaptiveConfig.spacing.padding}
               overflowY="auto"
               h="100vh"
             >
-              <VStack spacing="24px" align="stretch">
+              <VStack spacing={adaptiveConfig.spacing.section} align="stretch">
                 
                 {/* Header */}
                 <Box>
-                  <Text fontSize="xl" fontWeight="bold" color={textColor} mb="8px">
-                    ROI Configuration
+                  <Text fontSize={adaptiveConfig.fontSize.header} fontWeight="bold" color={textColor} mb={adaptiveConfig.spacing.item}>
+                    🎯 ROI Configuration
                   </Text>
-                  <Text fontSize="sm" color={secondaryText}>
+                  <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText}>
                     Camera: {cameraId}
                   </Text>
-                  <Text fontSize="sm" color={secondaryText}>
+                  <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText}>
                     Method: {packingMethod === 'traditional' ? 'Traditional Detection' : 'QR Code Detection'}
                   </Text>
                 </Box>
@@ -866,14 +958,14 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                 {/* ROI List */}
                 {rois.length > 0 && (
                   <Box>
-                    <Text fontSize="sm" fontWeight="medium" color={textColor} mb="8px">
+                    <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="medium" color={textColor} mb={adaptiveConfig.spacing.item}>
                       Created ROIs ({rois.length})
                     </Text>
-                    <VStack spacing="8px" align="stretch">
+                    <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
                       {rois.map((roi) => (
                         <Box
                           key={roi.id}
-                          p="8px"
+                          p={adaptiveConfig.spacing.item}
                           borderRadius="6px"
                           border="1px solid"
                           borderColor={selectedROIId === roi.id ? roi.color : borderColor}
@@ -883,10 +975,10 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                         >
                           <HStack justify="space-between">
                             <VStack align="start" spacing="2px" flex="1">
-                              <Text fontSize="sm" fontWeight="medium">
+                              <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="medium">
                                 {roi.label}
                               </Text>
-                              <Text fontSize="xs" color={secondaryText}>
+                              <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
                                 {roi.type} • Position: ({roi.x}, {roi.y}) • Size: {roi.w}×{roi.h}px
                               </Text>
                             </VStack>
@@ -906,10 +998,10 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                 )}
 
                 {/* Action Buttons */}
-                <VStack spacing="12px" align="stretch">
+                <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
                   <Button
                     colorScheme="blue"
-                    size="md"
+                    size={adaptiveConfig.mode === 'compact' ? 'sm' : 'md'}
                     onClick={handleSaveConfiguration}
                     isLoading={isSaving}
                     loadingText="Saving..."
@@ -920,7 +1012,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                   
                   <Button
                     variant="outline"
-                    size="md"
+                    size={adaptiveConfig.mode === 'compact' ? 'sm' : 'md'}
                     onClick={onClose}
                     isDisabled={isSaving}
                   >
@@ -928,7 +1020,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                   </Button>
                   
                   {!allRequiredCompleted && (
-                    <Text fontSize="xs" color="orange.500" textAlign="center">
+                    <Text fontSize={adaptiveConfig.fontSize.small} color="orange.500" textAlign="center">
                       Complete all required steps to save
                     </Text>
                   )}
@@ -1033,64 +1125,103 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
 
             {/* Center Panel - Video & Canvas */}
             <Box 
+              ref={containerRef}
               flex="1" 
-              p="10px" 
               display="flex" 
               flexDirection="column" 
               alignItems="center" 
               justifyContent="center"
-              overflow="auto" // Enable scrolling for zoom > 100%
-              minHeight="0" // Allow flex child to shrink
+              overflow="visible" 
+              minHeight="0"
+              position="relative"
+              css={{
+                '&::-webkit-scrollbar': {
+                  width: '6px',
+                },
+                '&::-webkit-scrollbar-track': {
+                  background: 'var(--chakra-colors-gray-100)',
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  background: 'var(--chakra-colors-gray-300)',
+                  borderRadius: '3px',
+                },
+                '&::-webkit-scrollbar-thumb:hover': {
+                  background: 'var(--chakra-colors-gray-400)',
+                },
+                overflowY: 'auto',
+                overflowX: 'hidden',
+              }}
             >
 
-              {/* Video Player Container */}
-              <Box 
-                position="relative"
-                width={`${fullScreenDimensions.width}px`}
-                height={`${fullScreenDimensions.height}px`}
-                borderRadius={isFullScreen ? "0" : "8px"}
-                overflow="hidden"
-                border={isFullScreen ? "none" : "2px solid"}
-                borderColor={borderColor}
-                margin="0 auto"  // Center trong full screen
+              {/* SIMPLE 2-CANVAS LAYOUT: Video trên + Controls dưới */}
+              <Flex 
+                direction="column"
+                width="100%" 
+                height="100%" 
+                p={adaptiveConfig.spacing.padding}
               >
-                {/* Video Player */}
-                <VideoPlayer
-                  videoPath={videoPath}
-                  onMetadataLoaded={handleMetadataLoaded}
-                  onTimeUpdate={(currentTime) => getLandmarksAtCurrentTime(currentTime)}
-                  onPlayStateChange={handleVideoPlayStateChange}
-                  onVideoError={handleVideoError}
-                  width={`${fullScreenDimensions.width}px`}
-                  height={`${fullScreenDimensions.height}px`}
-                  showControls={true}
-                  autoPlay={true}
-                />
-
-                {/* Canvas Overlay */}
-                {videoMetadata && (
-                  <CanvasOverlay
+                {/* 1. PureVideoCanvas - Phần trên (flex=1) */}
+                <Box 
+                  flex="1"
+                  width="100%" 
+                  display="flex" 
+                  alignItems="center" 
+                  justifyContent="center"
+                  minH="0"
+                >
+                  <PureVideoCanvas
+                    videoPath={videoPath}
                     width={fullScreenDimensions.width}
-                    height={fullScreenDimensions.height - (isFullScreen ? 120 : 80)} // More space for controls in full screen
-                    videoWidth={fullScreenDimensions.width}
-                    videoHeight={fullScreenDimensions.height - (isFullScreen ? 120 : 80)}
+                    height={fullScreenDimensions.height} // Full available height in flex container
+                    onMetadataLoaded={handleMetadataLoaded}
+                    onTimeUpdate={(currentTime) => getLandmarksAtCurrentTime(currentTime)}
+                    onVideoRef={(ref) => { videoRef.current = ref; }}
+                    autoPlay={true}
+                    muted={true}
+                    
+                    // Adaptive config props (copied from CanvasMessage.tsx pattern)
+                    adaptiveConfig={adaptiveConfig}
+                    availableHeight={availableHeight}
+                    
+                    // ROI props
                     rois={rois}
+                    selectedROIId={selectedROIId}
+                    currentROIType={packingMethod === 'traditional' ? 'packing_area' : (!rois.some(roi => roi.type === 'qr_trigger') ? 'qr_trigger' : 'packing_area')}
+                    currentROILabel={packingMethod === 'traditional' ? 'Packing Area' : (!rois.some(roi => roi.type === 'qr_trigger') ? 'Trigger Area' : 'Packing Area')}
+                    disabled={(packingMethod === 'traditional' && rois.some(roi => roi.type === 'packing_area')) || (packingMethod === 'qr' && rois.some(roi => roi.type === 'qr_trigger') && rois.some(roi => roi.type === 'packing_area'))}
+                    showLandmarks={isVideoPlaying && rois.length > 0}
+                    landmarks={handLandmarks}
+                    
+                    // ROI callbacks  
                     onROICreate={handleROICreate}
                     onROIUpdate={handleROIUpdate}
                     onROIDelete={handleROIDelete}
                     onROISelect={handleROISelect}
-                    selectedROIId={selectedROIId}
-                    currentROIType={packingMethod === 'traditional' ? 'packing_area' : (!rois.some(roi => roi.type === 'qr_trigger') ? 'qr_trigger' : 'packing_area')}
-                    currentROILabel={packingMethod === 'traditional' ? 'Packing Area' : (!rois.some(roi => roi.type === 'qr_trigger') ? 'Trigger Area' : 'Packing Area')}
-                    packingMethod={packingMethod}
-                    disabled={(packingMethod === 'traditional' && rois.some(roi => roi.type === 'packing_area')) || (packingMethod === 'qr' && rois.some(roi => roi.type === 'qr_trigger') && rois.some(roi => roi.type === 'packing_area'))}
-                    handLandmarks={handLandmarks}
-                    showHandLandmarks={isVideoPlaying && rois.length > 0}
-                    landmarksColor="#00FF00"
-                    landmarksSize={4}
                   />
-                )}
-              </Box>
+                </Box>
+
+                {/* 2. VideoControlsBar - Phần dưới (fixed height) */}
+                <Box 
+                  width="100%"
+                  display="flex" 
+                  alignItems="center" 
+                  justifyContent="center"
+                  pb="10px"
+                  flexShrink={0}
+                  minH="60px"
+                >
+                  <VideoControlsBar
+                    videoRef={videoRef}
+                    width={Math.min(800, fullScreenDimensions.width)}
+                    height={54} // Chat input height pattern (54px)
+                    onControlStateChange={setVideoControlsState}
+                    
+                    // Adaptive config props (copied from CanvasMessage.tsx pattern)
+                    adaptiveConfig={adaptiveConfig}
+                    availableHeight={availableHeight}
+                  />
+                </Box>
+              </Flex>
 
 
             </Box>

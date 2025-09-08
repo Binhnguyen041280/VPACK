@@ -119,6 +119,7 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
   });
 
   const [hoveredROIId, setHoveredROIId] = useState<string | null>(null);
+
   const [dragState, setDragState] = useState<{
     isDragging: boolean;
     roiId: string;
@@ -136,24 +137,48 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
   // Theme colors
   const overlayBg = useColorModeValue('rgba(255,255,255,0.1)', 'rgba(0,0,0,0.1)');
   
-  // Coordinate conversion helpers
-  const canvasToVideo = useCallback((x: number, y: number) => {
-    const scaleX = videoWidth / width;
-    const scaleY = videoHeight / height;
+  // ✅ PURE 1:1 MAPPING - Canvas dimensions MUST equal video dimensions exactly
+  // WARNING: Do NOT subtract control heights or add offsets - this breaks ROI accuracy
+  const getVideoDisplayArea = useCallback(() => {
     return {
-      x: Math.round(x * scaleX),
-      y: Math.round(y * scaleY)
+      width: width,   // Exact canvas width = video display width
+      height: height, // Exact canvas height = video display height (NO control offset)
+      offsetX: 0,     // No horizontal offset - pure alignment
+      offsetY: 0      // No vertical offset - pure alignment
     };
-  }, [videoWidth, videoHeight, width, height]);
+  }, [width, height]);
+
+  // ✅ PERFECT 1:1 COORDINATE MAPPING - Canvas pixels = Video pixels exactly
+  // This ensures ROI coordinates are 100% accurate for backend processing
+  const canvasToVideo = useCallback((x: number, y: number) => {
+    return {
+      x: Math.round(x),  // Canvas X → Video X (direct mapping)
+      y: Math.round(y)   // Canvas Y → Video Y (direct mapping)
+    };
+  }, []);
 
   const videoToCanvas = useCallback((x: number, y: number) => {
-    const scaleX = width / videoWidth;
-    const scaleY = height / videoHeight;
     return {
-      x: x * scaleX,
-      y: y * scaleY
+      x: x,  // Video X → Canvas X (direct mapping)
+      y: y   // Video Y → Canvas Y (direct mapping)
     };
-  }, [videoWidth, videoHeight, width, height]);
+  }, []);
+
+  // ✅ BOUNDARY VALIDATION - Check if canvas coordinates are within actual video display area
+  const isWithinVideoArea = useCallback((canvasX: number, canvasY: number): boolean => {
+    const displayArea = getVideoDisplayArea();
+    
+    // ✅ SIMPLE: Canvas = Display area exactly, no offsets  
+    return canvasX >= 0 && canvasX <= width && canvasY >= 0 && canvasY <= height;
+  }, [getVideoDisplayArea, videoWidth, videoHeight, width, height]);
+
+  // ✅ SIMPLE CLAMPING - Canvas = Display area exactly
+  const clampToVideoArea = useCallback((canvasX: number, canvasY: number) => {
+    return {
+      x: Math.max(0, Math.min(canvasX, width)),
+      y: Math.max(0, Math.min(canvasY, height))
+    };
+  }, [width, height]);
 
   // Snap to grid helper
   const snapToGrid = useCallback((value: number): number => {
@@ -180,6 +205,20 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
     contextRef.current = context;
   }, [width, height]);
 
+  // 🐛 DEBUG: Log video dimensions and display area when component mounts or props change
+  useEffect(() => {
+    const displayArea = getVideoDisplayArea();
+    console.log('🎬 CanvasOverlay with Aspect Ratio Aware Video Display:', {
+      'Video File Dimensions': `${videoWidth}x${videoHeight}`,
+      'Canvas Dimensions': `${width}x${height}`,
+      'Video Aspect Ratio': (videoWidth / videoHeight).toFixed(3),
+      'Canvas Aspect Ratio': (width / height).toFixed(3),
+      'Video Display Area': `${displayArea.width.toFixed(0)}x${displayArea.height.toFixed(0)}`,
+      'Video Position Offset': `(${displayArea.offsetX.toFixed(0)}, ${displayArea.offsetY.toFixed(0)})`,
+      'Fit Strategy': videoWidth/videoHeight > width/height ? 'Fit to width' : 'Fit to height'
+    });
+  }, [videoWidth, videoHeight, width, height, getVideoDisplayArea]);
+
   // Draw ROIs on canvas
   const drawROIs = useCallback(() => {
     const context = contextRef.current;
@@ -187,6 +226,19 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
 
     // Clear canvas before drawing
     context.clearRect(0, 0, width, height);
+
+    // ✅ DRAW VIDEO BOUNDARY - Visual indicator of actual video display area
+    const displayArea = getVideoDisplayArea();
+    context.strokeStyle = 'rgba(128, 128, 128, 0.5)';
+    context.lineWidth = 2;
+    context.setLineDash([4, 4]);
+    context.strokeRect(
+      displayArea.offsetX, 
+      displayArea.offsetY, 
+      displayArea.width, 
+      displayArea.height
+    );
+    context.setLineDash([]); // Reset dash pattern
 
     // Draw existing ROIs
     rois.forEach((roi) => {
@@ -273,7 +325,10 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
     selectedROIId, 
     hoveredROIId, 
     drawingState.previewROI, 
-    videoToCanvas
+    videoToCanvas,
+    videoWidth,
+    videoHeight,
+    getVideoDisplayArea
   ]);
 
   // Calculate dynamic sizes based on video/canvas scale - 2D scaling approach
@@ -487,6 +542,12 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
+    // ✅ PREVENT DRAWING OUTSIDE VIDEO AREA - Reject clicks outside video boundaries
+    if (!isWithinVideoArea(x, y)) {
+      console.log(`🚫 Click rejected: (${x.toFixed(1)}, ${y.toFixed(1)}) is outside video area`);
+      return; // Ignore clicks outside video boundaries
+    }
+
     // Check if clicking on ROI border (for dragging)
     const borderROI = findROIBorderAtPoint(x, y);
     
@@ -527,7 +588,7 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
       currentY: snappedY,
       previewROI: null
     });
-  }, [disabled, findROIAtPoint, findROIBorderAtPoint, onROISelect, snapToGrid]);
+  }, [disabled, findROIAtPoint, findROIBorderAtPoint, onROISelect, snapToGrid, isWithinVideoArea]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (disabled) return;
@@ -538,6 +599,8 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+
+    // ✅ ALLOW FREE MOUSE MOVEMENT - No clamping during drawing for natural ROI creation
 
     // Handle drag operation
     if (dragState.isDragging && dragState.originalROI) {
@@ -565,24 +628,26 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
       const snappedX = snapToGrid(x);
       const snappedY = snapToGrid(y);
       
-      const startX = Math.min(drawingState.startX, snappedX);
-      const startY = Math.min(drawingState.startY, snappedY);
-      const endX = Math.max(drawingState.startX, snappedX);
-      const endY = Math.max(drawingState.startY, snappedY);
+      // ✅ ĐƠN GIẢN - Canvas = Display, chỉ clamp trong biên canvas
+      const clampedX = Math.max(0, Math.min(width, snappedX));
+      const clampedY = Math.max(0, Math.min(height, snappedY));
+      
+      const startX = Math.min(drawingState.startX, clampedX);
+      const startY = Math.min(drawingState.startY, clampedY);
+      const endX = Math.max(drawingState.startX, clampedX);
+      const endY = Math.max(drawingState.startY, clampedY);
       
       const w = endX - startX;
       const h = endY - startY;
       
       if (w > minROISize && h > minROISize) {
-        const videoCoords = canvasToVideo(startX, startY);
-        const videoSize = canvasToVideo(w, h);
-        
+        // ✅ KHÔNG CAN THIỆP GÌ - vẽ sao để vậy
         const previewROI: ROIData = {
           id: 'preview',
-          x: videoCoords.x,
-          y: videoCoords.y,
-          w: videoSize.x,
-          h: videoSize.y,
+          x: startX,
+          y: startY,
+          w: w,
+          h: h,
           type: currentROIType,
           label: currentROILabel,
           color: ROI_TYPE_COLORS[currentROIType],
@@ -591,8 +656,8 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
         
         setDrawingState(prev => ({
           ...prev,
-          currentX: snappedX,
-          currentY: snappedY,
+          currentX: clampedX,
+          currentY: clampedY,
           previewROI
         }));
       }
@@ -605,13 +670,42 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
     
     setHoveredROIId(borderROI?.id || contentROI?.id || null);
     
-    // Update cursor based on location
-    if (borderROI) {
+    // ✅ ENHANCED CURSOR MANAGEMENT - Dynamic cursor with drawing state feedback
+    const withinVideoArea = isWithinVideoArea(x, y);
+    
+    if (drawingState.isDrawing) {
+      // During drawing - show appropriate feedback based on boundary constraints
+      if (!withinVideoArea) {
+        canvas.style.cursor = 'not-allowed'; // Drawing outside bounds
+      } else {
+        canvas.style.cursor = 'crosshair'; // Active drawing within bounds
+      }
+    } else if (!withinVideoArea) {
+      // Outside video area - show not-allowed cursor
+      canvas.style.cursor = 'not-allowed';
+    } else if (borderROI) {
+      // On ROI border - allow dragging
       canvas.style.cursor = 'move';
     } else if (contentROI) {
+      // Inside ROI - allow selection
       canvas.style.cursor = 'pointer';
     } else {
+      // Inside video area - allow drawing (crosshair only within actual video bounds)
       canvas.style.cursor = 'crosshair';
+    }
+    
+    // 🐛 DEBUG: Log cursor decisions and boundary validation occasionally
+    if (Math.random() < 0.005) { // Very occasional logging
+      console.log('🖱️ Enhanced Cursor & Boundary Decision:', {
+        'Mouse': `(${x.toFixed(1)}, ${y.toFixed(1)})`,
+        'Within Video Area': withinVideoArea,
+        'Video Dimensions': `${videoWidth}x${videoHeight}`,
+        'Drawing State': drawingState.isDrawing,
+        'Cursor Set': canvas.style.cursor,
+        'Has Border ROI': !!borderROI,
+        'Has Content ROI': !!contentROI,
+        'Video Display Area': getVideoDisplayArea()
+      });
     }
   }, [
     disabled,
@@ -626,7 +720,10 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
     currentROIType,
     currentROILabel,
     findROIAtPoint,
-    findROIBorderAtPoint
+    findROIBorderAtPoint,
+    clampToVideoArea,
+    isWithinVideoArea,
+    getVideoDisplayArea
   ]);
 
   const handleMouseUp = useCallback(() => {
@@ -648,23 +745,8 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
     if (drawingState.isDrawing && drawingState.previewROI) {
       const roi = drawingState.previewROI;
       
-      // Validate ROI is within bounds and meets minimum size
-      if (roi.w >= minROISize && roi.h >= minROISize &&
-          roi.x >= 0 && roi.y >= 0 &&
-          roi.x + roi.w <= videoWidth &&
-          roi.y + roi.h <= videoHeight) {
-        
-        onROICreate?.({
-          x: roi.x,
-          y: roi.y,
-          w: roi.w,
-          h: roi.h,
-          type: roi.type,
-          label: roi.label,
-          color: roi.color,
-          completed: true
-        });
-      }
+      // ✅ ĐƠN GIẢN - Chỉ tạo ROI, không cần debug phức tạp
+      onROICreate?.(roi);
     }
 
     // Reset drawing state
