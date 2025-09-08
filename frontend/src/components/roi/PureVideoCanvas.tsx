@@ -63,6 +63,7 @@ interface PureVideoCanvasProps {
   onMetadataLoaded?: (metadata: VideoMetadata) => void;
   onTimeUpdate?: (currentTime: number, duration: number) => void;
   onVideoRef?: (ref: HTMLVideoElement | null) => void;
+  onPlayStateChange?: (isPlaying: boolean) => void;
   
   // Adaptive config props (copied from CanvasMessage.tsx pattern)
   adaptiveConfig?: AdaptiveConfig;
@@ -99,6 +100,7 @@ const PureVideoCanvas: React.FC<PureVideoCanvasProps> = ({
   onMetadataLoaded,
   onTimeUpdate,
   onVideoRef,
+  onPlayStateChange,
   
   // Adaptive config props with defaults
   adaptiveConfig = {
@@ -209,6 +211,14 @@ const PureVideoCanvas: React.FC<PureVideoCanvasProps> = ({
   const handleCanPlay = useCallback(() => {
     setIsBuffering(false);
   }, []);
+
+  const handlePlay = useCallback(() => {
+    onPlayStateChange?.(true);
+  }, [onPlayStateChange]);
+
+  const handlePause = useCallback(() => {
+    onPlayStateChange?.(false);
+  }, [onPlayStateChange]);
 
   // Initialize video metadata on mount or path change
   useEffect(() => {
@@ -339,6 +349,8 @@ const PureVideoCanvas: React.FC<PureVideoCanvasProps> = ({
         onTimeUpdate={handleTimeUpdate}
         onWaiting={handleWaiting}
         onCanPlay={handleCanPlay}
+        onPlay={handlePlay}
+        onPause={handlePause}
         // No controls prop - pure video display
       />
 

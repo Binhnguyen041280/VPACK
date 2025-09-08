@@ -556,6 +556,23 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     console.log('ROI selected:', id);
   }, []);
 
+  // Convert canvas coordinates to original video coordinates
+  const convertToOriginalCoordinates = useCallback((roi: ROIData) => {
+    if (!videoMetadata) {
+      return { x: roi.x, y: roi.y, w: roi.w, h: roi.h };
+    }
+
+    const scaleX = videoMetadata.resolution.width / canvasDimensions.width;
+    const scaleY = videoMetadata.resolution.height / canvasDimensions.height;
+
+    return {
+      x: Math.round(roi.x * scaleX),
+      y: Math.round(roi.y * scaleY),
+      w: Math.round(roi.w * scaleX),
+      h: Math.round(roi.h * scaleY)
+    };
+  }, [videoMetadata, canvasDimensions]);
+
 
 
   // Get landmarks from cached results based on current video time (PROGRESSIVE DISPLAY)
@@ -979,7 +996,10 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                                 {roi.label}
                               </Text>
                               <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-                                {roi.type} • Position: ({roi.x}, {roi.y}) • Size: {roi.w}×{roi.h}px
+                                {(() => {
+                                  const original = convertToOriginalCoordinates(roi);
+                                  return `${roi.type} • Position: (${original.x}, ${original.y}) • Size: ${original.w}×${original.h}px`;
+                                })()}
                               </Text>
                             </VStack>
                             <IconButton
@@ -1176,7 +1196,8 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                     onMetadataLoaded={handleMetadataLoaded}
                     onTimeUpdate={(currentTime) => getLandmarksAtCurrentTime(currentTime)}
                     onVideoRef={(ref) => { videoRef.current = ref; }}
-                    autoPlay={true}
+                    onPlayStateChange={handleVideoPlayStateChange}
+                    autoPlay={false}
                     muted={true}
                     
                     // Adaptive config props (copied from CanvasMessage.tsx pattern)

@@ -132,43 +132,76 @@ const VideoControlsBar: React.FC<VideoControlsBarProps> = ({
   // Video event listeners
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video) {
+      console.log('🚨 VideoControlsBar: No video ref available');
+      return;
+    }
+
+    console.log('🎬 VideoControlsBar: Setting up event listeners');
 
     const handleTimeUpdate = () => {
-      setCurrentTime(video.currentTime);
+      const currentTime = video.currentTime;
+      const duration = video.duration || 0;
+      setCurrentTime(currentTime);
+      console.log('⏰ Time update:', { currentTime: currentTime.toFixed(2), duration: duration.toFixed(2) });
     };
 
     const handleDurationChange = () => {
-      setDuration(video.duration || 0);
+      const duration = video.duration || 0;
+      setDuration(duration);
+      console.log('📏 Duration change:', duration.toFixed(2));
+    };
+
+    const handleLoadedMetadata = () => {
+      const duration = video.duration || 0;
+      setDuration(duration);
+      setCurrentTime(video.currentTime || 0);
+      console.log('📋 Metadata loaded:', { duration: duration.toFixed(2), currentTime: video.currentTime.toFixed(2) });
     };
 
     const handlePlay = () => {
       setIsPlaying(true);
+      console.log('▶️ Video playing');
     };
 
     const handlePause = () => {
       setIsPlaying(false);
+      console.log('⏸️ Video paused');
     };
 
     // Add event listeners
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('durationchange', handleDurationChange);
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
 
-    // Initial state
-    setDuration(video.duration || 0);
-    setCurrentTime(video.currentTime || 0);
-    setIsPlaying(!video.paused);
+    // Initial state - check immediately
+    const initialDuration = video.duration || 0;
+    const initialCurrentTime = video.currentTime || 0;
+    const initialIsPlaying = !video.paused;
+    
+    setDuration(initialDuration);
+    setCurrentTime(initialCurrentTime);
+    setIsPlaying(initialIsPlaying);
+    
+    console.log('🎯 VideoControlsBar initial state:', { 
+      duration: initialDuration.toFixed(2), 
+      currentTime: initialCurrentTime.toFixed(2), 
+      isPlaying: initialIsPlaying,
+      readyState: video.readyState
+    });
 
     // Cleanup
     return () => {
+      console.log('🧹 VideoControlsBar: Cleaning up event listeners');
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('durationchange', handleDurationChange);
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
     };
-  }, [videoRef]);
+  }, [videoRef, videoRef.current]);
 
   // Update control state when state changes
   useEffect(() => {
