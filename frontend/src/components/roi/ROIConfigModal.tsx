@@ -74,9 +74,10 @@ interface ROIConfigModalProps {
 }
 
 
-// Video player dimensions (define as constants outside component)
-const VIDEO_PLAYER_WIDTH = 960;
-const VIDEO_PLAYER_HEIGHT = 540;
+// Video player dimensions will be calculated as 60% of original video size
+// These are fallback values for when video metadata isn't loaded yet
+const FALLBACK_VIDEO_PLAYER_WIDTH = 960;
+const FALLBACK_VIDEO_PLAYER_HEIGHT = 540;
 
 const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
   isOpen,
@@ -110,18 +111,62 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     error: null
   });
 
+  // Canvas dimensions state (60% of video dimensions)
+  const [canvasDimensions, setCanvasDimensions] = useState<{
+    width: number;
+    height: number;
+  }>({
+    width: FALLBACK_VIDEO_PLAYER_WIDTH,
+    height: FALLBACK_VIDEO_PLAYER_HEIGHT
+  });
+
   // Full screen state
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [fullScreenDimensions, setFullScreenDimensions] = useState<{
     width: number;
     height: number;
   }>({
-    width: VIDEO_PLAYER_WIDTH,
-    height: VIDEO_PLAYER_HEIGHT
+    width: FALLBACK_VIDEO_PLAYER_WIDTH,
+    height: FALLBACK_VIDEO_PLAYER_HEIGHT
   });
 
   // Toast for notifications
   const toast = useToast();
+
+  // Calculate available viewport space for video display
+  const calculateAvailableSpace = useCallback(() => {
+    const sidebarWidth = 256; // Left panel width
+    const padding = 20; // Center panel padding (10px each side) - reduced
+    const controlsHeight = 80; // Video controls area - reduced
+    const alertHeight = 0; // No space needed - all messages in sidebar now
+    
+    const availableWidth = window.innerWidth - sidebarWidth - padding;
+    const availableHeight = window.innerHeight - controlsHeight - alertHeight;
+    
+    return {
+      width: Math.max(400, availableWidth), // Min 400px width
+      height: Math.max(300, availableHeight) // Min 300px height
+    };
+  }, []);
+
+  // Calculate optimal scale to fit viewport (no maximum limit)
+  const calculateOptimalScale = useCallback((videoResolution: { width: number; height: number }, availableSpace: { width: number; height: number }) => {
+    const scaleX = availableSpace.width / videoResolution.width;
+    const scaleY = availableSpace.height / videoResolution.height;
+    
+    // Take the smaller scale to ensure both dimensions fit perfectly in viewport
+    const optimalScale = Math.min(scaleX, scaleY);
+    
+    console.log('Scale calculation:', {
+      video: `${videoResolution.width}x${videoResolution.height}`,
+      available: `${availableSpace.width}x${availableSpace.height}`,
+      scaleX: scaleX.toFixed(3),
+      scaleY: scaleY.toFixed(3),
+      optimalScale: optimalScale.toFixed(3)
+    });
+    
+    return optimalScale;
+  }, []);
 
   // Theme colors
   const bgColor = useColorModeValue('white', 'gray.800');
@@ -142,14 +187,9 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       }
     } catch (error) {
       console.warn('Cannot enter fullscreen:', error);
-      toast({
-        title: 'Cannot enter fullscreen',
-        description: 'Browser does not support or blocked fullscreen',
-        status: 'warning',
-        duration: 3000
-      });
+      // Fullscreen error - no popup needed, user can see video still works
     }
-  }, [toast]);
+  }, []);
 
   const exitFullScreen = useCallback(async () => {
     try {
@@ -173,18 +213,18 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
         const screenHeight = window.screen.height;
         const screenAspectRatio = screenWidth / screenHeight;
         
-        if (videoMetadata) {
-          const videoAspectRatio = videoMetadata.resolution.width / videoMetadata.resolution.height;
+        if (videoMetadata && canvasDimensions) {
+          const canvasAspectRatio = canvasDimensions.width / canvasDimensions.height;
           
           let displayWidth, displayHeight;
-          if (videoAspectRatio > screenAspectRatio) {
-            // Video wider than screen - fit to width
+          if (canvasAspectRatio > screenAspectRatio) {
+            // Canvas wider than screen - fit to width
             displayWidth = screenWidth;
-            displayHeight = screenWidth / videoAspectRatio;
+            displayHeight = screenWidth / canvasAspectRatio;
           } else {
-            // Video taller than screen - fit to height  
+            // Canvas taller than screen - fit to height  
             displayHeight = screenHeight;
-            displayWidth = screenHeight * videoAspectRatio;
+            displayWidth = screenHeight * canvasAspectRatio;
           }
           
           setFullScreenDimensions({
@@ -194,15 +234,15 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
           
           console.log('Full Screen Mode:', {
             screen: `${screenWidth}x${screenHeight}`,
-            video: `${videoMetadata.resolution.width}x${videoMetadata.resolution.height}`,
+            canvas: `${canvasDimensions.width}x${canvasDimensions.height}`,
             display: `${displayWidth.toFixed(0)}x${displayHeight.toFixed(0)}`
           });
         }
       } else {
-        // Reset to normal dimensions
+        // Reset to normal dimensions (60% of video size)
         setFullScreenDimensions({
-          width: VIDEO_PLAYER_WIDTH,
-          height: VIDEO_PLAYER_HEIGHT
+          width: canvasDimensions.width,
+          height: canvasDimensions.height
         });
       }
     };
@@ -216,14 +256,73 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       document.removeEventListener('webkitfullscreenchange', handleFullScreenChange);
       document.removeEventListener('mozfullscreenchange', handleFullScreenChange);
     };
-  }, [videoMetadata]);
+  }, [videoMetadata, canvasDimensions]);
+
+  // Handle window resize to recalculate dimensions
+  useEffect(() => {
+    const handleResize = () => {
+      if (videoMetadata && !isFullScreen) {
+        // Recalculate dimensions for new viewport size
+        const availableSpace = calculateAvailableSpace();
+        const optimalScale = calculateOptimalScale(videoMetadata.resolution, availableSpace);
+        
+        const displayWidth = Math.round(videoMetadata.resolution.width * optimalScale);
+        const displayHeight = Math.round(videoMetadata.resolution.height * optimalScale);
+        
+        setCanvasDimensions({
+          width: displayWidth,
+          height: displayHeight
+        });
+
+        setFullScreenDimensions({
+          width: displayWidth,
+          height: displayHeight
+        });
+
+        console.log('Viewport resize - dimensions recalculated:', {
+          available: `${availableSpace.width}x${availableSpace.height}`,
+          scale: `${(optimalScale * 100).toFixed(1)}%`,
+          display: `${displayWidth}x${displayHeight}`
+        });
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [videoMetadata, isFullScreen, calculateAvailableSpace, calculateOptimalScale]);
 
   // Handle video metadata loaded
   const handleMetadataLoaded = useCallback((metadata: VideoMetadata) => {
     console.log('Video metadata loaded:', metadata);
     setVideoMetadata(metadata);
     setError(null);
-  }, []);
+
+    // Calculate available space and optimal scale
+    const availableSpace = calculateAvailableSpace();
+    const optimalScale = calculateOptimalScale(metadata.resolution, availableSpace);
+    
+    // Calculate display dimensions using dynamic scale
+    const displayWidth = Math.round(metadata.resolution.width * optimalScale);
+    const displayHeight = Math.round(metadata.resolution.height * optimalScale);
+    
+    setCanvasDimensions({
+      width: displayWidth,
+      height: displayHeight
+    });
+
+    // Also update fullScreenDimensions for normal mode
+    setFullScreenDimensions({
+      width: displayWidth,
+      height: displayHeight
+    });
+
+    console.log('Dynamic canvas dimensions calculated:', {
+      original: `${metadata.resolution.width}x${metadata.resolution.height}`,
+      available: `${availableSpace.width}x${availableSpace.height}`,
+      scale: `${(optimalScale * 100).toFixed(1)}%`,
+      display: `${displayWidth}x${displayHeight}`
+    });
+  }, [calculateAvailableSpace, calculateOptimalScale]);
 
   // Handle video error
   const handleVideoError = useCallback((errorMessage: string) => {
@@ -240,13 +339,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
         // Check if packing area already exists
         const existingPackingArea = rois.some(roi => roi.type === 'packing_area');
         if (existingPackingArea) {
-          toast({
-            title: 'Cannot Create ROI',
-            description: 'Only one Packing Area is allowed in Traditional mode',
-            status: 'warning',
-            duration: 4000,
-            isClosable: true
-          });
+          // ROI limit error - shown in sidebar Messages section
           return null;
         }
         return { type: 'packing_area', label: 'Packing Area' };
@@ -257,13 +350,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
         
         // If both areas already exist, prevent creation
         if (existingTriggerArea && existingPackingArea) {
-          toast({
-            title: 'Cannot Create ROI',
-            description: 'Maximum of 2 areas allowed: Trigger Area and Packing Area',
-            status: 'warning',
-            duration: 4000,
-            isClosable: true
-          });
+          // ROI limit error - shown in sidebar Messages section
           return null;
         }
         
@@ -294,13 +381,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     setROIs(prev => [...prev, newROI]);
     setSelectedROIId(newROI.id);
 
-    toast({
-      title: 'ROI Created',
-      description: `${newROI.label} has been created`,
-      status: 'success',
-      duration: 3000,
-      isClosable: true
-    });
+    // ROI created success - shown in sidebar Messages section
 
     console.log('ROI created:', newROI);
 
@@ -312,7 +393,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
         triggerPreprocessing();
       }, 500);
     }
-  }, [packingMethod, rois, toast]);
+  }, [packingMethod, rois]);
 
   // Handle ROI update
   const handleROIUpdate = useCallback((id: string, updates: Partial<ROIData>) => {
@@ -336,14 +417,9 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       
       setHandLandmarks(null);
       
-      toast({
-        title: 'ROI Changed',
-        description: 'Hand detection needs to be reprocessed for new ROI',
-        status: 'info',
-        duration: 3000
-      });
+      // ROI changed - processing status shown in sidebar Messages section
     }
-  }, [preprocessingState.cacheKey, toast]);
+  }, [preprocessingState.cacheKey]);
 
   // Handle ROI deletion
   const handleROIDelete = useCallback((id: string) => {
@@ -374,24 +450,13 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       
       setHandLandmarks(null);
       
-      toast({
-        title: 'ROI Deleted',
-        description: 'Hand detection cache cleared. Draw new ROI to start again.',
-        status: 'info',
-        duration: 4000
-      });
+      // ROI deleted info - shown in sidebar Messages section
     } else {
-      toast({
-        title: 'ROI Deleted',
-        description: `${roiToDelete.label} has been deleted`,
-        status: 'info',
-        duration: 3000,
-        isClosable: true
-      });
+      // ROI deleted info - shown in sidebar Messages section
     }
 
     console.log('ROI deleted:', roiToDelete);
-  }, [rois, selectedROIId, preprocessingState.cacheKey, toast]);
+  }, [rois, selectedROIId, preprocessingState.cacheKey]);
 
   // Handle ROI selection
   const handleROISelect = useCallback((id: string | null) => {
@@ -472,12 +537,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
               completed: true
             }));
             
-            toast({
-              title: 'Analysis Complete',
-              description: `Processed ${result.detections?.length || 0} frames. Press Play to see results!`,
-              status: 'success',
-              duration: 4000
-            });
+            // Analysis complete - shown in sidebar Messages section
           } else if (result.status === 'in_progress') {
             setPreprocessingState(prev => ({
               ...prev,
@@ -507,7 +567,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
         }));
       }
     }, 2000); // Poll every 2 seconds
-  }, [toast]);
+  }, []);
 
   // Start pre-processing when ROI is created
   const startPreprocessing = useCallback(async () => {
@@ -531,18 +591,18 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
 
       // Step 1: Transform ROI_disp → ROI_orig (Canvas coordinates → Video coordinates)
       const roi_orig = {
-        x: Math.round(packingROI.x * videoMetadata.resolution.width / VIDEO_PLAYER_WIDTH),
-        y: Math.round(packingROI.y * videoMetadata.resolution.height / VIDEO_PLAYER_HEIGHT),
-        w: Math.round(packingROI.w * videoMetadata.resolution.width / VIDEO_PLAYER_WIDTH),
-        h: Math.round(packingROI.h * videoMetadata.resolution.height / VIDEO_PLAYER_HEIGHT)
+        x: Math.round(packingROI.x * videoMetadata.resolution.width / canvasDimensions.width),
+        y: Math.round(packingROI.y * videoMetadata.resolution.height / canvasDimensions.height),
+        w: Math.round(packingROI.w * videoMetadata.resolution.width / canvasDimensions.width),
+        h: Math.round(packingROI.h * videoMetadata.resolution.height / canvasDimensions.height)
       };
 
       console.log('ROI Transform:', {
         'ROI_disp (canvas)': packingROI,
         'ROI_orig (video)': roi_orig,
         'Video size': `${videoMetadata.resolution.width}x${videoMetadata.resolution.height}`,
-        'Canvas size': `${VIDEO_PLAYER_WIDTH}x${VIDEO_PLAYER_HEIGHT}`,
-        'Scale factor': `${videoMetadata.resolution.width / VIDEO_PLAYER_WIDTH}x${videoMetadata.resolution.height / VIDEO_PLAYER_HEIGHT}`
+        'Canvas size': `${canvasDimensions.width}x${canvasDimensions.height}`,
+        'Scale factor': `${videoMetadata.resolution.width / canvasDimensions.width}x${videoMetadata.resolution.height / canvasDimensions.height}`
       });
 
       const response = await fetch('http://localhost:8080/api/hand-detection/preprocess-video', {
@@ -572,12 +632,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
             completed: true
           }));
           
-          toast({
-            title: 'Analysis Ready',
-            description: 'Hand detection data is ready. Press Play to see results!',
-            status: 'success',
-            duration: 3000
-          });
+          // Analysis ready - shown in sidebar Messages section
         } else {
           // Start polling for progress
           pollPreprocessingProgress(result.cache_key);
@@ -593,14 +648,9 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
         error: error instanceof Error ? error.message : 'Unknown error'
       }));
       
-      toast({
-        title: 'Processing Error',
-        description: 'Cannot process hand detection. Please try again.',
-        status: 'error',
-        duration: 5000
-      });
+      // Processing error - shown in sidebar Messages section
     }
-  }, [videoMetadata, rois, packingMethod, videoPath, toast, pollPreprocessingProgress]);
+  }, [videoMetadata, rois, packingMethod, videoPath, toast, pollPreprocessingProgress, canvasDimensions]);
 
   // Use ref to store preprocessing function to avoid circular dependency
   const startPreprocessingRef = useRef<(() => Promise<void>) | null>(null);
@@ -700,13 +750,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       }
 
       // Success
-      toast({
-        title: 'Configuration Saved',
-        description: `ROI configuration for camera ${cameraId} has been saved successfully`,
-        status: 'success',
-        duration: 5000,
-        isClosable: true
-      });
+      // Configuration saved successfully - user will see modal close
 
       // Call parent save handler
       onSave?.({
@@ -726,13 +770,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       setError(errorMessage);
       onError?.(errorMessage);
 
-      toast({
-        title: 'Save Failed',
-        description: errorMessage,
-        status: 'error',
-        duration: 5000,
-        isClosable: true
-      });
+      // Save error - shown in sidebar Messages section via setError
     } finally {
       setIsSaving(false);
     }
@@ -896,22 +934,114 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                   )}
                 </VStack>
 
+                <Divider />
+
+                {/* Messages & Status - Highlighted Section */}
+                <Box p="12px" bg="blue.50" borderRadius="8px" border="2px solid" borderColor="blue.200">
+                  <Text fontSize="sm" fontWeight="bold" color="blue.800" mb="8px">
+                    📋 Status & Instructions
+                  </Text>
+
+                  {/* Error Alert */}
+                  {error && (
+                    <Alert status="error" size="sm" borderRadius="6px" mb="8px">
+                      <AlertIcon boxSize="14px" />
+                      <Box>
+                        <AlertTitle fontSize="xs">Error!</AlertTitle>
+                        <AlertDescription fontSize="xs">{error}</AlertDescription>
+                      </Box>
+                    </Alert>
+                  )}
+
+                  {/* Instructions */}
+                  {rois.length === 0 && (
+                    <Box p="8px" bg="gray.50" borderRadius="6px" mb="8px">
+                      <Text fontSize="xs" color={secondaryText}>
+                        💡 Click and drag on the video to create ROI rectangles. 
+                        Double-click an existing ROI to delete it.
+                      </Text>
+                    </Box>
+                  )}
+
+                  {/* Pre-processing Status */}
+                  {rois.length > 0 && videoMetadata && packingMethod === 'traditional' && (
+                    <>
+                      {preprocessingState.isProcessing && (
+                        <Box p="8px" bg="blue.100" borderRadius="6px" mb="8px">
+                          <Text fontSize="xs" fontWeight="medium" mb="4px">
+                            🤖 Processing hand analysis...
+                          </Text>
+                          <Box w="100%" bg="gray.200" borderRadius="2px" h="4px" mb="4px">
+                            <Box 
+                              w={`${preprocessingState.progress}%`} 
+                              bg="blue.500" 
+                              borderRadius="2px" 
+                              h="100%" 
+                              transition="width 0.3s ease"
+                            />
+                          </Box>
+                          <Text fontSize="2xs" color={secondaryText}>
+                            Progress: {preprocessingState.progress.toFixed(1)}%
+                          </Text>
+                        </Box>
+                      )}
+
+                      {preprocessingState.completed && !isVideoPlaying && (
+                        <Box p="8px" bg="green.100" borderRadius="6px" mb="8px">
+                          <Text fontSize="xs" fontWeight="medium" color="green.700" mb="2px">
+                            ✅ Analysis Ready
+                          </Text>
+                          <Text fontSize="2xs" color="green.600">
+                            Press Play to see results!
+                          </Text>
+                        </Box>
+                      )}
+
+                      {preprocessingState.error && (
+                        <Box p="8px" bg="red.100" borderRadius="6px" mb="8px">
+                          <Text fontSize="xs" fontWeight="medium" color="red.700" mb="2px">
+                            ❌ Processing Error
+                          </Text>
+                          <Text fontSize="2xs" color="red.600" mb="4px">
+                            {preprocessingState.error}
+                          </Text>
+                          <Button size="xs" colorScheme="red" variant="outline" onClick={startPreprocessing}>
+                            Try Again
+                          </Button>
+                        </Box>
+                      )}
+
+                      {!preprocessingState.isProcessing && !preprocessingState.completed && !preprocessingState.error && rois.some(roi => roi.type === 'packing_area') && (
+                        <Box p="8px" bg="blue.100" borderRadius="6px" mb="8px">
+                          <Text fontSize="xs" fontWeight="medium" color="blue.700" mb="2px">
+                            🎯 ROI Created
+                          </Text>
+                          <Text fontSize="2xs" color="blue.600" mb="4px">
+                            Start hand detection processing
+                          </Text>
+                          <Button size="xs" colorScheme="blue" onClick={startPreprocessing}>
+                            Start Analysis
+                          </Button>
+                        </Box>
+                      )}
+                    </>
+                  )}
+                </Box>
+
               </VStack>
             </Box>
 
             {/* Center Panel - Video & Canvas */}
-            <Box flex="1" p="20px" display="flex" flexDirection="column" alignItems="center" justifyContent="center">
-
-              {/* Error Alert */}
-              {error && (
-                <Alert status="error" borderRadius="8px" mb="20px" maxW={`${fullScreenDimensions.width}px`}>
-                  <AlertIcon />
-                  <Box>
-                    <AlertTitle>Configuration Error</AlertTitle>
-                    <AlertDescription>{error}</AlertDescription>
-                  </Box>
-                </Alert>
-              )}
+            <Box 
+              flex="1" 
+              p="10px" 
+              display="flex" 
+              flexDirection="column" 
+              alignItems="center" 
+              justifyContent="center"
+              overflow="auto" // Enable scrolling for zoom > 100%
+              minHeight="0" // Allow flex child to shrink
+            >
 
               {/* Video Player Container */}
               <Box 
@@ -942,8 +1072,8 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                   <CanvasOverlay
                     width={fullScreenDimensions.width}
                     height={fullScreenDimensions.height - (isFullScreen ? 120 : 80)} // More space for controls in full screen
-                    videoWidth={videoMetadata.resolution.width}
-                    videoHeight={videoMetadata.resolution.height}
+                    videoWidth={fullScreenDimensions.width}
+                    videoHeight={fullScreenDimensions.height - (isFullScreen ? 120 : 80)}
                     rois={rois}
                     onROICreate={handleROICreate}
                     onROIUpdate={handleROIUpdate}
@@ -961,81 +1091,6 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                   />
                 )}
               </Box>
-
-
-              {/* Instructions */}
-              {rois.length === 0 && (
-                <Text fontSize="sm" color={secondaryText} mt="16px" textAlign="center" maxW={`${fullScreenDimensions.width}px`}>
-                  Click and drag on the video to create ROI rectangles. 
-                  Double-click an existing ROI to delete it.
-                </Text>
-              )}
-
-
-              {/* Pre-processing Status */}
-              {rois.length > 0 && videoMetadata && packingMethod === 'traditional' && (
-                <Box mt="16px" width={`${fullScreenDimensions.width}px`}>
-                  {preprocessingState.isProcessing && (
-                    <Box p="16px" bg={panelBg} borderRadius="8px">
-                      <Text fontSize="sm" fontWeight="medium" mb="8px">
-                        🤖 Processing hand analysis...
-                      </Text>
-                      <Box w="100%" bg="gray.200" borderRadius="4px" h="8px" mb="8px">
-                        <Box 
-                          w={`${preprocessingState.progress}%`} 
-                          bg="blue.500" 
-                          borderRadius="4px" 
-                          h="100%" 
-                          transition="width 0.3s ease"
-                        />
-                      </Box>
-                      <Text fontSize="xs" color={secondaryText}>
-                        Progress: {preprocessingState.progress.toFixed(1)}% - Please wait...
-                      </Text>
-                    </Box>
-                  )}
-
-                  {preprocessingState.completed && !isVideoPlaying && (
-                    <Box p="16px" bg="green.50" borderColor="green.200" border="1px solid" borderRadius="8px">
-                      <Text fontSize="sm" fontWeight="medium" color="green.700" mb="4px">
-                        ✅ Analysis Ready
-                      </Text>
-                      <Text fontSize="xs" color="green.600">
-                        Press Play to see perfectly synchronized hand detection results!
-                      </Text>
-                    </Box>
-                  )}
-
-                  {preprocessingState.error && (
-                    <Box p="16px" bg="red.50" borderColor="red.200" border="1px solid" borderRadius="8px">
-                      <Text fontSize="sm" fontWeight="medium" color="red.700" mb="4px">
-                        ❌ Processing Error
-                      </Text>
-                      <Text fontSize="xs" color="red.600">
-                        {preprocessingState.error}
-                      </Text>
-                      <Button size="xs" colorScheme="red" variant="outline" mt="8px" onClick={startPreprocessing}>
-                        Try Again
-                      </Button>
-                    </Box>
-                  )}
-
-                  {!preprocessingState.isProcessing && !preprocessingState.completed && !preprocessingState.error && rois.some(roi => roi.type === 'packing_area') && (
-                    <Box p="16px" bg="blue.50" borderColor="blue.200" border="1px solid" borderRadius="8px">
-                      <Text fontSize="sm" fontWeight="medium" color="blue.700" mb="4px">
-                        🎯 ROI Created
-                      </Text>
-                      <Text fontSize="xs" color="blue.600" mb="8px">
-                        Click the button below to start hand detection processing
-                      </Text>
-                      <Button size="sm" colorScheme="blue" onClick={startPreprocessing}>
-                        Start Analysis
-                      </Button>
-                    </Box>
-                  )}
-                </Box>
-              )}
-              
 
 
             </Box>
