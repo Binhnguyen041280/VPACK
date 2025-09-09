@@ -8,6 +8,7 @@ import time
 import glob
 import traceback
 from datetime import datetime
+from typing import Dict, Any, Optional
 
 # Đảm bảo thư mục LOG tồn tại
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -367,6 +368,283 @@ def select_qr_roi(video_path, camera_id, roi_frame_path, step="mvd"):
         logger.error(f"[MVD] Lỗi trong select_qr_roi: {str(e)}\n{traceback.format_exc()}")
         cv2.destroyAllWindows()
         return {"success": False, "error": f"Lỗi hệ thống: {str(e)}"}
+
+def detect_qr_at_time(video_path: str, time_seconds: float, roi_config: dict) -> dict:
+    """
+    Detect QR codes at specific timestamp in video for preprocessing pipeline
+    
+    Args:
+        video_path (str): Path to video file
+        time_seconds (float): Video time in seconds
+        roi_config (dict): ROI configuration {'x': int, 'y': int, 'w': int, 'h': int}
+    
+    Returns:
+        dict: {
+            'success': bool,
+            'qr_detections': [{'bbox': {'x': int, 'y': int, 'w': int, 'h': int}, 
+                              'decoded_text': str, 'confidence': float}],
+            'timestamp': float,
+            'error': str (if error)
+        }
+    """
+    try:
+        logger.debug(f"[QR-DETECT] Detecting QR at time {time_seconds}s in {video_path}")
+        
+        # Validate parameters
+        if not os.path.exists(video_path):
+            return {"success": False, "error": f"Video file not found: {video_path}"}
+        
+        if not roi_config or not all(k in roi_config for k in ['x', 'y', 'w', 'h']):
+            return {"success": False, "error": "Invalid ROI configuration"}
+        
+        # Check model files exist
+        for model_file in [DETECT_PROTO, DETECT_MODEL, SR_PROTO, SR_MODEL]:
+            if not os.path.exists(model_file):
+                return {"success": False, "error": f"Model file not found: {model_file}"}
+        
+        # Initialize QR detector
+        try:
+            qr_detector = cv2.wechat_qrcode_WeChatQRCode(DETECT_PROTO, DETECT_MODEL, SR_PROTO, SR_MODEL)  # type: ignore
+        except Exception as e:
+            return {"success": False, "error": f"Failed to initialize QR detector: {str(e)}"}
+        
+        # Open video
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            return {"success": False, "error": f"Cannot open video: {video_path}"}
+        
+        try:
+            # Get video properties
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            if fps <= 0:
+                fps = 30  # Default fallback
+            
+            # Calculate frame number for timestamp
+            frame_number = int(time_seconds * fps)
+            
+            # Seek to specific frame
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+            
+            # Read frame
+            ret, frame = cap.read()
+            if not ret:
+                return {
+                    "success": False, 
+                    "error": f"Cannot read frame at time {time_seconds}s (frame {frame_number})"
+                }
+            
+            # Extract ROI from frame
+            x, y, w, h = roi_config['x'], roi_config['y'], roi_config['w'], roi_config['h']
+            
+            # Validate ROI boundaries
+            frame_h, frame_w = frame.shape[:2]
+            if x < 0 or y < 0 or x + w > frame_w or y + h > frame_h:
+                return {
+                    "success": False,
+                    "error": f"ROI out of bounds: ROI({x},{y},{w},{h}) vs Frame({frame_w},{frame_h})"
+                }
+            
+            roi_frame = frame[y:y+h, x:x+w]
+            
+            if roi_frame.size == 0:
+                return {"success": False, "error": "Empty ROI frame"}
+            
+            # Detect QR codes in ROI
+            texts, points = qr_detector.detectAndDecode(roi_frame)
+            
+            qr_detections = []
+            if texts and points is not None:
+                for i, (text, box) in enumerate(zip(texts, points)):
+                    if text:  # Only include non-empty decoded text
+                        # Calculate bounding box from points
+                        if len(box) >= 4:
+                            # Get bounding rectangle from QR corners
+                            x_coords = [int(pt[0]) for pt in box]
+                            y_coords = [int(pt[1]) for pt in box]
+                            
+                            bbox_x = min(x_coords)
+                            bbox_y = min(y_coords)
+                            bbox_w = max(x_coords) - bbox_x
+                            bbox_h = max(y_coords) - bbox_y
+                            
+                            # Add ROI offset to convert to original frame coordinates
+                            qr_detections.append({
+                                'bbox': {
+                                    'x': bbox_x + x,  # Add ROI offset
+                                    'y': bbox_y + y,  # Add ROI offset
+                                    'w': bbox_w,
+                                    'h': bbox_h
+                                },
+                                'decoded_text': text,
+                                'confidence': 0.95  # WeChat QR detector doesn't provide confidence, use fixed value
+                            })
+                            
+                            logger.debug(f"[QR-DETECT] Found QR: '{text}' at bbox({bbox_x + x}, {bbox_y + y}, {bbox_w}, {bbox_h})")
+            
+            result = {
+                'success': True,
+                'qr_detections': qr_detections,
+                'timestamp': time_seconds,
+                'qr_count': len(qr_detections)
+            }
+            
+            logger.debug(f"[QR-DETECT] Detected {len(qr_detections)} QR codes at {time_seconds}s")
+            return result
+            
+        finally:
+            cap.release()
+            
+    except Exception as e:
+        logger.error(f"[QR-DETECT] Error in detect_qr_at_time: {str(e)}\n{traceback.format_exc()}")
+        return {"success": False, "error": f"Detection error: {str(e)}"}
+
+def preprocess_video_qr(video_path: str, roi_config: dict, fps: int = 5, progress_callback=None) -> dict:
+    """
+    Pre-process entire video for QR detection at specified fps
+    Cache results for perfect synchronization during playback
+    
+    Args:
+        video_path (str): Path to video file
+        roi_config (dict): ROI configuration {'x': int, 'y': int, 'w': int, 'h': int}
+        fps (int): Detection fps (default 5fps = every 0.2s)
+        progress_callback (callable): Function to call with progress updates
+    
+    Returns:
+        dict: {
+            'success': bool,
+            'detections': [{'timestamp': float, 'qr_detections': list, 'qr_count': int}],
+            'metadata': dict,
+            'total_frames_processed': int,
+            'error': str (if error)
+        }
+    """
+    try:
+        logger.info(f"[QR-PREPROCESS] Starting video preprocessing at {fps}fps for {video_path}")
+        
+        # Validate inputs
+        if not os.path.exists(video_path):
+            return {"success": False, "error": f"Video file not found: {video_path}"}
+        
+        if not roi_config or not all(k in roi_config for k in ['x', 'y', 'w', 'h']):
+            return {"success": False, "error": "Invalid ROI configuration"}
+        
+        # Get video properties
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            return {"success": False, "error": f"Cannot open video: {video_path}"}
+        
+        try:
+            video_fps = cap.get(cv2.CAP_PROP_FPS)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            duration = total_frames / video_fps if video_fps > 0 else 0
+            
+            logger.debug(f"[QR-PREPROCESS] Video info: {total_frames} frames, {video_fps} fps, {duration:.1f}s duration")
+            
+        finally:
+            cap.release()
+        
+        # Calculate processing timestamps (5fps = every 0.2s)
+        interval = 1.0 / fps  # 0.2s for 5fps
+        timestamps = []
+        current_time = 0.0
+        
+        while current_time <= duration:
+            timestamps.append(round(current_time, 1))  # Round to avoid floating point issues
+            current_time += interval
+        
+        total_timestamps = len(timestamps)
+        logger.info(f"[QR-PREPROCESS] Processing {total_timestamps} timestamps at {fps}fps")
+        
+        # Initialize results
+        detections = []
+        processed_count = 0
+        start_time = time.time()
+        
+        # Process each timestamp
+        for i, timestamp in enumerate(timestamps):
+            try:
+                # Call QR detection for this timestamp
+                result = detect_qr_at_time(video_path, timestamp, roi_config)
+                
+                if result['success']:
+                    # Store detection result
+                    detection_entry = {
+                        'timestamp': timestamp,
+                        'qr_detections': result['qr_detections'],
+                        'qr_count': result.get('qr_count', 0)
+                    }
+                    detections.append(detection_entry)
+                    
+                    if result.get('qr_count', 0) > 0:
+                        logger.debug(f"[QR-PREPROCESS] Frame {i+1}/{total_timestamps}: {result['qr_count']} QR codes at {timestamp}s")
+                else:
+                    logger.warning(f"[QR-PREPROCESS] Frame {i+1}/{total_timestamps}: Failed at {timestamp}s - {result.get('error')}")
+                    # Still add entry with empty detections for timeline consistency
+                    detections.append({
+                        'timestamp': timestamp,
+                        'qr_detections': [],
+                        'qr_count': 0
+                    })
+                
+                processed_count += 1
+                
+                # Update progress
+                if progress_callback:
+                    progress_percent = (processed_count / total_timestamps) * 100
+                    elapsed_time = time.time() - start_time
+                    estimated_total_time = elapsed_time * total_timestamps / processed_count
+                    
+                    # Call progress callback with current detections for incremental caching
+                    progress_callback(
+                        progress=progress_percent,
+                        processed_count=processed_count,
+                        total_frames=total_timestamps,
+                        new_detections=[detection_entry] if 'detection_entry' in locals() else []
+                    )
+                
+                # Log progress every 25%
+                if processed_count % max(1, total_timestamps // 4) == 0:
+                    progress_percent = (processed_count / total_timestamps) * 100
+                    logger.info(f"[QR-PREPROCESS] Progress: {processed_count}/{total_timestamps} ({progress_percent:.1f}%)")
+                    
+            except Exception as e:
+                logger.error(f"[QR-PREPROCESS] Error processing timestamp {timestamp}: {str(e)}")
+                # Add empty entry to maintain timeline
+                detections.append({
+                    'timestamp': timestamp,
+                    'qr_detections': [],
+                    'qr_count': 0
+                })
+                processed_count += 1
+        
+        # Final statistics
+        processing_time = time.time() - start_time
+        total_qr_detections = sum(d.get('qr_count', 0) for d in detections)
+        
+        metadata = {
+            'video_path': video_path,
+            'roi_config': roi_config,
+            'detection_fps': fps,
+            'video_duration': duration,
+            'total_timestamps': total_timestamps,
+            'total_qr_detections': total_qr_detections,
+            'processing_time_seconds': round(processing_time, 2),
+            'qr_detection_rate': f"{total_qr_detections}/{total_timestamps} frames",
+            'processed_at': datetime.now().isoformat()
+        }
+        
+        logger.info(f"[QR-PREPROCESS] Completed: {total_qr_detections} QR detections in {processing_time:.2f}s")
+        
+        return {
+            'success': True,
+            'detections': detections,
+            'metadata': metadata,
+            'total_frames_processed': processed_count
+        }
+        
+    except Exception as e:
+        logger.error(f"[QR-PREPROCESS] Error in preprocess_video_qr: {str(e)}\n{traceback.format_exc()}")
+        return {"success": False, "error": f"Preprocessing error: {str(e)}"}
 
 if __name__ == "__main__":
     import sys

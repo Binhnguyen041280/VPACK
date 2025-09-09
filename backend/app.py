@@ -252,7 +252,7 @@ app.register_blueprint(query_bp)
 app.register_blueprint(cutter_bp)
 app.register_blueprint(hand_detection_bp)
 app.register_blueprint(simple_hand_detection_bp, url_prefix='/api/hand-detection')
-app.register_blueprint(qr_detection_bp)
+app.register_blueprint(qr_detection_bp, url_prefix='/api/qr-detection')
 app.register_blueprint(roi_bp)
 # Removed complex streaming blueprint - now using simple_hand_detection_bp
 

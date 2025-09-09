@@ -142,6 +142,21 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     error: null
   });
 
+  // QR preprocessing state - separate from hand preprocessing
+  const [qrPreprocessingState, setQRPreprocessingState] = useState<{
+    isProcessing: boolean;
+    progress: number;
+    cacheKey: string | null;
+    completed: boolean;
+    error: string | null;
+  }>({
+    isProcessing: false,
+    progress: 0,
+    cacheKey: null,
+    completed: false,
+    error: null
+  });
+
   // Canvas dimensions state (60% of video dimensions)
   const [canvasDimensions, setCanvasDimensions] = useState<{
     width: number;
@@ -478,11 +493,13 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     console.log('ROI created:', newROI);
 
     // Set flag to trigger preprocessing after ROI creation
-    if (packingMethod === 'traditional' && type === 'packing_area') {
+    // Trigger preprocessing for any packing_area ROI (both traditional and qr methods need it)
+    if (type === 'packing_area') {
+      console.log('Triggering preprocessing for new packing area ROI - both hand and QR detection');
       // Use setTimeout to trigger preprocessing after ROI state is updated
       setTimeout(() => {
         // Call preprocessing function directly - will be defined below
-        triggerPreprocessing();
+        triggerBothPreprocessing();
       }, 500);
     }
   }, [packingMethod, rois]);
@@ -495,10 +512,25 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     
     // Clear cache when ROI is modified - data is no longer valid
     if (preprocessingState.cacheKey) {
-      // Clear cache on backend
+      // Clear hand detection cache on backend
       fetch(`http://localhost:8080/api/hand-detection/clear-cache/${preprocessingState.cacheKey}`, {
         method: 'DELETE'
-      }).catch(error => console.warn('Failed to clear backend cache:', error));
+      }).catch(error => console.warn('Failed to clear hand cache:', error));
+    }
+
+    // Also clear QR cache if available
+    if (qrPreprocessingState.cacheKey) {
+      fetch(`http://localhost:8080/api/qr-detection/clear-cache/${qrPreprocessingState.cacheKey}`, {
+        method: 'DELETE'
+      }).catch(error => console.warn('Failed to clear QR cache:', error));
+      
+      setQRPreprocessingState(prev => ({
+        ...prev,
+        completed: false,
+        progress: 0,
+        cacheKey: null,
+        error: null
+      }));
       
       setPreprocessingState(prev => ({
         ...prev,
@@ -526,10 +558,10 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
 
     // Clear cache when ROI is deleted - especially important for packing areas
     if (preprocessingState.cacheKey && roiToDelete.type === 'packing_area') {
-      // Clear cache on backend
+      // Clear hand detection cache on backend
       fetch(`http://localhost:8080/api/hand-detection/clear-cache/${preprocessingState.cacheKey}`, {
         method: 'DELETE'
-      }).catch(error => console.warn('Failed to clear backend cache:', error));
+      }).catch(error => console.warn('Failed to clear hand cache:', error));
       
       setPreprocessingState(prev => ({
         ...prev,
@@ -541,10 +573,49 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       }));
       
       setHandLandmarks(null);
+    }
+    
+    // Always reset hand detection state when packing area is deleted, regardless of cache state
+    if (roiToDelete.type === 'packing_area') {
+      setPreprocessingState(prev => ({
+        ...prev,
+        completed: false,
+        cacheKey: null,
+        error: null,
+        isProcessing: false,
+        progress: 0
+      }));
+      setHandLandmarks(null);
+    }
+
+    // Also clear QR cache when ROI is deleted
+    if (qrPreprocessingState.cacheKey && roiToDelete.type === 'packing_area') {
+      // Clear QR detection cache on backend
+      fetch(`http://localhost:8080/api/qr-detection/clear-cache/${qrPreprocessingState.cacheKey}`, {
+        method: 'DELETE'
+      }).catch(error => console.warn('Failed to clear QR cache:', error));
       
-      // ROI deleted info - shown in sidebar Messages section
-    } else {
-      // ROI deleted info - shown in sidebar Messages section
+      setQRPreprocessingState(prev => ({
+        ...prev,
+        completed: false,
+        progress: 0,
+        cacheKey: null,
+        error: null,
+        isProcessing: false
+      }));
+    }
+    
+    // Always reset QR state when packing area is deleted, regardless of cache state
+    if (roiToDelete.type === 'packing_area') {
+      setQRPreprocessingState(prev => ({
+        ...prev,
+        completed: false,
+        progress: 0,
+        cacheKey: null,
+        error: null,
+        isProcessing: false
+      }));
+      console.log('ROI deleted - both hand and QR preprocessing states reset');
     }
 
     console.log('ROI deleted:', roiToDelete);
@@ -573,8 +644,19 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     };
   }, [videoMetadata, canvasDimensions]);
 
-// Get landmarks from cached results based on current video time (PROGRESSIVE DISPLAY)
+// Get landmarks and QR detections from cached results (DUAL DETECTION SYSTEM)
   const getLandmarksAtCurrentTime = useCallback(async (currentTime: number) => {
+    console.log('getLandmarksAtCurrentTime called:', {
+      videoMetadata: !!videoMetadata,
+      roisLength: rois.length,
+      isVideoPlaying,
+      handCacheKey: preprocessingState.cacheKey,
+      qrCacheKey: qrPreprocessingState.cacheKey,
+      handCompleted: preprocessingState.completed,
+      qrCompleted: qrPreprocessingState.completed,
+      timestamp: currentTime
+    });
+    
     if (!videoMetadata || rois.length === 0 || !isVideoPlaying || !preprocessingState.cacheKey) {
       setHandLandmarks(null);
       return;
@@ -588,9 +670,17 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     }
 
     try {
-      // Prepare complete mapping data for backend
+      // Transform ROI from canvas coordinates to video coordinates (same as preprocessing)
+      const roi_orig = {
+        x: Math.round(packingROI.x * videoMetadata.resolution.width / canvasDimensions.width),
+        y: Math.round(packingROI.y * videoMetadata.resolution.height / canvasDimensions.height),
+        w: Math.round(packingROI.w * videoMetadata.resolution.width / canvasDimensions.width),
+        h: Math.round(packingROI.h * videoMetadata.resolution.height / canvasDimensions.height)
+      };
+
+      // Prepare complete mapping data for both APIs
       const requestBody = {
-        cache_key: preprocessingState.cacheKey,
+        cache_key: preprocessingState.cacheKey,  // Hand cache key
         timestamp: currentTime,
         canvas_dims: {
           width: canvasDimensions.width,
@@ -600,54 +690,93 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
           width: videoMetadata.resolution.width,
           height: videoMetadata.resolution.height
         },
-        roi_config: {
-          x: packingROI.x,
-          y: packingROI.y,
-          w: packingROI.w,
-          h: packingROI.h
-        }
+        roi_config: roi_orig  // Use video coordinates, not canvas coordinates
       };
 
-      const response = await fetch('http://localhost:8080/api/hand-detection/get-cached-landmarks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
+      // Prepare QR request body
+      const qrRequestBody = {
+        cache_key: qrPreprocessingState.cacheKey,  // QR cache key
+        timestamp: currentTime,
+        canvas_dims: requestBody.canvas_dims,
+        video_dims: requestBody.video_dims,
+        roi_config: requestBody.roi_config
+      };
+
+      // Dual API calls: Hand detection + QR detection in parallel
+      const apiCalls = [
+        // Hand detection API call
+        fetch('http://localhost:8080/api/hand-detection/get-cached-landmarks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        }),
+        // QR detection API call (only if QR cache available)
+        qrPreprocessingState.cacheKey 
+          ? fetch('http://localhost:8080/api/qr-detection/get-cached-qr', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(qrRequestBody)
+            })
+          : Promise.resolve(null)  // No QR cache, return null
+      ];
+
+      const [handResponse, qrResponse] = await Promise.all(apiCalls);
+      
+      // Parse results
+      const handResult = await handResponse.json();
+      const qrResult = qrResponse ? await qrResponse.json() : { success: false, canvas_qr_detections: [] };
+      
+      console.log('API Results:', {
+        handSuccess: handResult.success,
+        handLandmarks: handResult.canvas_landmarks?.length || 0,
+        qrSuccess: qrResult.success,
+        qrDetections: qrResult.canvas_qr_detections?.length || 0,
+        handCacheKey: preprocessingState.cacheKey,
+        qrCacheKey: qrPreprocessingState.cacheKey
       });
 
-      const result = await response.json();
-      
-      if (result.success) {
-        // Priority: Use canvas_landmarks if available (display-ready coordinates)
-        if (result.canvas_landmarks && result.canvas_landmarks.length > 0) {
+      // Merge hand and QR data into unified structure
+      if (handResult.success) {
+        const mergedLandmarks = {
+          // Hand detection data
+          landmarks: handResult.canvas_landmarks || handResult.landmarks || [],
+          confidence: handResult.confidence || 0,
+          hands_detected: (handResult.canvas_landmarks || handResult.landmarks || []).length,
+          // QR detection data merged in
+          qr_detections: qrResult.success ? (qrResult.canvas_qr_detections || []) : []
+        };
+
+        console.log('Dual Detection Result:', {
+          timestamp: currentTime,
+          hands_detected: mergedLandmarks.hands_detected,
+          qr_detections: mergedLandmarks.qr_detections.length,
+          hand_confidence: mergedLandmarks.confidence
+        });
+
+        setHandLandmarks(mergedLandmarks);
+      } else {
+        // Hand detection failed - still show QR if available
+        if (qrResult.success && qrResult.canvas_qr_detections && qrResult.canvas_qr_detections.length > 0) {
           setHandLandmarks({
-            landmarks: result.canvas_landmarks,
-            confidence: result.confidence,
-            hands_detected: result.canvas_landmarks.length
-          });
-        }
-        // Fallback: Use original landmarks if canvas mapping failed
-        else if (result.landmarks && result.landmarks.length > 0) {
-          setHandLandmarks({
-            landmarks: result.landmarks,
-            confidence: result.confidence,
-            hands_detected: result.landmarks.length
+            landmarks: [],
+            confidence: 0,
+            hands_detected: 0,
+            qr_detections: qrResult.canvas_qr_detections
           });
         } else {
           setHandLandmarks(null);
         }
-      } else {
-        setHandLandmarks(null);
       }
     } catch (error) {
       // Don't log error for incomplete processing - this is expected
-      if (!preprocessingState.completed) {
+      if (!preprocessingState.completed && !qrPreprocessingState.completed) {
         console.debug('Cache not ready yet for current timestamp:', currentTime);
       } else {
-        console.error('Error getting cached landmarks:', error);
+        console.error('Error getting cached detection data:', error);
       }
       setHandLandmarks(null);
     }
-  }, [videoMetadata, rois, packingMethod, isVideoPlaying, preprocessingState.cacheKey, preprocessingState.completed, canvasDimensions]);
+  }, [videoMetadata, rois, packingMethod, isVideoPlaying, preprocessingState.cacheKey, preprocessingState.completed, qrPreprocessingState.cacheKey, qrPreprocessingState.completed, canvasDimensions]);
 
   // Handle video play/pause state changes
   const handleVideoPlayStateChange = useCallback((isPlaying: boolean) => {
@@ -804,6 +933,155 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     }
   }, []);
 
+  // QR preprocessing progress polling
+  const pollQRPreprocessingProgress = useCallback(async (cacheKey: string) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`http://localhost:8080/api/qr-detection/preprocess-status/${cacheKey}`);
+        const result = await response.json();
+        
+        if (result.success && result.status === 'completed') {
+          clearInterval(pollInterval);
+          setQRPreprocessingState(prev => ({
+            ...prev,
+            isProcessing: false,
+            progress: 100,
+            completed: true
+          }));
+          console.log('QR preprocessing completed');
+        } else if (result.success && result.status === 'in_progress') {
+          setQRPreprocessingState(prev => ({
+            ...prev,
+            progress: Math.max(prev.progress, result.progress || 0)
+          }));
+        } else if (result.status === 'not_found') {
+          clearInterval(pollInterval);
+          setQRPreprocessingState(prev => ({
+            ...prev,
+            isProcessing: false,
+            error: 'QR processing session expired'
+          }));
+        }
+      } catch (error) {
+        console.error('QR polling error:', error);
+        clearInterval(pollInterval);
+        setQRPreprocessingState(prev => ({
+          ...prev,
+          isProcessing: false,
+          error: 'Failed to check QR processing status'
+        }));
+      }
+    }, 2000); // Poll every 2 seconds
+  }, []);
+
+  // Start QR preprocessing parallel to hand preprocessing
+  const startQRPreprocessing = useCallback(async () => {
+    if (!videoMetadata || rois.length === 0 || packingMethod !== 'traditional') {
+      return;
+    }
+
+    const packingROI = rois.find(roi => roi.type === 'packing_area');
+    if (!packingROI) {
+      return;
+    }
+
+    try {
+      setQRPreprocessingState(prev => ({
+        ...prev,
+        isProcessing: true,
+        progress: 0,
+        error: null,
+        completed: false
+      }));
+
+      // Transform ROI coordinates same as hand preprocessing
+      const roi_orig = {
+        x: Math.round(packingROI.x * videoMetadata.resolution.width / canvasDimensions.width),
+        y: Math.round(packingROI.y * videoMetadata.resolution.height / canvasDimensions.height),
+        w: Math.round(packingROI.w * videoMetadata.resolution.width / canvasDimensions.width),
+        h: Math.round(packingROI.h * videoMetadata.resolution.height / canvasDimensions.height)
+      };
+
+      console.log('QR ROI Transform:', {
+        'ROI_disp (canvas)': packingROI,
+        'ROI_orig (video)': roi_orig,
+        'Video size': `${videoMetadata.resolution.width}x${videoMetadata.resolution.height}`,
+        'Canvas size': `${canvasDimensions.width}x${canvasDimensions.height}`
+      });
+
+      const response = await fetch('http://localhost:8080/api/qr-detection/preprocess-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_path: videoPath,
+          roi_config: roi_orig,  // Send video coordinates
+          fps: 5
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setQRPreprocessingState(prev => ({
+          ...prev,
+          cacheKey: result.cache_key
+        }));
+
+        if (result.status === 'completed') {
+          // QR pre-processing already completed (cached)
+          setQRPreprocessingState(prev => ({
+            ...prev,
+            isProcessing: false,
+            progress: 100,
+            completed: true
+          }));
+          console.log('QR preprocessing already completed');
+        } else {
+          // Start polling for QR progress
+          pollQRPreprocessingProgress(result.cache_key);
+        }
+      } else {
+        throw new Error(result.error || 'Failed to start QR preprocessing');
+      }
+    } catch (error) {
+      console.error('QR preprocessing error:', error);
+      setQRPreprocessingState(prev => ({
+        ...prev,
+        isProcessing: false,
+        error: error instanceof Error ? error.message : 'Unknown QR error'
+      }));
+    }
+  }, [videoMetadata, rois, packingMethod, videoPath, pollQRPreprocessingProgress, canvasDimensions]);
+
+  // Modified startPreprocessing to trigger both hand and QR preprocessing
+  const startBothPreprocessing = useCallback(async () => {
+    if (!videoMetadata || rois.length === 0 || packingMethod !== 'traditional') {
+      return;
+    }
+
+    console.log('Starting dual preprocessing: Hand + QR detection');
+    
+    // Start both preprocessing processes in parallel
+    await Promise.all([
+      startPreprocessing(),      // Existing hand preprocessing
+      startQRPreprocessing()     // New QR preprocessing
+    ]);
+  }, [startPreprocessing, startQRPreprocessing, videoMetadata, rois, packingMethod]);
+
+  // Update the ref to use both preprocessing
+  const startBothPreprocessingRef = useRef<(() => Promise<void>) | null>(null);
+  
+  useEffect(() => {
+    startBothPreprocessingRef.current = startBothPreprocessing;
+  }, [startBothPreprocessing]);
+
+  // Updated trigger function for both preprocessing
+  const triggerBothPreprocessing = useCallback(() => {
+    if (startBothPreprocessingRef.current) {
+      startBothPreprocessingRef.current();
+    }
+  }, []);
+
   // Save configuration
   const handleSaveConfiguration = useCallback(async () => {
     if (!videoMetadata) {
@@ -837,20 +1115,26 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     setError(null);
 
     try {
+      // Transform ROI coordinates to original video coordinates for validation
+      const originalCoordinateROIs = rois.map(roi => {
+        const originalCoords = convertToOriginalCoordinates(roi);
+        return {
+          x: originalCoords.x,
+          y: originalCoords.y,
+          w: originalCoords.w,
+          h: originalCoords.h,
+          type: roi.type,
+          label: roi.label
+        };
+      });
+
       // Validate ROIs with backend
       const validationResponse = await fetch('/api/config/step4/roi/validate-roi', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           video_path: videoPath,
-          roi_data: rois.map(roi => ({
-            x: roi.x,
-            y: roi.y,
-            w: roi.w,
-            h: roi.h,
-            type: roi.type,
-            label: roi.label
-          }))
+          roi_data: originalCoordinateROIs
         })
       });
 
@@ -864,14 +1148,14 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
         throw new Error(validationResult.error || 'ROI validation failed');
       }
 
-      // Save configuration
+      // Save configuration (using already-transformed coordinates from validation)
       const saveResponse = await fetch('/api/config/step4/roi/save-roi-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           camera_id: cameraId,
           video_path: videoPath,
-          roi_data: validationResult.data.validated_rois,
+          roi_data: originalCoordinateROIs,
           packing_method: packingMethod
         })
       });

@@ -300,6 +300,184 @@ class LandmarkMapper:
                 'canvas_landmarks': [],
                 'fixed_sizes': cls.get_fixed_sizes()
             }
+    
+    @classmethod
+    def map_qr_bbox_to_canvas(cls,
+                             qr_bbox: Dict[str, int],
+                             roi: ROIConfig,
+                             video_dims: VideoDimensions,
+                             canvas_dims: CanvasDimensions) -> Dict[str, int]:
+        """
+        Transform QR bounding box coordinates from video space to canvas display space
+        
+        Args:
+            qr_bbox: Dict with x, y, w, h in video coordinates
+            roi: ROI configuration
+            video_dims: Video dimensions
+            canvas_dims: Canvas dimensions
+            
+        Returns:
+            Dict with canvas_bbox containing display coordinates: {'x': int, 'y': int, 'w': int, 'h': int}
+        """
+        try:
+            # Validate inputs
+            cls.validate_inputs(roi, video_dims, canvas_dims)
+            
+            # Extract bbox coordinates
+            bbox_x = int(qr_bbox.get('x', 0))
+            bbox_y = int(qr_bbox.get('y', 0))
+            bbox_w = int(qr_bbox.get('w', 0))
+            bbox_h = int(qr_bbox.get('h', 0))
+            
+            # Validate bbox dimensions
+            if bbox_w <= 0 or bbox_h <= 0:
+                logger.warning(f"Invalid QR bbox dimensions: w={bbox_w}, h={bbox_h}")
+                return {'x': 0, 'y': 0, 'w': 0, 'h': 0}
+            
+            # Calculate scale factors (same as hand landmark mapping)
+            scale_x = canvas_dims.width / video_dims.width
+            scale_y = canvas_dims.height / video_dims.height
+            
+            # Transform coordinates using the same algorithm as landmarks
+            # The QR bbox is already in video coordinates, so we just need to scale to canvas
+            canvas_x = int(bbox_x * scale_x)
+            canvas_y = int(bbox_y * scale_y)
+            canvas_w = int(bbox_w * scale_x)
+            canvas_h = int(bbox_h * scale_y)
+            
+            # Ensure coordinates are within canvas boundaries
+            canvas_x = max(0, min(canvas_x, canvas_dims.width - 1))
+            canvas_y = max(0, min(canvas_y, canvas_dims.height - 1))
+            
+            # Ensure bbox doesn't exceed canvas boundaries
+            if canvas_x + canvas_w > canvas_dims.width:
+                canvas_w = canvas_dims.width - canvas_x
+            if canvas_y + canvas_h > canvas_dims.height:
+                canvas_h = canvas_dims.height - canvas_y
+            
+            # Ensure minimum size for visibility
+            canvas_w = max(1, canvas_w)
+            canvas_h = max(1, canvas_h)
+            
+            result = {
+                'x': canvas_x,
+                'y': canvas_y,
+                'w': canvas_w,
+                'h': canvas_h
+            }
+            
+            logger.debug(f"QR bbox mapping: {qr_bbox} -> {result} (scale: {scale_x:.3f}, {scale_y:.3f})")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error mapping QR bbox to canvas: {e}")
+            return {'x': 0, 'y': 0, 'w': 0, 'h': 0}
+    
+    @classmethod
+    def create_canvas_qr_response(cls,
+                                 qr_detections: List[Dict[str, Any]],
+                                 roi: ROIConfig,
+                                 video_dims: VideoDimensions,
+                                 canvas_dims: CanvasDimensions) -> Dict[str, Any]:
+        """
+        Create complete QR detection response with both original and canvas coordinates
+        
+        Args:
+            qr_detections: List of QR detections with video coordinates
+                          Each detection: {'bbox': {'x': int, 'y': int, 'w': int, 'h': int}, 
+                                          'decoded_text': str, 'confidence': float}
+            roi: ROI configuration
+            video_dims: Video dimensions
+            canvas_dims: Canvas dimensions
+            
+        Returns:
+            {
+                "success": bool,
+                "canvas_qr_detections": [
+                    {
+                        "bbox": {"x": int, "y": int, "w": int, "h": int},  // original
+                        "canvas_bbox": {"x": int, "y": int, "w": int, "h": int},  // display
+                        "decoded_text": str,
+                        "confidence": float
+                    }
+                ],
+                "mapping_algorithm": "qr_bbox_mapping",
+                "error": str (if failed)
+            }
+        """
+        try:
+            # Validate inputs
+            cls.validate_inputs(roi, video_dims, canvas_dims)
+            
+            canvas_qr_detections = []
+            successful_mappings = 0
+            total_detections = len(qr_detections)
+            
+            for i, qr_detection in enumerate(qr_detections):
+                try:
+                    # Extract QR data
+                    bbox = qr_detection.get('bbox', {})
+                    decoded_text = qr_detection.get('decoded_text', '')
+                    confidence = qr_detection.get('confidence', 0.0)
+                    
+                    # Map bbox to canvas coordinates
+                    canvas_bbox = cls.map_qr_bbox_to_canvas(bbox, roi, video_dims, canvas_dims)
+                    
+                    # Create enhanced QR detection with both coordinate systems
+                    canvas_qr_detection = {
+                        'bbox': bbox,  # Original video coordinates
+                        'canvas_bbox': canvas_bbox,  # Display coordinates
+                        'decoded_text': decoded_text,
+                        'confidence': confidence,
+                        'detection_id': i  # Add ID for tracking
+                    }
+                    
+                    canvas_qr_detections.append(canvas_qr_detection)
+                    successful_mappings += 1
+                    
+                    # Debug logging for first QR detection
+                    if i == 0:
+                        logger.debug(f"QR Coordinate Mapping:")
+                        logger.debug(f"  Original bbox: {bbox}")
+                        logger.debug(f"  Canvas bbox: {canvas_bbox}")
+                        logger.debug(f"  Text: '{decoded_text}', Confidence: {confidence}")
+                        logger.debug(f"  ROI: x={roi.x}, y={roi.y}, w={roi.w}, h={roi.h}")
+                        logger.debug(f"  Video: {video_dims.width}x{video_dims.height}")
+                        logger.debug(f"  Canvas: {canvas_dims.width}x{canvas_dims.height}")
+                        
+                except Exception as e:
+                    logger.error(f"Error mapping QR detection {i}: {e}")
+                    continue
+            
+            # Create response
+            response = {
+                'success': True,
+                'canvas_qr_detections': canvas_qr_detections,
+                'mapping_algorithm': 'qr_bbox_mapping',
+                'mapping_info': {
+                    'total_detections': total_detections,
+                    'successful_mappings': successful_mappings,
+                    'roi': {'x': roi.x, 'y': roi.y, 'w': roi.w, 'h': roi.h},
+                    'video_dims': {'width': video_dims.width, 'height': video_dims.height},
+                    'canvas_dims': {'width': canvas_dims.width, 'height': canvas_dims.height},
+                    'scale_factors': {
+                        'x': canvas_dims.width / video_dims.width,
+                        'y': canvas_dims.height / video_dims.height
+                    }
+                }
+            }
+            
+            logger.info(f"Mapped {successful_mappings}/{total_detections} QR detections to canvas coordinates")
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error creating canvas QR response: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'canvas_qr_detections': [],
+                'mapping_algorithm': 'qr_bbox_mapping'
+            }
 
 
 def test_coordinate_mapping():
@@ -340,10 +518,117 @@ def test_coordinate_mapping():
     return True
 
 
+def test_qr_bbox_mapping():
+    """
+    Test function for QR bbox coordinate mapping verification
+    Test case: QR bbox (780, 380, 100, 50) in 1920x1080 video → Canvas 960x540
+    Expected canvas bbox: (390, 190, 50, 25)
+    """
+    # Test parameters (same as landmark test for consistency)
+    roi = ROIConfig(x=500, y=300, w=400, h=200)
+    video_dims = VideoDimensions(width=1920, height=1080)
+    canvas_dims = CanvasDimensions(width=960, height=540)
+    
+    # Test QR bbox in video coordinates
+    test_bbox = {'x': 780, 'y': 380, 'w': 100, 'h': 50}
+    
+    # Expected calculation (50% scale factor):
+    # canvas_x = 780 × 0.5 = 390
+    # canvas_y = 380 × 0.5 = 190
+    # canvas_w = 100 × 0.5 = 50
+    # canvas_h = 50 × 0.5 = 25
+    expected_canvas_bbox = {'x': 390, 'y': 190, 'w': 50, 'h': 25}
+    
+    # Run test
+    canvas_bbox = LandmarkMapper.map_qr_bbox_to_canvas(
+        test_bbox, roi, video_dims, canvas_dims
+    )
+    
+    # Verify results
+    assert canvas_bbox['x'] == expected_canvas_bbox['x'], f"X mismatch: {canvas_bbox['x']} vs {expected_canvas_bbox['x']}"
+    assert canvas_bbox['y'] == expected_canvas_bbox['y'], f"Y mismatch: {canvas_bbox['y']} vs {expected_canvas_bbox['y']}"
+    assert canvas_bbox['w'] == expected_canvas_bbox['w'], f"W mismatch: {canvas_bbox['w']} vs {expected_canvas_bbox['w']}"
+    assert canvas_bbox['h'] == expected_canvas_bbox['h'], f"H mismatch: {canvas_bbox['h']} vs {expected_canvas_bbox['h']}"
+    
+    print("✅ QR bbox mapping test passed!")
+    print(f"Input bbox: {test_bbox}")
+    print(f"Canvas bbox: {canvas_bbox}")
+    print(f"Expected: {expected_canvas_bbox}")
+    
+    return True
+
+
+def test_qr_response_creation():
+    """
+    Test complete QR response creation with multiple detections
+    """
+    # Test parameters
+    roi = ROIConfig(x=500, y=300, w=400, h=200)
+    video_dims = VideoDimensions(width=1920, height=1080)
+    canvas_dims = CanvasDimensions(width=960, height=540)
+    
+    # Test QR detections
+    test_qr_detections = [
+        {
+            'bbox': {'x': 780, 'y': 380, 'w': 100, 'h': 50},
+            'decoded_text': 'https://example.com',
+            'confidence': 0.95
+        },
+        {
+            'bbox': {'x': 900, 'y': 500, 'w': 80, 'h': 80},
+            'decoded_text': 'QR_CODE_123',
+            'confidence': 0.88
+        }
+    ]
+    
+    # Run test
+    response = LandmarkMapper.create_canvas_qr_response(
+        test_qr_detections, roi, video_dims, canvas_dims
+    )
+    
+    # Verify response structure
+    assert response['success'] == True, "Response should be successful"
+    assert 'canvas_qr_detections' in response, "Response should contain canvas_qr_detections"
+    assert len(response['canvas_qr_detections']) == 2, "Should have 2 detections"
+    assert response['mapping_algorithm'] == 'qr_bbox_mapping', "Correct algorithm name"
+    
+    # Verify first detection
+    first_detection = response['canvas_qr_detections'][0]
+    assert 'bbox' in first_detection, "Should have original bbox"
+    assert 'canvas_bbox' in first_detection, "Should have canvas bbox"
+    assert first_detection['decoded_text'] == 'https://example.com', "Text should match"
+    assert first_detection['confidence'] == 0.95, "Confidence should match"
+    
+    # Verify coordinate transformation for first detection
+    canvas_bbox = first_detection['canvas_bbox']
+    assert canvas_bbox['x'] == 390, f"Canvas X should be 390, got {canvas_bbox['x']}"
+    assert canvas_bbox['y'] == 190, f"Canvas Y should be 190, got {canvas_bbox['y']}"
+    
+    print("✅ QR response creation test passed!")
+    print(f"Response contains {len(response['canvas_qr_detections'])} mapped QR detections")
+    print(f"First detection canvas bbox: {first_detection['canvas_bbox']}")
+    
+    return True
+
+
 if __name__ == "__main__":
-    # Run verification test
+    # Run verification tests
+    print("Running coordinate mapping tests...\n")
+    
+    # Test hand landmark mapping
     test_coordinate_mapping()
+    print()
+    
+    # Test QR bbox mapping
+    test_qr_bbox_mapping()
+    print()
+    
+    # Test QR response creation
+    test_qr_response_creation()
+    print()
     
     # Test fixed sizes
     sizes = LandmarkMapper.get_fixed_sizes()
-    print(f"Fixed sizes: {sizes}")
+    print(f"Fixed landmark sizes: {sizes}")
+    
+    print("\n✅ All tests passed! QR coordinate mapping is ready.")
