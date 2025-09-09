@@ -197,6 +197,8 @@ def run_frame_sampler() -> None:
                                 parsed = json.loads(packing_area_raw)
                                 if isinstance(parsed, list) and len(parsed) == 4:
                                     packing_area = tuple(parsed)  # Convert to tuple for consistency
+                                elif isinstance(parsed, dict) and all(key in parsed for key in ['x', 'y', 'w', 'h']):
+                                    packing_area = (parsed['x'], parsed['y'], parsed['w'], parsed['h'])
                                 else:
                                     logger.error(f"Invalid packing_area format for {profile_name}: {packing_area_raw}, using default None")
                                     packing_area = None

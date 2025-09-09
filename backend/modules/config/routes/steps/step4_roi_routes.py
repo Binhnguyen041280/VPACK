@@ -6,6 +6,7 @@ Web-based ROI selection and video streaming endpoints
 import os
 import json
 import logging
+from datetime import datetime
 from flask import Blueprint, request, jsonify, make_response
 from werkzeug.exceptions import BadRequest
 from modules.config.services.step4_roi_service import roi_video_service
@@ -360,18 +361,118 @@ def save_roi_configuration():
                 'errors': roi_validation.get('errors', [])
             }), 400
         
-        # TODO: Save to database using existing database service
-        # For now, return success with the validated data
-        
-        config_data = {
-            'camera_id': camera_id,
-            'video_path': video_path,
-            'roi_configuration': roi_validation['validated_rois'],
-            'packing_method': packing_method,
-            'video_metadata': metadata_result['metadata'],
-            'created_at': roi_video_service.__class__.__name__,  # Placeholder timestamp
-            'status': 'configured'
-        }
+        # Save to database (packing_profiles table)
+        try:
+            from modules.db_utils import get_db_connection
+            import json
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Separate different ROI types
+            packing_area_roi = None
+            qr_trigger_roi = None
+            
+            for roi in roi_validation['validated_rois']:
+                if roi['type'] == 'packing_area':
+                    packing_area_roi = roi
+                elif roi['type'] == 'qr_trigger':
+                    qr_trigger_roi = roi
+            
+            # Create profile name based on camera and timestamp
+            profile_name = f"{camera_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+            # Prepare additional params with full metadata
+            additional_params = json.dumps({
+                'camera_id': camera_id,
+                'video_path': video_path,
+                'packing_method': packing_method,
+                'video_metadata': metadata_result['metadata'],
+                'created_at': datetime.now().isoformat(),
+                'status': 'configured'
+            })
+            
+            # Check if profile already exists for this camera
+            cursor.execute("SELECT id FROM packing_profiles WHERE profile_name LIKE ?", (f"{camera_id}_%",))
+            existing = cursor.fetchone()
+            
+            if existing:
+                # Update existing profile
+                cursor.execute("""
+                    UPDATE packing_profiles 
+                    SET packing_area = ?,
+                        qr_trigger_area = ?,
+                        qr_mvd_area = ?,
+                        jump_time_ratio = ?,
+                        additional_params = ?
+                    WHERE id = ?
+                """, (
+                    json.dumps([packing_area_roi["x"], packing_area_roi["y"], 
+                              packing_area_roi["w"], packing_area_roi["h"]]) if packing_area_roi else None,
+                    json.dumps([qr_trigger_roi["x"], qr_trigger_roi["y"], 
+                              qr_trigger_roi["w"], qr_trigger_roi["h"]]) if qr_trigger_roi else None,
+                    json.dumps([packing_area_roi["x"], packing_area_roi["y"], 
+                              packing_area_roi["w"], packing_area_roi["h"]]) if packing_area_roi else None,
+                    0.5,  # Default jump_time_ratio
+                    additional_params,
+                    existing[0]
+                ))
+                logger.info(f"Updated packing profile for camera {camera_id}")
+            else:
+                # Insert new profile
+                cursor.execute("""
+                    INSERT INTO packing_profiles 
+                    (profile_name, packing_area, qr_trigger_area, qr_mvd_area, min_packing_time, 
+                     jump_time_ratio, scan_mode, additional_params)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    profile_name,
+                    json.dumps([packing_area_roi["x"], packing_area_roi["y"], 
+                              packing_area_roi["w"], packing_area_roi["h"]]) if packing_area_roi else None,
+                    json.dumps([qr_trigger_roi["x"], qr_trigger_roi["y"], 
+                              qr_trigger_roi["w"], qr_trigger_roi["h"]]) if qr_trigger_roi else None,
+                    json.dumps([packing_area_roi["x"], packing_area_roi["y"], 
+                              packing_area_roi["w"], packing_area_roi["h"]]) if packing_area_roi else None,
+                    5,  # Default min_packing_time
+                    0.5,  # Default jump_time_ratio
+                    packing_method,  # traditional or qr
+                    additional_params
+                ))
+                logger.info(f"Created new packing profile: {profile_name}")
+            
+            conn.commit()
+            conn.close()
+            
+            config_data = {
+                'camera_id': camera_id,
+                'video_path': video_path,
+                'roi_configuration': roi_validation['validated_rois'],
+                'packing_method': packing_method,
+                'video_metadata': metadata_result['metadata'],
+                'created_at': datetime.now().isoformat(),
+                'status': 'configured',
+                'saved_to_database': True,
+                'database_table': 'packing_profiles',
+                'profile_name': profile_name,
+                'packing_area_saved': packing_area_roi is not None,
+                'qr_trigger_saved': qr_trigger_roi is not None
+            }
+            
+        except Exception as db_error:
+            logger.error(f"Failed to save ROI to database: {db_error}")
+            # Still return success for validation, but note database error
+            config_data = {
+                'camera_id': camera_id,
+                'video_path': video_path,
+                'roi_configuration': roi_validation['validated_rois'],
+                'packing_method': packing_method,
+                'video_metadata': metadata_result['metadata'],
+                'created_at': datetime.now().isoformat(),
+                'status': 'configured',
+                'saved_to_database': False,
+                'database_table': 'packing_profiles',
+                'database_error': str(db_error)
+            }
         
         logger.info(f"ROI configuration saved successfully for camera {camera_id}")
         

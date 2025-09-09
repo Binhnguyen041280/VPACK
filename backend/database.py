@@ -134,6 +134,7 @@ def update_database():
             except sqlite3.OperationalError:
                 pass
 
+
             cursor.execute("UPDATE processing_config SET db_path = ?, run_default_on_start = 0 WHERE db_path IS NULL OR run_default_on_start IS NULL", (DB_PATH,))
 
             # Insert default data if empty
