@@ -29,7 +29,15 @@ interface DrawingState {
   previewROI: ROIData | null;
 }
 
-// Hand landmarks interface with TC Gốc coordinates
+// QR detection interface for integrated display
+export interface QRDetection {
+  bbox: {x: number, y: number, w: number, h: number};         // Original video coordinates
+  canvas_bbox: {x: number, y: number, w: number, h: number}; // Canvas display coordinates
+  decoded_text: string;
+  confidence: number;
+}
+
+// Hand landmarks interface with TC Gốc coordinates - extended with QR detection
 interface HandLandmarks {
   landmarks: Array<Array<{
     x: number;        // ROI-relative coordinates [0,1]
@@ -42,6 +50,8 @@ interface HandLandmarks {
   }>>;
   confidence: number;
   hands_detected: number;
+  // NEW: Optional QR detection data merged into hand landmarks structure
+  qr_detections?: QRDetection[];
 }
 
 // Component props interface
@@ -461,13 +471,88 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
     }
   }, [handLandmarks, showHandLandmarks, landmarksColor, width, height, calculateDynamicSizes]);
 
+  // Draw QR detections on canvas (separate function for clarity)
+  const drawQRDetections = useCallback(() => {
+    const context = contextRef.current;
+    if (!context || !handLandmarks || !handLandmarks.qr_detections || !showHandLandmarks) return;
+
+    const { qr_detections } = handLandmarks;
+    if (!qr_detections || qr_detections.length === 0) return;
+
+    // QR detection styling - blue theme to distinguish from hand landmarks (green)
+    const qrColor = '#3182CE'; // Blue color for QR codes
+    const qrAlpha = 0.8;
+    
+    context.strokeStyle = qrColor;
+    context.fillStyle = qrColor;
+    context.globalAlpha = qrAlpha;
+    context.lineWidth = 2;
+    context.font = '12px Arial';
+
+    // Draw each QR detection
+    qr_detections.forEach((qr, index) => {
+      const { canvas_bbox, decoded_text, confidence } = qr;
+      
+      // Draw QR bounding box using canvas_bbox coordinates (already mapped by LandmarkMapper)
+      const { x, y, w, h } = canvas_bbox;
+      
+      // Draw border rectangle
+      context.strokeRect(x, y, w, h);
+      
+      // Draw semi-transparent fill
+      context.globalAlpha = qrAlpha * 0.2; // More transparent for fill
+      context.fillRect(x, y, w, h);
+      context.globalAlpha = qrAlpha; // Reset alpha for text
+      
+      // Draw QR code label above the box
+      const labelY = y > 20 ? y - 5 : y + h + 15; // Position above or below based on space
+      context.fillText(`QR: ${decoded_text.substring(0, 20)}${decoded_text.length > 20 ? '...' : ''}`, x + 2, labelY);
+      
+      // Draw confidence below the main text
+      context.font = '10px Arial';
+      context.fillText(`${(confidence * 100).toFixed(0)}%`, x + 2, labelY + 12);
+      context.font = '12px Arial'; // Reset font
+      
+      // Debug logging for first QR detection
+      if (index === 0) {
+        console.log('🔍 QR DETECTION RENDERING:', {
+          'Canvas bbox': canvas_bbox,
+          'Decoded text': decoded_text,
+          'Confidence': confidence,
+          'Canvas size': `${width}x${height}`
+        });
+      }
+    });
+
+    // Reset alpha
+    context.globalAlpha = 1.0;
+    
+    // Draw QR count indicator next to hand landmarks indicator
+    if (qr_detections.length > 0) {
+      const indicatorX = width - 160;
+      const indicatorY = height - 55; // Position above hand indicator
+      
+      context.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      context.fillRect(indicatorX, indicatorY, 150, 25);
+      
+      context.fillStyle = qrColor;
+      context.font = '11px Arial';
+      context.fillText(
+        `${qr_detections.length} QR code${qr_detections.length > 1 ? 's' : ''}`, 
+        indicatorX + 5, 
+        indicatorY + 16
+      );
+    }
+  }, [handLandmarks, showHandLandmarks, width, height]);
+
   // Combined redraw function
   const redrawCanvas = useCallback(() => {
     drawROIs(); // This clears canvas and draws ROIs
     if (handLandmarks && showHandLandmarks) {
       drawHandLandmarks(); // Then draw hand landmarks on top
+      drawQRDetections(); // Finally draw QR detections on top
     }
-  }, [drawROIs, drawHandLandmarks, handLandmarks, showHandLandmarks]);
+  }, [drawROIs, drawHandLandmarks, drawQRDetections, handLandmarks, showHandLandmarks]);
 
   // Redraw canvas when dependencies change
   useEffect(() => {
@@ -844,6 +929,6 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
 };
 
 // Export interfaces for use in other components
-export type { HandLandmarks };
+export type { HandLandmarks, QRDetection };
 
 export default CanvasOverlay;
