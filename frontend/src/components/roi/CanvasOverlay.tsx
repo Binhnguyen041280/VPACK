@@ -387,22 +387,22 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
       context.globalAlpha = alpha;
       context.lineWidth = dynamicLineWidth;
 
-      // Draw landmark points using TC Gốc coordinate transform
+      // Draw landmark points using backend's canvas-ready coordinates
       hand.forEach((landmark, idx) => {
-        // Step 3: Convert TC Gốc (pixel thực) → TCFE (canvas display)
-        const canvasX = (landmark.x_orig / videoWidth) * width;
-        const canvasY = (landmark.y_orig / videoHeight) * height;
+        // Use backend's pre-calculated display coordinates with fallback
+        const canvasX = landmark.x_disp !== undefined ? landmark.x_disp : (landmark.x_orig / videoWidth) * width;
+        const canvasY = landmark.y_disp !== undefined ? landmark.y_disp : (landmark.y_orig / videoHeight) * height;
         
         // Debug logging for first landmark of first hand
         if (handIndex === 0 && idx === 0) {
-          console.log('🔍 COORDINATE VERIFICATION:', {
-            'Step 1 - Original video pixel': `${landmark.x_orig}, ${landmark.y_orig}`,
-            'Step 2 - Canvas transform': `${canvasX.toFixed(1)}, ${canvasY.toFixed(1)}`,
-            'Step 3 - Reverse check': `${(canvasX/width*videoWidth).toFixed(1)}, ${(canvasY/height*videoHeight).toFixed(1)}`,
+          console.log('🔍 COORDINATE USAGE:', {
+            'Has x_disp': landmark.x_disp !== undefined,
+            'Has y_disp': landmark.y_disp !== undefined,
+            'x_disp': landmark.x_disp,
+            'y_disp': landmark.y_disp,
+            'Canvas coordinates': `${canvasX?.toFixed(1)}, ${canvasY?.toFixed(1)}`,
             'Video size': `${videoWidth}x${videoHeight}`,
-            'Canvas size': `${width}x${height}`,
-            'Scale factors': `X=${(width/videoWidth).toFixed(3)}, Y=${(height/videoHeight).toFixed(3)}`,
-            'Accuracy check': Math.abs(landmark.x_orig - (canvasX/width*videoWidth)) < 1 ? '✅ ACCURATE' : '❌ ERROR'
+            'Canvas size': `${width}x${height}`
           });
         }
         
@@ -426,11 +426,11 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
           const startPoint = hand[startIdx];
           const endPoint = hand[endIdx];
           
-          // Use TC Gốc coordinates for line drawing
-          const startX = (startPoint.x_orig / videoWidth) * width;
-          const startY = (startPoint.y_orig / videoHeight) * height;
-          const endX = (endPoint.x_orig / videoWidth) * width;
-          const endY = (endPoint.y_orig / videoHeight) * height;
+          // Use backend's pre-calculated display coordinates for line drawing with fallback
+          const startX = startPoint.x_disp !== undefined ? startPoint.x_disp : (startPoint.x_orig / videoWidth) * width;
+          const startY = startPoint.y_disp !== undefined ? startPoint.y_disp : (startPoint.y_orig / videoHeight) * height;
+          const endX = endPoint.x_disp !== undefined ? endPoint.x_disp : (endPoint.x_orig / videoWidth) * width;
+          const endY = endPoint.y_disp !== undefined ? endPoint.y_disp : (endPoint.y_orig / videoHeight) * height;
           
           context.beginPath();
           context.moveTo(startX, startY);

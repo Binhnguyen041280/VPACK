@@ -573,9 +573,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     };
   }, [videoMetadata, canvasDimensions]);
 
-
-
-  // Get landmarks from cached results based on current video time (PROGRESSIVE DISPLAY)
+// Get landmarks from cached results based on current video time (PROGRESSIVE DISPLAY)
   const getLandmarksAtCurrentTime = useCallback(async (currentTime: number) => {
     if (!videoMetadata || rois.length === 0 || !isVideoPlaying || !preprocessingState.cacheKey) {
       setHandLandmarks(null);
@@ -590,23 +588,53 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     }
 
     try {
+      // Prepare complete mapping data for backend
+      const requestBody = {
+        cache_key: preprocessingState.cacheKey,
+        timestamp: currentTime,
+        canvas_dims: {
+          width: canvasDimensions.width,
+          height: canvasDimensions.height
+        },
+        video_dims: {
+          width: videoMetadata.resolution.width,
+          height: videoMetadata.resolution.height
+        },
+        roi_config: {
+          x: packingROI.x,
+          y: packingROI.y,
+          w: packingROI.w,
+          h: packingROI.h
+        }
+      };
+
       const response = await fetch('http://localhost:8080/api/hand-detection/get-cached-landmarks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cache_key: preprocessingState.cacheKey,
-          timestamp: currentTime
-        })
+        body: JSON.stringify(requestBody)
       });
 
       const result = await response.json();
       
-      if (result.success && result.landmarks && result.landmarks.length > 0) {
-        setHandLandmarks({
-          landmarks: result.landmarks,
-          confidence: result.confidence,
-          hands_detected: result.landmarks.length
-        });
+      if (result.success) {
+        // Priority: Use canvas_landmarks if available (display-ready coordinates)
+        if (result.canvas_landmarks && result.canvas_landmarks.length > 0) {
+          setHandLandmarks({
+            landmarks: result.canvas_landmarks,
+            confidence: result.confidence,
+            hands_detected: result.canvas_landmarks.length
+          });
+        }
+        // Fallback: Use original landmarks if canvas mapping failed
+        else if (result.landmarks && result.landmarks.length > 0) {
+          setHandLandmarks({
+            landmarks: result.landmarks,
+            confidence: result.confidence,
+            hands_detected: result.landmarks.length
+          });
+        } else {
+          setHandLandmarks(null);
+        }
       } else {
         setHandLandmarks(null);
       }
@@ -619,7 +647,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       }
       setHandLandmarks(null);
     }
-  }, [videoMetadata, rois, packingMethod, isVideoPlaying, preprocessingState.cacheKey, preprocessingState.completed]);
+  }, [videoMetadata, rois, packingMethod, isVideoPlaying, preprocessingState.cacheKey, preprocessingState.completed, canvasDimensions]);
 
   // Handle video play/pause state changes
   const handleVideoPlayStateChange = useCallback((isPlaying: boolean) => {
@@ -1212,6 +1240,10 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                     disabled={(packingMethod === 'traditional' && rois.some(roi => roi.type === 'packing_area')) || (packingMethod === 'qr' && rois.some(roi => roi.type === 'qr_trigger') && rois.some(roi => roi.type === 'packing_area'))}
                     showLandmarks={isVideoPlaying && rois.length > 0}
                     landmarks={handLandmarks}
+                    
+                    // Hand landmarks props
+                    handLandmarks={handLandmarks}
+                    showHandLandmarks={isVideoPlaying && rois.length > 0}
                     
                     // ROI callbacks  
                     onROICreate={handleROICreate}

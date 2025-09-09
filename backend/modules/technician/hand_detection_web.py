@@ -249,7 +249,8 @@ class HandDetectionWeb:
                              video_path: str, 
                              roi: Dict[str, int], 
                              detection_callback: Callable[[Dict[str, Any]], None],
-                             stop_event = None) -> Dict[str, Any]:
+                             stop_event = None,
+                             canvas_dims: Optional[Dict[str, int]] = None) -> Dict[str, Any]:
         """
         Stream hand detection results for web interface
         Adapted from detect_hands() function in hand_detection.py
@@ -259,6 +260,7 @@ class HandDetectionWeb:
             roi: ROI coordinates {'x': int, 'y': int, 'w': int, 'h': int}
             detection_callback: Callback function for streaming results
             stop_event: Threading event to stop processing
+            canvas_dims: Canvas dimensions {'width': int, 'height': int} from frontend
             
         Returns:
             dict: Final processing results
@@ -268,6 +270,15 @@ class HandDetectionWeb:
             if w <= 0 or h <= 0:
                 logger.error("ROI không hợp lệ (chiều rộng hoặc chiều cao bằng 0).")
                 return {"success": False, "hand_detected": False, "error": "ROI không hợp lệ."}
+
+            # Use provided canvas dimensions or default fallback
+            if canvas_dims and 'width' in canvas_dims and 'height' in canvas_dims:
+                canvas_width = canvas_dims['width']
+                canvas_height = canvas_dims['height']
+                logger.debug(f"Using frontend canvas dimensions: {canvas_width}x{canvas_height}")
+            else:
+                canvas_width, canvas_height = 960, 540  # Default fallback
+                logger.warning(f"No canvas dimensions provided, using default: {canvas_width}x{canvas_height}")
 
             # Mở video - same as original
             logger.debug(f"Opening video for hand detection: {video_path}")
@@ -312,7 +323,7 @@ class HandDetectionWeb:
                         # Debug logging for coordinate accuracy verification
                         logger.debug(f"Frame {frame_count}: Video dimensions {frame_width}x{frame_height}, "
                                    f"ROI original: ({x},{y},{w},{h}) → ROI safe: ({x_safe},{y_safe},{w_safe},{h_safe}), "
-                                   f"Scale factors: X={960/frame_width:.3f}, Y={540/frame_height:.3f}")
+                                   f"Scale factors: X={canvas_width/frame_width:.3f}, Y={canvas_height/frame_height:.3f}")
                         
                         # Detect hands using our streaming method with coordinate mapping
                         # IMPORTANT: Use safe coordinates for accurate mapping
@@ -321,7 +332,7 @@ class HandDetectionWeb:
                             frame_count,
                             roi_offset={'x': x_safe, 'y': y_safe, 'w': w_safe, 'h': h_safe},
                             video_dims={'width': frame_width, 'height': frame_height},
-                            canvas_dims={'width': 960, 'height': 540}  # Default canvas size
+                            canvas_dims={'width': canvas_width, 'height': canvas_height}  # Dynamic canvas size
                         )
                         
                         if detection_result:

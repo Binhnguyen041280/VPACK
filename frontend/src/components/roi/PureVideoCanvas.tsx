@@ -81,6 +81,10 @@ interface PureVideoCanvasProps {
   minROISize?: number;
   showLandmarks?: boolean;
   landmarks?: HandLandmarks[];
+  
+  // Hand landmarks props
+  handLandmarks?: HandLandmarks | null;
+  showHandLandmarks?: boolean;
 
   // ROI callbacks
   onROICreate?: (roi: ROIData) => void;
@@ -123,6 +127,10 @@ const PureVideoCanvas: React.FC<PureVideoCanvasProps> = ({
   minROISize = 20,
   showLandmarks = false,
   landmarks = [],
+  
+  // Hand landmarks props
+  handLandmarks = null,
+  showHandLandmarks = true,
 
   // ROI callbacks
   onROICreate,
@@ -381,6 +389,11 @@ const PureVideoCanvas: React.FC<PureVideoCanvasProps> = ({
             minROISize={minROISize}
             showLandmarks={showLandmarks}
             landmarks={landmarks}
+            
+            // Hand landmarks props
+            handLandmarks={handLandmarks}
+            showHandLandmarks={showHandLandmarks}
+            
             onROICreate={onROICreate}
             onROIUpdate={onROIUpdate}
             onROIDelete={onROIDelete}
