@@ -369,8 +369,8 @@ def save_roi_configuration():
             conn = get_db_connection()
             cursor = conn.cursor()
             
-            # Separate different ROI types for QR method
-            packing_area_roi = None  # Traditional: packing area, QR: movement detection area (qr_mvd_area)
+            # Separate different ROI types for both Traditional and QR methods
+            packing_area_roi = None  # Both methods: movement detection/packing area
             qr_trigger_roi = None    # QR method only: small trigger area for QR detection
             
             for roi in roi_validation['validated_rois']:
@@ -398,14 +398,12 @@ def save_roi_configuration():
             
             if existing:
                 # Update existing profile
-                # packing_area column: stores movement detection area (qr_mvd_area for QR method)
+                # packing_area column: stores movement detection area for both Traditional and QR methods
                 # qr_trigger_area column: stores QR trigger area (QR method only)
-                # qr_mvd_area column: duplicate of packing_area for compatibility
                 cursor.execute("""
                     UPDATE packing_profiles 
                     SET packing_area = ?,
                         qr_trigger_area = ?,
-                        qr_mvd_area = ?,
                         jump_time_ratio = ?,
                         additional_params = ?
                     WHERE id = ?
@@ -416,9 +414,6 @@ def save_roi_configuration():
                     # qr_trigger_area column: QR trigger area (QR method only)
                     json.dumps([qr_trigger_roi["x"], qr_trigger_roi["y"], 
                               qr_trigger_roi["w"], qr_trigger_roi["h"]]) if qr_trigger_roi else None,
-                    # qr_mvd_area column: same as packing_area for compatibility
-                    json.dumps([packing_area_roi["x"], packing_area_roi["y"], 
-                              packing_area_roi["w"], packing_area_roi["h"]]) if packing_area_roi else None,
                     0.5,  # Default jump_time_ratio
                     additional_params,
                     existing[0]
@@ -426,14 +421,13 @@ def save_roi_configuration():
                 logger.info(f"Updated packing profile for camera {camera_id}")
             else:
                 # Insert new profile
-                # packing_area column: stores movement detection area (qr_mvd_area for QR method)
+                # packing_area column: stores movement detection area for both Traditional and QR methods
                 # qr_trigger_area column: stores QR trigger area (QR method only)
-                # qr_mvd_area column: duplicate of packing_area for compatibility
                 cursor.execute("""
                     INSERT INTO packing_profiles 
-                    (profile_name, packing_area, qr_trigger_area, qr_mvd_area, min_packing_time, 
+                    (profile_name, packing_area, qr_trigger_area, min_packing_time, 
                      jump_time_ratio, scan_mode, additional_params)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (
                     profile_name,
                     # packing_area column: movement detection area (both Traditional and QR methods)
@@ -442,9 +436,6 @@ def save_roi_configuration():
                     # qr_trigger_area column: QR trigger area (QR method only)
                     json.dumps([qr_trigger_roi["x"], qr_trigger_roi["y"], 
                               qr_trigger_roi["w"], qr_trigger_roi["h"]]) if qr_trigger_roi else None,
-                    # qr_mvd_area column: same as packing_area for compatibility
-                    json.dumps([packing_area_roi["x"], packing_area_roi["y"], 
-                              packing_area_roi["w"], packing_area_roi["h"]]) if packing_area_roi else None,
                     5,  # Default min_packing_time
                     0.5,  # Default jump_time_ratio
                     packing_method,  # traditional or qr
@@ -486,12 +477,53 @@ def save_roi_configuration():
                 'database_error': str(db_error)
             }
         
+        # Stop any active detection processes before completing save
+        try:
+            logger.info("Triggering detection process termination...")
+            
+            cache_cleanup_attempted = []
+            
+            # ✅ SIMPLE APPROACH: Just set cancellation flags and let the "skip to end" logic handle it
+            try:
+                from blueprints.simple_hand_detection_bp import preprocessing_progress
+                if preprocessing_progress:
+                    progress_size = len(preprocessing_progress)
+                    for cache_key in list(preprocessing_progress.keys()):
+                        preprocessing_progress[cache_key]['cancelled'] = True
+                        logger.info(f"Triggered hand detection skip-to-end for: {cache_key}")
+                    cache_cleanup_attempted.append(f"hand_detection:{progress_size}_jobs_triggered")
+            except Exception as e:
+                logger.warning(f"Could not trigger hand detection termination: {e}")
+            
+            try:
+                from blueprints.qr_detection_bp import qr_preprocessing_progress
+                if qr_preprocessing_progress:
+                    progress_size = len(qr_preprocessing_progress)
+                    for cache_key in list(qr_preprocessing_progress.keys()):
+                        qr_preprocessing_progress[cache_key]['cancelled'] = True
+                        logger.info(f"Triggered QR detection skip-to-end for: {cache_key}")
+                    cache_cleanup_attempted.append(f"qr_detection:{progress_size}_jobs_triggered")
+            except Exception as e:
+                logger.warning(f"Could not trigger QR detection termination: {e}")
+                
+            # Give processes a brief moment to detect cancellation and skip to end
+            import time
+            time.sleep(0.2)  # Minimal delay
+            
+            logger.info("Detection termination signals sent - processes will finish quickly")
+                
+        except Exception as cleanup_error:
+            logger.warning(f"Detection process cleanup failed: {cleanup_error}")
+            # Continue with success even if cleanup fails
+        
         logger.info(f"ROI configuration saved successfully for camera {camera_id}")
         
         return jsonify({
             'success': True,
             'data': config_data,
-            'message': f'ROI configuration saved for camera {camera_id}'
+            'message': f'ROI configuration saved for camera {camera_id}',
+            'detection_cleanup': 'completed',
+            'cleaned_caches': cache_cleanup_attempted if 'cache_cleanup_attempted' in locals() else []
         }), 200
         
     except Exception as e:

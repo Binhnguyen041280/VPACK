@@ -1339,7 +1339,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       });
 
       // Validate ROIs with backend
-      const validationResponse = await fetch('/api/config/step4/roi/validate-roi', {
+      const validationResponse = await fetch('http://localhost:8080/api/config/step4/roi/validate-roi', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1359,7 +1359,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       }
 
       // Save configuration (using already-transformed coordinates from validation)
-      const saveResponse = await fetch('/api/config/step4/roi/save-roi-config', {
+      const saveResponse = await fetch('http://localhost:8080/api/config/step4/roi/save-roi-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

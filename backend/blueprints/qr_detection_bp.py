@@ -160,7 +160,7 @@ def preprocess_qr_video():
         # Start background processing
         def background_qr_processing():
             try:
-                # Initialize progress tracking
+                # Initialize progress tracking - simplified
                 qr_preprocessing_progress[cache_key] = {
                     'progress': 0.0,
                     'started_at': datetime.now(),
@@ -182,8 +182,17 @@ def preprocess_qr_video():
                     'processed_at': datetime.now()
                 }
                 
-                # Progress callback function to update real-time progress and accumulate detections
+                # Progress callback function - simplified with skip-to-end logic
                 def update_qr_progress(progress, processed_count, total_frames, new_detections=None):
+                    # Check for cancellation flag and trigger skip-to-end
+                    if cache_key not in qr_preprocessing_progress:
+                        logger.info(f"QR preprocessing cancelled - progress tracking removed for {cache_key}")
+                        raise Exception(f"QR preprocessing cancelled for {cache_key}")
+                    
+                    if qr_preprocessing_progress[cache_key].get('cancelled', False):
+                        logger.info(f"QR preprocessing skip-to-end triggered for {cache_key}")
+                        raise Exception(f"QR preprocessing cancelled for {cache_key}")
+                    
                     qr_preprocessing_progress[cache_key].update({
                         'progress': progress,
                         'processed_count': processed_count,
@@ -223,14 +232,20 @@ def preprocess_qr_video():
                     total_qr_detections = sum(d.get('qr_count', 0) for d in result['detections'])
                     logger.info(f"QR pre-processing completed for {cache_key}: {len(result['detections'])} timeline entries, {total_qr_detections} QR detections cached")
                 else:
-                    logger.error(f"QR pre-processing failed for {cache_key}: {result.get('error')}")
+                    if "cancelled" in str(result.get('error', '')).lower():
+                        logger.info(f"QR pre-processing cancelled for {cache_key}: {result.get('error')}")
+                    else:
+                        logger.error(f"QR pre-processing failed for {cache_key}: {result.get('error')}")
                 
                 # Clean up progress tracking
                 if cache_key in qr_preprocessing_progress:
                     del qr_preprocessing_progress[cache_key]
                     
             except Exception as e:
-                logger.error(f"Background QR processing error for {cache_key}: {str(e)}")
+                if "cancelled" in str(e).lower():
+                    logger.info(f"Background QR processing cancelled for {cache_key}: {str(e)}")
+                else:
+                    logger.error(f"Background QR processing error for {cache_key}: {str(e)}")
                 if cache_key in qr_preprocessing_progress:
                     del qr_preprocessing_progress[cache_key]
         

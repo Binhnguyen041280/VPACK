@@ -568,8 +568,77 @@ def preprocess_video_hands(video_path: str, roi_config: Dict[str, Any], fps: int
                 min_tracking_confidence=0.5
             ) as hands:
                 
-                for timestamp in processing_timestamps:
+                for idx, timestamp in enumerate(processing_timestamps):
                     try:
+                        # ✅ CHECK CANCELLATION DIRECTLY - NO DEPENDENCY ON PROGRESS CALLBACK
+                        # Check if this processing job has been cancelled
+                        try:
+                            from blueprints.simple_hand_detection_bp import preprocessing_progress
+                            # Generate cache key to check status (same logic as in blueprint)
+                            import hashlib
+                            roi_str = f"{roi_config['x']}_{roi_config['y']}_{roi_config['w']}_{roi_config['h']}"
+                            cache_input = f"{video_path}_{roi_str}"
+                            cache_key = hashlib.md5(cache_input.encode()).hexdigest()
+                            
+                            if (cache_key in preprocessing_progress and 
+                                preprocessing_progress[cache_key].get('cancelled', False)):
+                                logging.info(f"HAND CANCELLATION DETECTED at frame {idx+1}/{len(processing_timestamps)} - FORCING SKIP TO END")
+                                
+                                # ✅ FORCE SKIP TO LAST FRAME STRATEGY
+                                # Process only last 3 timestamps to finish quickly
+                                remaining_timestamps = processing_timestamps[max(0, len(processing_timestamps) - 3):]
+                                logging.info(f"Fast-finishing hand detection with last {len(remaining_timestamps)} frames")
+                                
+                                for final_timestamp in remaining_timestamps:
+                                    try:
+                                        frame_number = int(final_timestamp * video_fps)
+                                        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+                                        ret, frame = cap.read()
+                                        
+                                        if ret:
+                                            # Quick processing for final frames
+                                            frame_height, frame_width = frame.shape[:2]
+                                            x_safe = max(0, min(x, frame_width - 1))
+                                            y_safe = max(0, min(y, frame_height - 1))
+                                            w_safe = max(1, min(w, frame_width - x_safe))
+                                            h_safe = max(1, min(h, frame_height - y_safe))
+                                                
+                                            roi_frame = frame[y_safe:y_safe+h_safe, x_safe:x_safe+w_safe]
+                                            rgb_frame = cv2.cvtColor(roi_frame, cv2.COLOR_BGR2RGB)
+                                            results = hands.process(rgb_frame)
+                                                
+                                            # Add detection if hands found
+                                            if results.multi_hand_landmarks:
+                                                landmarks_list = []
+                                                for hand_landmarks in results.multi_hand_landmarks:
+                                                    hand_points = []
+                                                    for landmark in hand_landmarks.landmark:
+                                                        hand_points.append({
+                                                            'x': landmark.x,
+                                                            'y': landmark.y,
+                                                            'z': landmark.z,
+                                                            'x_orig': x_safe + landmark.x * w_safe,
+                                                            'y_orig': y_safe + landmark.y * h_safe
+                                                        })
+                                                    landmarks_list.append(hand_points)
+                                                
+                                                detections.append({
+                                                    'timestamp': round(final_timestamp, 2),
+                                                    'landmarks': landmarks_list,
+                                                    'confidence': 0.85,
+                                                    'hands_detected': len(landmarks_list)
+                                                })
+                                        
+                                        processed_count += 1
+                                    except:
+                                        processed_count += 1
+                                        continue
+                                
+                                logging.info(f"Fast finish completed - processed {processed_count}/{len(processing_timestamps)} frames")
+                                break  # Exit main loop
+                        except Exception as e:
+                            logging.warning(f"Could not check cancellation: {e}")
+                        
                         # Calculate frame number for this timestamp
                         frame_number = int(timestamp * video_fps)
                         

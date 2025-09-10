@@ -369,7 +369,7 @@ def select_qr_roi(video_path, camera_id, roi_frame_path, step="mvd"):
         cv2.destroyAllWindows()
         return {"success": False, "error": f"Lỗi hệ thống: {str(e)}"}
 
-def detect_qr_at_time(video_path: str, time_seconds: float, roi_config: dict) -> dict:
+def detect_qr_at_time(video_path: str, time_seconds: float, roi_config: dict, cancellation_flag=None) -> dict:
     """
     Detect QR codes at specific timestamp in video for preprocessing pipeline
     
@@ -377,6 +377,7 @@ def detect_qr_at_time(video_path: str, time_seconds: float, roi_config: dict) ->
         video_path (str): Path to video file
         time_seconds (float): Video time in seconds
         roi_config (dict): ROI configuration {'x': int, 'y': int, 'w': int, 'h': int}
+        cancellation_flag (threading.Event): Optional cancellation flag to check
     
     Returns:
         dict: {
@@ -390,6 +391,11 @@ def detect_qr_at_time(video_path: str, time_seconds: float, roi_config: dict) ->
     try:
         logger.debug(f"[QR-DETECT] Detecting QR at time {time_seconds}s in {video_path}")
         
+        # Check cancellation at start
+        if cancellation_flag and cancellation_flag.is_set():
+            logger.debug(f"[QR-DETECT] Detection cancelled before processing at {time_seconds}s")
+            return {"success": False, "error": f"Detection cancelled at {time_seconds}s"}
+        
         # Validate parameters
         if not os.path.exists(video_path):
             return {"success": False, "error": f"Video file not found: {video_path}"}
@@ -402,11 +408,21 @@ def detect_qr_at_time(video_path: str, time_seconds: float, roi_config: dict) ->
             if not os.path.exists(model_file):
                 return {"success": False, "error": f"Model file not found: {model_file}"}
         
+        # Check cancellation before model initialization
+        if cancellation_flag and cancellation_flag.is_set():
+            logger.debug(f"[QR-DETECT] Detection cancelled before model init at {time_seconds}s")
+            return {"success": False, "error": f"Detection cancelled at {time_seconds}s"}
+        
         # Initialize QR detector
         try:
             qr_detector = cv2.wechat_qrcode_WeChatQRCode(DETECT_PROTO, DETECT_MODEL, SR_PROTO, SR_MODEL)  # type: ignore
         except Exception as e:
             return {"success": False, "error": f"Failed to initialize QR detector: {str(e)}"}
+        
+        # Check cancellation before video operations
+        if cancellation_flag and cancellation_flag.is_set():
+            logger.debug(f"[QR-DETECT] Detection cancelled before video open at {time_seconds}s")
+            return {"success": False, "error": f"Detection cancelled at {time_seconds}s"}
         
         # Open video
         cap = cv2.VideoCapture(video_path)
@@ -422,6 +438,11 @@ def detect_qr_at_time(video_path: str, time_seconds: float, roi_config: dict) ->
             # Calculate frame number for timestamp
             frame_number = int(time_seconds * fps)
             
+            # Check cancellation before seeking
+            if cancellation_flag and cancellation_flag.is_set():
+                logger.debug(f"[QR-DETECT] Detection cancelled before frame seek at {time_seconds}s")
+                return {"success": False, "error": f"Detection cancelled at {time_seconds}s"}
+            
             # Seek to specific frame
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
             
@@ -432,6 +453,11 @@ def detect_qr_at_time(video_path: str, time_seconds: float, roi_config: dict) ->
                     "success": False, 
                     "error": f"Cannot read frame at time {time_seconds}s (frame {frame_number})"
                 }
+            
+            # Check cancellation before ROI extraction
+            if cancellation_flag and cancellation_flag.is_set():
+                logger.debug(f"[QR-DETECT] Detection cancelled before ROI processing at {time_seconds}s")
+                return {"success": False, "error": f"Detection cancelled at {time_seconds}s"}
             
             # Extract ROI from frame
             x, y, w, h = roi_config['x'], roi_config['y'], roi_config['w'], roi_config['h']
@@ -449,8 +475,21 @@ def detect_qr_at_time(video_path: str, time_seconds: float, roi_config: dict) ->
             if roi_frame.size == 0:
                 return {"success": False, "error": "Empty ROI frame"}
             
-            # Detect QR codes in ROI
+            # Check cancellation before WeChat QR detection (this is the expensive operation)
+            if cancellation_flag and cancellation_flag.is_set():
+                logger.debug(f"[QR-DETECT] Detection cancelled before WeChat QR detection at {time_seconds}s")
+                return {"success": False, "error": f"Detection cancelled at {time_seconds}s"}
+            
+            # NOTE: This is the critical blocking operation that cannot be directly cancelled
+            # WeChat QR detector - no way to interrupt this once started
+            logger.debug(f"[QR-DETECT] Starting WeChat QR detectAndDecode at {time_seconds}s")
             texts, points = qr_detector.detectAndDecode(roi_frame)
+            logger.debug(f"[QR-DETECT] Completed WeChat QR detectAndDecode at {time_seconds}s")
+            
+            # Check cancellation after detection
+            if cancellation_flag and cancellation_flag.is_set():
+                logger.debug(f"[QR-DETECT] Detection cancelled after WeChat QR detection at {time_seconds}s")
+                return {"success": False, "error": f"Detection cancelled at {time_seconds}s"}
             
             qr_detections = []
             if texts and points is not None:
@@ -495,8 +534,12 @@ def detect_qr_at_time(video_path: str, time_seconds: float, roi_config: dict) ->
             cap.release()
             
     except Exception as e:
-        logger.error(f"[QR-DETECT] Error in detect_qr_at_time: {str(e)}\n{traceback.format_exc()}")
-        return {"success": False, "error": f"Detection error: {str(e)}"}
+        if cancellation_flag and cancellation_flag.is_set():
+            logger.debug(f"[QR-DETECT] Detection cancelled during processing at {time_seconds}s: {str(e)}")
+            return {"success": False, "error": f"Detection cancelled at {time_seconds}s"}
+        else:
+            logger.error(f"[QR-DETECT] Error in detect_qr_at_time: {str(e)}\n{traceback.format_exc()}")
+            return {"success": False, "error": f"Detection error: {str(e)}"}
 
 def preprocess_video_qr(video_path: str, roi_config: dict, fps: int = 5, progress_callback=None) -> dict:
     """
@@ -563,6 +606,58 @@ def preprocess_video_qr(video_path: str, roi_config: dict, fps: int = 5, progres
         # Process each timestamp
         for i, timestamp in enumerate(timestamps):
             try:
+                # Check cancellation via progress callback
+                try:
+                    from blueprints.qr_detection_bp import qr_preprocessing_progress
+                    # Generate cache key to check status (same logic as in blueprint)
+                    import hashlib
+                    roi_str = f"{roi_config['x']}_{roi_config['y']}_{roi_config['w']}_{roi_config['h']}"
+                    cache_input = f"{video_path}_{roi_str}"
+                    cache_key = hashlib.md5(cache_input.encode()).hexdigest()
+                    
+                    if (cache_key in qr_preprocessing_progress and 
+                        qr_preprocessing_progress[cache_key].get('cancelled', False)):
+                        logger.info(f"[QR-PREPROCESS] CANCELLATION DETECTED at frame {i+1}/{total_timestamps} - FORCING SKIP TO END")
+                        
+                        # Force skip to last frame strategy
+                        # Instead of stopping, jump to the last few frames and finish quickly
+                        remaining_timestamps = timestamps[max(0, len(timestamps) - 3):]  # Process only last 3 frames
+                        logger.info(f"[QR-PREPROCESS] Fast-finishing with last {len(remaining_timestamps)} frames")
+                        
+                        for final_timestamp in remaining_timestamps:
+                            try:
+                                result = detect_qr_at_time(video_path, final_timestamp, roi_config)
+                                if result['success']:
+                                    detection_entry = {
+                                        'timestamp': final_timestamp,
+                                        'qr_detections': result['qr_detections'],
+                                        'qr_count': result.get('qr_count', 0)
+                                    }
+                                    detections.append(detection_entry)
+                                else:
+                                    detections.append({
+                                        'timestamp': final_timestamp,
+                                        'qr_detections': [],
+                                        'qr_count': 0
+                                    })
+                                processed_count += 1
+                            except Exception:
+                                # Skip any errors during fast finish
+                                detections.append({
+                                    'timestamp': final_timestamp,
+                                    'qr_detections': [],
+                                    'qr_count': 0
+                                })
+                                processed_count += 1
+                        
+                        logger.info(f"[QR-PREPROCESS] Fast finish completed - processed {processed_count}/{total_timestamps} frames")
+                        break  # Exit the main loop
+                except ImportError:
+                    # Blueprint not available, continue normally
+                    pass
+                except Exception as e:
+                    logger.warning(f"[QR-PREPROCESS] Error checking cancellation: {str(e)}")
+                
                 # Call QR detection for this timestamp
                 result = detect_qr_at_time(video_path, timestamp, roi_config)
                 
@@ -588,19 +683,26 @@ def preprocess_video_qr(video_path: str, roi_config: dict, fps: int = 5, progres
                 
                 processed_count += 1
                 
-                # Update progress
+                # Update progress AFTER processing (with new detections)
                 if progress_callback:
-                    progress_percent = (processed_count / total_timestamps) * 100
-                    elapsed_time = time.time() - start_time
-                    estimated_total_time = elapsed_time * total_timestamps / processed_count
-                    
-                    # Call progress callback with current detections for incremental caching
-                    progress_callback(
-                        progress=progress_percent,
-                        processed_count=processed_count,
-                        total_frames=total_timestamps,
-                        new_detections=[detection_entry] if 'detection_entry' in locals() else []
-                    )
+                    try:
+                        progress_percent = (processed_count / total_timestamps) * 100
+                        elapsed_time = time.time() - start_time
+                        estimated_total_time = elapsed_time * total_timestamps / processed_count
+                        
+                        # Call progress callback with current detections for incremental caching
+                        progress_callback(
+                            progress=progress_percent,
+                            processed_count=processed_count,
+                            total_frames=total_timestamps,
+                            new_detections=[detection_entry] if 'detection_entry' in locals() else []
+                        )
+                    except Exception as callback_error:
+                        if "cancelled" in str(callback_error).lower():
+                            logger.info(f"[QR-PREPROCESS] Processing cancelled after frame {i+1}/{total_timestamps} (timestamp {timestamp}s)")
+                            return {"success": False, "error": f"Processing cancelled after timestamp {timestamp}s"}
+                        else:
+                            raise callback_error
                 
                 # Log progress every 25%
                 if processed_count % max(1, total_timestamps // 4) == 0:
@@ -608,14 +710,18 @@ def preprocess_video_qr(video_path: str, roi_config: dict, fps: int = 5, progres
                     logger.info(f"[QR-PREPROCESS] Progress: {processed_count}/{total_timestamps} ({progress_percent:.1f}%)")
                     
             except Exception as e:
-                logger.error(f"[QR-PREPROCESS] Error processing timestamp {timestamp}: {str(e)}")
-                # Add empty entry to maintain timeline
-                detections.append({
-                    'timestamp': timestamp,
-                    'qr_detections': [],
-                    'qr_count': 0
-                })
-                processed_count += 1
+                if "cancelled" in str(e).lower():
+                    logger.info(f"[QR-PREPROCESS] Processing cancelled during timestamp {timestamp}: {str(e)}")
+                    return {"success": False, "error": f"Processing cancelled during timestamp {timestamp}s"}
+                else:
+                    logger.error(f"[QR-PREPROCESS] Error processing timestamp {timestamp}: {str(e)}")
+                    # Add empty entry to maintain timeline
+                    detections.append({
+                        'timestamp': timestamp,
+                        'qr_detections': [],
+                        'qr_count': 0
+                    })
+                    processed_count += 1
         
         # Final statistics
         processing_time = time.time() - start_time
@@ -643,8 +749,12 @@ def preprocess_video_qr(video_path: str, roi_config: dict, fps: int = 5, progres
         }
         
     except Exception as e:
-        logger.error(f"[QR-PREPROCESS] Error in preprocess_video_qr: {str(e)}\n{traceback.format_exc()}")
-        return {"success": False, "error": f"Preprocessing error: {str(e)}"}
+        if "cancelled" in str(e).lower():
+            logger.info(f"[QR-PREPROCESS] Processing cancelled: {str(e)}")
+            return {"success": False, "error": f"Processing cancelled: {str(e)}"}
+        else:
+            logger.error(f"[QR-PREPROCESS] Error in preprocess_video_qr: {str(e)}\n{traceback.format_exc()}")
+            return {"success": False, "error": f"Preprocessing error: {str(e)}"}
 
 if __name__ == "__main__":
     import sys
