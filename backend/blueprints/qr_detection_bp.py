@@ -686,6 +686,233 @@ def test_qr_endpoint():
             "error": error_msg
         }), 500
 
+@qr_detection_bp.route('/get-cached-trigger', methods=['POST'])
+def get_cached_trigger():
+    """
+    Get QR trigger detections for specific timestamp from cached results
+    Specifically looks for "timego" text in QR codes within trigger area
+    
+    Request body:
+    {
+        "cache_key": str,  # Can include "_trigger" suffix for trigger-specific cache
+        "timestamp": float,
+        "canvas_dims": {  # optional - for display coordinate mapping
+            "width": int,
+            "height": int
+        },
+        "video_dims": {   # optional - for display coordinate mapping
+            "width": int,
+            "height": int
+        },
+        "roi_config": {   # trigger area ROI coordinates
+            "x": int,
+            "y": int,
+            "w": int,
+            "h": int
+        },
+        "trigger_mode": bool,  # Flag to indicate trigger detection mode
+        "target_text": str     # Text to search for (default: "TimeGo")
+    }
+    
+    Response:
+    {
+        "success": bool,
+        "trigger_detected": bool,
+        "trigger_text": str | null,
+        "qr_detections": list,     # All QR detections in trigger area
+        "canvas_qr_detections": list,  # Display-ready coordinates
+        "exact_match": bool,
+        "matched_timestamp": float | null,
+        "detection_confidence": float,
+        "error": str (if error)
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "No JSON data provided"
+            }), 400
+        
+        cache_key = data.get('cache_key')
+        timestamp = data.get('timestamp')
+        canvas_dims = data.get('canvas_dims')
+        video_dims = data.get('video_dims')
+        roi_config = data.get('roi_config')
+        trigger_mode = data.get('trigger_mode', True)
+        target_text = data.get('target_text', 'TimeGo').lower()  # Default to "TimeGo", convert to lowercase for comparison
+        
+        if not cache_key:
+            return jsonify({
+                "success": False,
+                "error": "Missing required parameter: cache_key"
+            }), 400
+            
+        if timestamp is None:
+            return jsonify({
+                "success": False,
+                "error": "Missing required parameter: timestamp"
+            }), 400
+        
+        try:
+            timestamp = float(timestamp)
+        except (ValueError, TypeError):
+            return jsonify({
+                "success": False,
+                "error": "Invalid timestamp value"
+            }), 400
+        
+        # Remove "_trigger" suffix from cache key if present for main cache lookup
+        main_cache_key = cache_key.replace('_trigger', '') if cache_key.endswith('_trigger') else cache_key
+        
+        # Check main QR cache (trigger detection uses same QR preprocessing)
+        if main_cache_key not in qr_preprocessing_cache:
+            return jsonify({
+                "success": False,
+                "error": "QR cache key not found or expired",
+                "trigger_detected": False,
+                "trigger_text": None
+            }), 404
+        
+        cache_data = qr_preprocessing_cache[main_cache_key]
+        if cache_data.get('expires_at', datetime.now()) <= datetime.now():
+            del qr_preprocessing_cache[main_cache_key]
+            return jsonify({
+                "success": False,
+                "error": "QR cache expired",
+                "trigger_detected": False,
+                "trigger_text": None
+            }), 404
+        
+        # Find QR detections for timestamp (exact match within 0.15s tolerance)
+        detections = cache_data['detections']
+        closest_detection = None
+        min_time_diff = float('inf')
+        
+        for detection in detections:
+            time_diff = abs(detection['timestamp'] - timestamp)
+            if time_diff < 0.15 and time_diff < min_time_diff:  # 0.15s tolerance for 5fps
+                closest_detection = detection
+                min_time_diff = time_diff
+        
+        if closest_detection:
+            qr_detections = closest_detection.get('qr_detections', [])
+            
+            # Filter QR detections for trigger area and search for target text
+            trigger_detected = False
+            trigger_text = None
+            detection_confidence = 0.0
+            trigger_qr_detections = []
+            
+            if roi_config and qr_detections:
+                # Filter QR detections that fall within trigger ROI area
+                trigger_x, trigger_y, trigger_w, trigger_h = roi_config['x'], roi_config['y'], roi_config['w'], roi_config['h']
+                
+                for qr_detection in qr_detections:
+                    qr_bbox = qr_detection.get('bbox', {})
+                    if not qr_bbox:
+                        continue
+                    
+                    # Check if QR detection bbox overlaps with trigger ROI
+                    qr_x, qr_y, qr_w, qr_h = qr_bbox.get('x', 0), qr_bbox.get('y', 0), qr_bbox.get('w', 0), qr_bbox.get('h', 0)
+                    
+                    # Check for overlap between QR bbox and trigger ROI
+                    overlap_x = max(0, min(trigger_x + trigger_w, qr_x + qr_w) - max(trigger_x, qr_x))
+                    overlap_y = max(0, min(trigger_y + trigger_h, qr_y + qr_h) - max(trigger_y, qr_y))
+                    overlap_area = overlap_x * overlap_y
+                    
+                    if overlap_area > 0:  # QR detection is within trigger area
+                        trigger_qr_detections.append(qr_detection)
+                        
+                        # Check if QR text contains target text
+                        qr_text = qr_detection.get('text', '').lower()
+                        if target_text in qr_text:
+                            trigger_detected = True
+                            trigger_text = qr_detection.get('text', '')
+                            detection_confidence = qr_detection.get('confidence', 0.0)
+                            logger.info(f"Trigger detected: '{trigger_text}' at timestamp {timestamp}")
+                            break
+            
+            response = {
+                "success": True,
+                "trigger_detected": trigger_detected,
+                "trigger_text": trigger_text,
+                "qr_detections": trigger_qr_detections,
+                "exact_match": min_time_diff < 0.05,
+                "matched_timestamp": closest_detection['timestamp'],
+                "detection_confidence": detection_confidence,
+                "time_difference": round(min_time_diff, 3),
+                "target_text": target_text,
+                "trigger_roi": roi_config,
+                "total_qr_in_area": len(trigger_qr_detections)
+            }
+            
+            # Add canvas_qr_detections for trigger area QR codes
+            if canvas_dims and video_dims and roi_config and trigger_qr_detections:
+                try:
+                    from modules.technician.landmark_mapper import LandmarkMapper, ROIConfig, VideoDimensions, CanvasDimensions
+                    
+                    # Create mapping objects for trigger ROI
+                    roi = ROIConfig(
+                        x=roi_config['x'],
+                        y=roi_config['y'],
+                        w=roi_config['w'],
+                        h=roi_config['h']
+                    )
+                    video_dimensions = VideoDimensions(
+                        width=video_dims['width'],
+                        height=video_dims['height']
+                    )
+                    canvas_dimensions = CanvasDimensions(
+                        width=canvas_dims['width'],
+                        height=canvas_dims['height']
+                    )
+                    
+                    # Use LandmarkMapper for coordinate transformation
+                    qr_mapping_response = LandmarkMapper.create_canvas_qr_response(
+                        trigger_qr_detections, roi, video_dimensions, canvas_dimensions
+                    )
+                    
+                    if qr_mapping_response['success']:
+                        response['canvas_qr_detections'] = qr_mapping_response['canvas_qr_detections']
+                        response['mapping_algorithm'] = qr_mapping_response['mapping_algorithm']
+                        response['mapping_info'] = qr_mapping_response['mapping_info']
+                        logger.debug(f"LandmarkMapper: Mapped {len(qr_mapping_response['canvas_qr_detections'])} trigger QR detections for timestamp {timestamp}")
+                    else:
+                        logger.warning(f"LandmarkMapper trigger QR mapping failed: {qr_mapping_response.get('error')}")
+                        response['canvas_qr_detections'] = []
+                        
+                except Exception as e:
+                    logger.error(f"Error using LandmarkMapper for trigger QR coordinate mapping: {e}")
+                    response['canvas_qr_detections'] = []
+            else:
+                response['canvas_qr_detections'] = []
+            
+            return jsonify(response), 200
+        else:
+            return jsonify({
+                "success": True,
+                "trigger_detected": False,
+                "trigger_text": None,
+                "qr_detections": [],
+                "canvas_qr_detections": [],
+                "exact_match": False,
+                "matched_timestamp": None,
+                "detection_confidence": 0.0,
+                "message": f"No QR detection found near timestamp {timestamp}"
+            }), 200
+        
+    except Exception as e:
+        error_msg = f"Error getting cached trigger detections: {str(e)}"
+        logger.error(error_msg)
+        return jsonify({
+            "success": False,
+            "error": error_msg,
+            "trigger_detected": False,
+            "trigger_text": None
+        }), 500
+
 @qr_detection_bp.route('/health', methods=['GET'])
 def qr_health_check():
     """Health check endpoint for QR detection"""
@@ -702,6 +929,7 @@ def qr_health_check():
                 "POST /preprocess-video - Pre-process entire video at 5fps",
                 "GET /preprocess-status/<cache_key> - Check preprocessing progress",
                 "POST /get-cached-qr - Get QR detections from cache by timestamp",
+                "POST /get-cached-trigger - Get QR trigger detections (search for 'TimeGo')",
                 "GET /test - Test QR detection with sample video",
                 "GET /health - Health check"
             ],
@@ -716,8 +944,10 @@ def qr_health_check():
             },
             "features": [
                 "5fps QR video preprocessing",
-                "Perfect timestamp synchronization",
+                "Perfect timestamp synchronization", 
                 "Dynamic QR bbox mapping to canvas",
+                "QR trigger detection for 'TimeGo' text",
+                "Trigger area ROI filtering",
                 "Automatic cache expiration",
                 "Background processing",
                 "WeChat QR model integration"

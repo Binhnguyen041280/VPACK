@@ -128,6 +128,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     showOptional: true
   });
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [isWaitingForAnalysis, setIsWaitingForAnalysis] = useState(false);
   const [preprocessingState, setPreprocessingState] = useState<{
     isProcessing: boolean;
     progress: number;
@@ -493,14 +494,30 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     console.log('ROI created:', newROI);
 
     // Set flag to trigger preprocessing after ROI creation
-    // Trigger preprocessing for any packing_area ROI (both traditional and qr methods need it)
+    // Trigger preprocessing based on method and ROI completion
     if (type === 'packing_area') {
-      console.log('Triggering preprocessing for new packing area ROI - both hand and QR detection');
-      // Use setTimeout to trigger preprocessing after ROI state is updated
-      setTimeout(() => {
-        // Call preprocessing function directly - will be defined below
-        triggerBothPreprocessing();
-      }, 500);
+      console.log('Packing area ROI created - checking preprocessing requirements');
+      
+      if (packingMethod === 'traditional') {
+        // Traditional: trigger immediately when packing area is created
+        console.log('Traditional method: triggering preprocessing for packing area');
+        setTimeout(() => {
+          triggerBothPreprocessing();
+        }, 500);
+      } else if (packingMethod === 'qr') {
+        // QR method: only trigger when both ROIs are complete
+        const willHaveTrigger = rois.some(r => r.type === 'qr_trigger') || type === 'qr_trigger';
+        const willHavePacking = rois.some(r => r.type === 'packing_area') || type === 'packing_area';
+        
+        if (willHaveTrigger && willHavePacking) {
+          console.log('QR method: both ROIs complete - triggering dual preprocessing');
+          setTimeout(() => {
+            triggerBothPreprocessing();
+          }, 500);
+        } else {
+          console.log('QR method: waiting for both ROIs to be complete before preprocessing');
+        }
+      }
     }
   }, [packingMethod, rois]);
 
@@ -662,107 +679,272 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       return;
     }
 
-    // Only detect for packing areas in traditional method
+    // Check if preprocessing is still in progress and current timestamp is ahead
+    if (!preprocessingState.completed || !qrPreprocessingState.completed) {
+      try {
+        // Check hand detection progress
+        const handProgressResponse = await fetch(`http://localhost:8080/api/hand-detection/preprocess-status/${preprocessingState.cacheKey}`);
+        const handProgress = await handProgressResponse.json();
+        
+        // Check QR detection progress
+        const qrProgressResponse = await fetch(`http://localhost:8080/api/qr-detection/preprocess-status/${qrPreprocessingState.cacheKey}`);
+        const qrProgress = await qrProgressResponse.json();
+
+        // Calculate the furthest processed timestamp from both systems
+        // Backend processes at 5fps = 0.2s per frame
+        const handProcessedTime = handProgress.success ? (handProgress.processed_count || 0) * 0.2 : 0;
+        const qrProcessedTime = qrProgress.success ? (qrProgress.processed_count || 0) * 0.2 : 0;
+        const maxProcessedTime = Math.max(handProcessedTime, qrProcessedTime);
+
+        console.log('🕐 Timestamp Comparison:', {
+          currentTime: currentTime.toFixed(1) + 's',
+          handProcessed: handProcessedTime.toFixed(1) + 's',
+          qrProcessed: qrProcessedTime.toFixed(1) + 's',
+          maxProcessed: maxProcessedTime.toFixed(1) + 's',
+          bufferTarget: (maxProcessedTime - 10).toFixed(1) + 's',
+          needsWait: currentTime > maxProcessedTime - 10
+        });
+
+        // If current timestamp is ahead of processing with 10s buffer, pause and wait
+        if (currentTime > maxProcessedTime - 10) {
+          if (videoRef.current && !videoRef.current.paused) {
+            videoRef.current.pause();
+            setIsVideoPlaying(false);
+            setIsWaitingForAnalysis(true);
+            console.log(`⏸️ Video paused: FE timestamp (${currentTime.toFixed(1)}s) > BE processed (${maxProcessedTime.toFixed(1)}s) - waiting for analysis`);
+          }
+          
+          // Show waiting message by clearing landmarks
+          setHandLandmarks(null);
+          return;
+        }
+        
+        // If video is paused due to waiting and now we have enough buffer, clear waiting state
+        if (isWaitingForAnalysis && currentTime <= maxProcessedTime - 10) {
+          setIsWaitingForAnalysis(false);
+          console.log(`✅ Analysis buffer ready: BE processed (${maxProcessedTime.toFixed(1)}s) > FE (${currentTime.toFixed(1)}s) + 10s buffer - user can resume`);
+          // Don't auto-resume here, let user manually resume
+        }
+        
+      } catch (error) {
+        console.warn('Failed to check preprocessing progress:', error);
+      }
+    }
+
+    // Detection logic for both Traditional and QR methods
     const packingROI = rois.find(roi => roi.type === 'packing_area');
-    if (!packingROI || packingMethod !== 'traditional') {
+    if (!packingROI) {
       setHandLandmarks(null);
       return;
     }
 
+    // For QR method, also need trigger ROI
+    let triggerROI = null;
+    if (packingMethod === 'qr') {
+      triggerROI = rois.find(roi => roi.type === 'qr_trigger');
+      if (!triggerROI) {
+        setHandLandmarks(null);
+        return;
+      }
+    }
+
     try {
-      // Transform ROI from canvas coordinates to video coordinates (same as preprocessing)
-      const roi_orig = {
+      // Transform packing area ROI from canvas coordinates to video coordinates
+      const packing_roi_orig = {
         x: Math.round(packingROI.x * videoMetadata.resolution.width / canvasDimensions.width),
         y: Math.round(packingROI.y * videoMetadata.resolution.height / canvasDimensions.height),
         w: Math.round(packingROI.w * videoMetadata.resolution.width / canvasDimensions.width),
         h: Math.round(packingROI.h * videoMetadata.resolution.height / canvasDimensions.height)
       };
 
-      // Prepare complete mapping data for both APIs
-      const requestBody = {
-        cache_key: preprocessingState.cacheKey,  // Hand cache key
-        timestamp: currentTime,
-        canvas_dims: {
-          width: canvasDimensions.width,
-          height: canvasDimensions.height
-        },
-        video_dims: {
-          width: videoMetadata.resolution.width,
-          height: videoMetadata.resolution.height
-        },
-        roi_config: roi_orig  // Use video coordinates, not canvas coordinates
-      };
+      // Transform trigger area ROI if QR method
+      let trigger_roi_orig = null;
+      if (packingMethod === 'qr' && triggerROI) {
+        trigger_roi_orig = {
+          x: Math.round(triggerROI.x * videoMetadata.resolution.width / canvasDimensions.width),
+          y: Math.round(triggerROI.y * videoMetadata.resolution.height / canvasDimensions.height),
+          w: Math.round(triggerROI.w * videoMetadata.resolution.width / canvasDimensions.width),
+          h: Math.round(triggerROI.h * videoMetadata.resolution.height / canvasDimensions.height)
+        };
+      }
 
-      // Prepare QR request body
-      const qrRequestBody = {
-        cache_key: qrPreprocessingState.cacheKey,  // QR cache key
-        timestamp: currentTime,
-        canvas_dims: requestBody.canvas_dims,
-        video_dims: requestBody.video_dims,
-        roi_config: requestBody.roi_config
-      };
-
-      // Dual API calls: Hand detection + QR detection in parallel
-      const apiCalls = [
-        // Hand detection API call
-        fetch('http://localhost:8080/api/hand-detection/get-cached-landmarks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody)
-        }),
-        // QR detection API call (only if QR cache available)
-        qrPreprocessingState.cacheKey 
-          ? fetch('http://localhost:8080/api/qr-detection/get-cached-qr', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(qrRequestBody)
-            })
-          : Promise.resolve(null)  // No QR cache, return null
-      ];
-
-      const [handResponse, qrResponse] = await Promise.all(apiCalls);
+      // Prepare API calls based on method
+      const apiCalls = [];
       
-      // Parse results
-      const handResult = await handResponse.json();
-      const qrResult = qrResponse ? await qrResponse.json() : { success: false, canvas_qr_detections: [] };
+      if (packingMethod === 'traditional') {
+        // TRADITIONAL METHOD: 1 API call - Hand + QR detection on packing area
+        const requestBody = {
+          cache_key: preprocessingState.cacheKey,  // Hand cache key
+          timestamp: currentTime,
+          canvas_dims: {
+            width: canvasDimensions.width,
+            height: canvasDimensions.height
+          },
+          video_dims: {
+            width: videoMetadata.resolution.width,
+            height: videoMetadata.resolution.height
+          },
+          roi_config: packing_roi_orig
+        };
+
+        const qrRequestBody = {
+          cache_key: qrPreprocessingState.cacheKey,  // QR cache key
+          timestamp: currentTime,
+          canvas_dims: requestBody.canvas_dims,
+          video_dims: requestBody.video_dims,
+          roi_config: requestBody.roi_config
+        };
+
+        apiCalls.push(
+          // Hand detection on packing area
+          fetch('http://localhost:8080/api/hand-detection/get-cached-landmarks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+          }),
+          // QR detection on packing area (if QR cache available)
+          qrPreprocessingState.cacheKey 
+            ? fetch('http://localhost:8080/api/qr-detection/get-cached-qr', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(qrRequestBody)
+              })
+            : Promise.resolve(null)
+        );
+
+      } else if (packingMethod === 'qr') {
+        // QR METHOD: 2 API calls
+        // 1. Hand + QR detection on packing area (movement area)
+        const packingRequestBody = {
+          cache_key: preprocessingState.cacheKey,  // Hand cache key for packing area
+          timestamp: currentTime,
+          canvas_dims: {
+            width: canvasDimensions.width,
+            height: canvasDimensions.height
+          },
+          video_dims: {
+            width: videoMetadata.resolution.width,
+            height: videoMetadata.resolution.height
+          },
+          roi_config: packing_roi_orig
+        };
+
+        const packingQRRequestBody = {
+          cache_key: qrPreprocessingState.cacheKey,  // QR cache key for packing area
+          timestamp: currentTime,
+          canvas_dims: packingRequestBody.canvas_dims,
+          video_dims: packingRequestBody.video_dims,
+          roi_config: packing_roi_orig
+        };
+
+        // 2. QR trigger detection on trigger area (looking for "timego")
+        const triggerQRRequestBody = {
+          cache_key: qrPreprocessingState.cacheKey + '_trigger',  // Trigger-specific cache
+          timestamp: currentTime,
+          canvas_dims: packingRequestBody.canvas_dims,
+          video_dims: packingRequestBody.video_dims,
+          roi_config: trigger_roi_orig,
+          trigger_mode: true,  // Flag to look for "TimeGo" specifically
+          target_text: 'TimeGo'
+        };
+
+        apiCalls.push(
+          // Hand detection on packing area (movement area)
+          fetch('http://localhost:8080/api/hand-detection/get-cached-landmarks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(packingRequestBody)
+          }),
+          // QR detection on packing area (movement area)
+          qrPreprocessingState.cacheKey 
+            ? fetch('http://localhost:8080/api/qr-detection/get-cached-qr', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(packingQRRequestBody)
+              })
+            : Promise.resolve(null),
+          // QR trigger detection on trigger area (looking for "timego")
+          qrPreprocessingState.cacheKey 
+            ? fetch('http://localhost:8080/api/qr-detection/get-cached-trigger', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(triggerQRRequestBody)
+              })
+            : Promise.resolve(null)
+        );
+      }
+
+      const responses = await Promise.all(apiCalls);
+      
+      // Parse results based on method
+      let handResult, qrResult, triggerResult;
+      
+      if (packingMethod === 'traditional') {
+        // Traditional: [handResponse, qrResponse]
+        handResult = await responses[0].json();
+        qrResult = responses[1] ? await responses[1].json() : { success: false, canvas_qr_detections: [] };
+        triggerResult = null;
+        
+      } else if (packingMethod === 'qr') {
+        // QR method: [handResponse, packingQRResponse, triggerQRResponse]
+        handResult = await responses[0].json();
+        qrResult = responses[1] ? await responses[1].json() : { success: false, canvas_qr_detections: [] };
+        triggerResult = responses[2] ? await responses[2].json() : { success: false, trigger_detected: false, trigger_text: null };
+      }
       
       console.log('API Results:', {
+        method: packingMethod,
         handSuccess: handResult.success,
         handLandmarks: handResult.canvas_landmarks?.length || 0,
         qrSuccess: qrResult.success,
         qrDetections: qrResult.canvas_qr_detections?.length || 0,
+        triggerSuccess: triggerResult?.success || false,
+        triggerDetected: triggerResult?.trigger_detected || false,
+        triggerText: triggerResult?.trigger_text || null,
         handCacheKey: preprocessingState.cacheKey,
         qrCacheKey: qrPreprocessingState.cacheKey
       });
 
-      // Merge hand and QR data into unified structure
+      // Merge hand, QR, and trigger data into unified structure
       if (handResult.success) {
         const mergedLandmarks = {
           // Hand detection data
           landmarks: handResult.canvas_landmarks || handResult.landmarks || [],
           confidence: handResult.confidence || 0,
           hands_detected: (handResult.canvas_landmarks || handResult.landmarks || []).length,
-          // QR detection data merged in
-          qr_detections: qrResult.success ? (qrResult.canvas_qr_detections || []) : []
+          // QR detection data from packing area
+          qr_detections: qrResult.success ? (qrResult.canvas_qr_detections || []) : [],
+          // Trigger data for QR method only
+          trigger_detected: triggerResult?.trigger_detected || false,
+          trigger_text: triggerResult?.trigger_text || null,
+          trigger_roi: packingMethod === 'qr' ? triggerROI : null
         };
 
-        console.log('Dual Detection Result:', {
+        console.log('Detection Result:', {
+          method: packingMethod,
           timestamp: currentTime,
           hands_detected: mergedLandmarks.hands_detected,
           qr_detections: mergedLandmarks.qr_detections.length,
-          hand_confidence: mergedLandmarks.confidence
+          hand_confidence: mergedLandmarks.confidence,
+          trigger_detected: mergedLandmarks.trigger_detected,
+          trigger_text: mergedLandmarks.trigger_text
         });
 
         setHandLandmarks(mergedLandmarks);
       } else {
-        // Hand detection failed - still show QR if available
-        if (qrResult.success && qrResult.canvas_qr_detections && qrResult.canvas_qr_detections.length > 0) {
-          setHandLandmarks({
-            landmarks: [],
-            confidence: 0,
-            hands_detected: 0,
-            qr_detections: qrResult.canvas_qr_detections
-          });
+        // Hand detection failed - still show QR and trigger if available
+        const fallbackLandmarks = {
+          landmarks: [],
+          confidence: 0,
+          hands_detected: 0,
+          qr_detections: qrResult.success ? (qrResult.canvas_qr_detections || []) : [],
+          trigger_detected: triggerResult?.trigger_detected || false,
+          trigger_text: triggerResult?.trigger_text || null,
+          trigger_roi: packingMethod === 'qr' ? triggerROI : null
+        };
+
+        if (fallbackLandmarks.qr_detections.length > 0 || fallbackLandmarks.trigger_detected) {
+          setHandLandmarks(fallbackLandmarks);
         } else {
           setHandLandmarks(null);
         }
@@ -776,7 +958,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       }
       setHandLandmarks(null);
     }
-  }, [videoMetadata, rois, packingMethod, isVideoPlaying, preprocessingState.cacheKey, preprocessingState.completed, qrPreprocessingState.cacheKey, qrPreprocessingState.completed, canvasDimensions]);
+  }, [videoMetadata, rois, packingMethod, isVideoPlaying, preprocessingState.cacheKey, preprocessingState.completed, qrPreprocessingState.cacheKey, qrPreprocessingState.completed, canvasDimensions, isWaitingForAnalysis]);
 
   // Handle video play/pause state changes
   const handleVideoPlayStateChange = useCallback((isPlaying: boolean) => {
@@ -835,11 +1017,14 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     }, 2000); // Poll every 2 seconds
   }, []);
 
-  // Start pre-processing when ROI is created
+  // Start hand preprocessing for both Traditional and QR methods
   const startPreprocessing = useCallback(async () => {
-    if (!videoMetadata || rois.length === 0 || packingMethod !== 'traditional') {
+    if (!videoMetadata || rois.length === 0) {
       return;
     }
+
+    // Both methods need hand preprocessing on packing_area
+    console.log(`Starting hand preprocessing for ${packingMethod} method`);
 
     const packingROI = rois.find(roi => roi.type === 'packing_area');
     if (!packingROI) {
@@ -916,7 +1101,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       
       // Processing error - shown in sidebar Messages section
     }
-  }, [videoMetadata, rois, packingMethod, videoPath, toast, pollPreprocessingProgress, canvasDimensions]);
+  }, [videoMetadata, rois, packingMethod, videoPath, pollPreprocessingProgress, canvasDimensions]);
 
   // Use ref to store preprocessing function to avoid circular dependency
   const startPreprocessingRef = useRef<(() => Promise<void>) | null>(null);
@@ -974,15 +1159,23 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     }, 2000); // Poll every 2 seconds
   }, []);
 
-  // Start QR preprocessing parallel to hand preprocessing
+  // Start QR preprocessing for both Traditional and QR methods
   const startQRPreprocessing = useCallback(async () => {
-    if (!videoMetadata || rois.length === 0 || packingMethod !== 'traditional') {
+    if (!videoMetadata || rois.length === 0) {
       return;
     }
 
     const packingROI = rois.find(roi => roi.type === 'packing_area');
     if (!packingROI) {
       return;
+    }
+
+    // For QR method, also check trigger ROI
+    if (packingMethod === 'qr') {
+      const triggerROI = rois.find(roi => roi.type === 'qr_trigger');
+      if (!triggerROI) {
+        return;
+      }
     }
 
     try {
@@ -1055,16 +1248,33 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
 
   // Modified startPreprocessing to trigger both hand and QR preprocessing
   const startBothPreprocessing = useCallback(async () => {
-    if (!videoMetadata || rois.length === 0 || packingMethod !== 'traditional') {
+    if (!videoMetadata || rois.length === 0) {
       return;
     }
 
-    console.log('Starting dual preprocessing: Hand + QR detection');
+    // Validate required ROIs based on method
+    const packingROI = rois.find(roi => roi.type === 'packing_area');
+    if (!packingROI) {
+      return;
+    }
+
+    if (packingMethod === 'qr') {
+      const triggerROI = rois.find(roi => roi.type === 'qr_trigger');
+      if (!triggerROI) {
+        return;
+      }
+    }
+
+    console.log(`Starting dual preprocessing for ${packingMethod} method: Hand + QR detection`);
+    
+    // Reset waiting state when starting new preprocessing
+    setIsWaitingForAnalysis(false);
+    setHandLandmarks(null);
     
     // Start both preprocessing processes in parallel
     await Promise.all([
-      startPreprocessing(),      // Existing hand preprocessing
-      startQRPreprocessing()     // New QR preprocessing
+      startPreprocessing(),      // Hand preprocessing on packing area
+      startQRPreprocessing()     // QR preprocessing on packing area (+ trigger area for QR method)
     ]);
   }, [startPreprocessing, startQRPreprocessing, videoMetadata, rois, packingMethod]);
 
@@ -1410,7 +1620,19 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                         </Box>
                       )}
 
-                      {preprocessingState.completed && !isVideoPlaying && (
+                      {/* Waiting for analysis message */}
+                      {isWaitingForAnalysis && (
+                        <Box p="8px" bg="orange.100" borderRadius="6px" mb="8px">
+                          <Text fontSize="xs" fontWeight="medium" color="orange.700" mb="2px">
+                            ⏳ Đang phân tích...
+                          </Text>
+                          <Text fontSize="2xs" color="orange.600">
+                            Video tạm dừng, chờ phân tích hoàn tất
+                          </Text>
+                        </Box>
+                      )}
+
+                      {preprocessingState.completed && !isVideoPlaying && !isWaitingForAnalysis && (
                         <Box p="8px" bg="green.100" borderRadius="6px" mb="8px">
                           <Text fontSize="xs" fontWeight="medium" color="green.700" mb="2px">
                             ✅ Analysis Ready

@@ -369,15 +369,15 @@ def save_roi_configuration():
             conn = get_db_connection()
             cursor = conn.cursor()
             
-            # Separate different ROI types
-            packing_area_roi = None
-            qr_trigger_roi = None
+            # Separate different ROI types for QR method
+            packing_area_roi = None  # Traditional: packing area, QR: movement detection area (qr_mvd_area)
+            qr_trigger_roi = None    # QR method only: small trigger area for QR detection
             
             for roi in roi_validation['validated_rois']:
                 if roi['type'] == 'packing_area':
-                    packing_area_roi = roi
+                    packing_area_roi = roi  # This will be saved to packing_area column
                 elif roi['type'] == 'qr_trigger':
-                    qr_trigger_roi = roi
+                    qr_trigger_roi = roi   # This will be saved to qr_trigger_area column
             
             # Create profile name based on camera and timestamp
             profile_name = f"{camera_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -398,6 +398,9 @@ def save_roi_configuration():
             
             if existing:
                 # Update existing profile
+                # packing_area column: stores movement detection area (qr_mvd_area for QR method)
+                # qr_trigger_area column: stores QR trigger area (QR method only)
+                # qr_mvd_area column: duplicate of packing_area for compatibility
                 cursor.execute("""
                     UPDATE packing_profiles 
                     SET packing_area = ?,
@@ -407,10 +410,13 @@ def save_roi_configuration():
                         additional_params = ?
                     WHERE id = ?
                 """, (
+                    # packing_area column: movement detection area (both Traditional and QR methods)
                     json.dumps([packing_area_roi["x"], packing_area_roi["y"], 
                               packing_area_roi["w"], packing_area_roi["h"]]) if packing_area_roi else None,
+                    # qr_trigger_area column: QR trigger area (QR method only)
                     json.dumps([qr_trigger_roi["x"], qr_trigger_roi["y"], 
                               qr_trigger_roi["w"], qr_trigger_roi["h"]]) if qr_trigger_roi else None,
+                    # qr_mvd_area column: same as packing_area for compatibility
                     json.dumps([packing_area_roi["x"], packing_area_roi["y"], 
                               packing_area_roi["w"], packing_area_roi["h"]]) if packing_area_roi else None,
                     0.5,  # Default jump_time_ratio
@@ -420,6 +426,9 @@ def save_roi_configuration():
                 logger.info(f"Updated packing profile for camera {camera_id}")
             else:
                 # Insert new profile
+                # packing_area column: stores movement detection area (qr_mvd_area for QR method)
+                # qr_trigger_area column: stores QR trigger area (QR method only)
+                # qr_mvd_area column: duplicate of packing_area for compatibility
                 cursor.execute("""
                     INSERT INTO packing_profiles 
                     (profile_name, packing_area, qr_trigger_area, qr_mvd_area, min_packing_time, 
@@ -427,10 +436,13 @@ def save_roi_configuration():
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     profile_name,
+                    # packing_area column: movement detection area (both Traditional and QR methods)
                     json.dumps([packing_area_roi["x"], packing_area_roi["y"], 
                               packing_area_roi["w"], packing_area_roi["h"]]) if packing_area_roi else None,
+                    # qr_trigger_area column: QR trigger area (QR method only)
                     json.dumps([qr_trigger_roi["x"], qr_trigger_roi["y"], 
                               qr_trigger_roi["w"], qr_trigger_roi["h"]]) if qr_trigger_roi else None,
+                    # qr_mvd_area column: same as packing_area for compatibility
                     json.dumps([packing_area_roi["x"], packing_area_roi["y"], 
                               packing_area_roi["w"], packing_area_roi["h"]]) if packing_area_roi else None,
                     5,  # Default min_packing_time
