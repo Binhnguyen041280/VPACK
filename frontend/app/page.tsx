@@ -194,7 +194,7 @@ export default function Chat(props: { apiKeyApp: string }) {
   const { currentColors } = useColorTheme();
   const { toggleSidebar } = useContext(SidebarContext);
   const { userInfo, updateUserInfo, refreshUserInfo } = useUser();
-  const { setCompanyName: setRouteCompanyName, startAnimation, stopAnimation } = useRoute();
+  const { setCompanyName: setRouteCompanyName, startAnimation, stopAnimation, setCurrentRoute } = useRoute();
 
   // Auto-scroll to bottom when new message
   useEffect(() => {
@@ -872,6 +872,7 @@ export default function Chat(props: { apiKeyApp: string }) {
           
           // Trigger 3-panel layout immediately after OAuth
           setShowConfigLayout(true);
+          setCurrentRoute('/camera-config'); // Set active route to Camera Config in sidebar
           
           // Start company name blinking animation
           startAnimation();
@@ -973,6 +974,7 @@ export default function Chat(props: { apiKeyApp: string }) {
                     
                     // Trigger 3-panel layout immediately after OAuth
                     setShowConfigLayout(true);
+                    setCurrentRoute('/camera-config'); // Set active route to Camera Config in sidebar
                     
                     // Start company name blinking animation
                     startAnimation();
@@ -1525,12 +1527,17 @@ export default function Chat(props: { apiKeyApp: string }) {
         
         // Update step completion - FINAL STEP!
         setStepCompleted(prev => ({ ...prev, timing: true }));
+        
+        // Redirect to Trace page sau khi hoàn thành configuration
+        setTimeout(() => {
+          window.location.href = '/trace';
+        }, 1500);
 
         // Show different message based on whether data was changed
         if (result.data.changed) {
-          return `✅ Timing & Storage configuration updated successfully!\n\n🎉 All Configuration Completed!\n\nAll 5 steps have been completed with your settings:\n• Step 1: Brand name configured\n• Step 2: Location & time setup\n• Step 3: Video source selected\n• Step 4: Packing area defined\n• Step 5: Timing & storage configured\n\n🚀 Your V.PACK system is ready to start processing videos!`;
+          return `✅ Configuration completed successfully!\n\n🎉 Your V.PACK system is now ready.\n\nRedirecting to Trace module for video processing and monitoring...`;
         } else {
-          return `✅ Timing & Storage configuration confirmed (no changes)\n\n🎉 All Configuration Completed!\n\nAll 5 steps have been completed with your settings:\n• Step 1: Brand name configured\n• Step 2: Location & time setup\n• Step 3: Video source selected\n• Step 4: Packing area defined\n• Step 5: Timing & storage configured\n\n🚀 Your V.PACK system is ready to start processing videos!`;
+          return `✅ Configuration completed successfully!\n\n🎉 Your V.PACK system is now ready.\n\nRedirecting to Trace module for video processing and monitoring...`;
         }
       } else {
         // Hide loading state on error

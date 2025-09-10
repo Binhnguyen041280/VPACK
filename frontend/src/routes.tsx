@@ -31,14 +31,14 @@ const routes: IRoute[] = [
   },
   {
     name: 'Trace',
-    disabled: true,
+    disabled: false,
     path: '/trace',
     icon: <Icon as={MdTimeline} width="20px" height="20px" color="inherit" />,
     collapse: false,
   },
   {
     name: 'Camera Config',
-    disabled: true,
+    disabled: false,
     path: '/camera-config',
     icon: <Icon as={MdVideocam} width="20px" height="20px" color="inherit" />,
     collapse: false,

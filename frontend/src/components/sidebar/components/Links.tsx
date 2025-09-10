@@ -37,7 +37,7 @@ export function SidebarLinks(props: SidebarLinksProps) {
   //   Chakra color mode
   const pathname = usePathname();
   const { currentColors } = useColorTheme();
-  const { companyName, isAnimating } = useRoute();
+  const { companyName, isAnimating, currentRoute } = useRoute();
   
   // Animation class for company name
   const getAnimationProps = (isCompanyRoute: boolean) => {
@@ -67,12 +67,19 @@ export function SidebarLinks(props: SidebarLinksProps) {
 
   const { routes, collapsed = false } = props;
 
-  // verifies if routeName is the one active (in browser input)
+  // verifies if routeName is the one active (in browser input or override)
   const activeRoute = useCallback(
     (routeName: string) => {
+      // If currentRoute is set, use it for active detection
+      if (currentRoute) {
+        console.log('🔍 ActiveRoute check:', { routeName, currentRoute, result: currentRoute.includes(routeName) });
+        return currentRoute.includes(routeName);
+      }
+      // Otherwise use pathname as before
+      console.log('🔍 ActiveRoute check (pathname):', { routeName, pathname, result: pathname?.includes(routeName) });
       return pathname?.includes(routeName);
     },
-    [pathname],
+    [pathname, currentRoute],
   );
 
   // this function creates the links and collapses that appear in the sidebar (left menu)
@@ -214,13 +221,16 @@ export function SidebarLinks(props: SidebarLinksProps) {
                   )}
                   justifyContent={collapsed ? "center" : "flex-start"}
                 >
-                  {route.name === 'Alan_Go' ? (
+                  {(route.name === 'Alan_Go' || !route.disabled) ? (
                     <NavLink
                       href={
                         route.layout ? route.layout + route.path : route.path
                       }
                       key={key}
-                      styles={{ width: collapsed ? 'auto' : '100%' }}
+                      styles={{ 
+                        width: collapsed ? 'auto' : '100%',
+                        cursor: 'pointer'
+                      }}
                     >
                       <Flex
                         w={collapsed ? "auto" : "100%"}
@@ -229,9 +239,7 @@ export function SidebarLinks(props: SidebarLinksProps) {
                       >
                         <Box
                           color={
-                            route.disabled
-                              ? gray
-                              : activeRoute(route.path.toLowerCase())
+                            activeRoute(route.path.toLowerCase())
                               ? activeIcon
                               : inactiveColor
                           }
@@ -248,9 +256,7 @@ export function SidebarLinks(props: SidebarLinksProps) {
                           <Text
                             me="auto"
                             color={
-                              route.disabled
-                                ? gray
-                                : activeRoute(route.path.toLowerCase())
+                              activeRoute(route.path.toLowerCase())
                                 ? activeColor
                                 : 'gray.500'
                             }
