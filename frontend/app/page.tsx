@@ -22,7 +22,7 @@ import {
   useColorModeValue,
 } from '@chakra-ui/react';
 import { useEffect, useState, useContext, useRef } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { MdAutoAwesome, MdEdit, MdPerson, MdAdd, MdAttachFile, MdImage, MdVideoFile } from 'react-icons/md';
 import Bg from '../public/img/chat/bg-image.png';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
@@ -59,6 +59,7 @@ const STEP_KEY_TO_NUMBER: { [key: string]: number } = {
 
 export default function Chat(props: { apiKeyApp: string }) {
   const searchParams = useSearchParams();
+  const router = useRouter();
   
   // Input States
   const [inputCode, setInputCode] = useState<string>('');
@@ -73,6 +74,8 @@ export default function Chat(props: { apiKeyApp: string }) {
   const [authenticatedUser, setAuthenticatedUser] = useState<string>('');
   // Auto-authentication state
   const [authLoading, setAuthLoading] = useState<boolean>(true); // Start with true to check on mount
+  // Config check state to prevent UI flash
+  const [isCheckingConfig, setIsCheckingConfig] = useState<boolean>(true);
   // Configuration state - Updated for 5-step workflow
   const [configStep, setConfigStep] = useState<'brandname' | 'location_time' | 'video_source' | 'packing_area' | 'timing'>('brandname');
   const [companyName, setCompanyName] = useState<string>('');
@@ -173,6 +176,14 @@ export default function Chat(props: { apiKeyApp: string }) {
   const loadingBg = useColorModeValue('gray.50', 'whiteAlpha.100');
   const loadingTextColor = useColorModeValue('navy.700', 'white');
   const mainBg = useColorModeValue('white', 'navy.900');
+  // Menu colors to prevent hooks order violation
+  const menuHoverBg = useColorModeValue('gray.50', 'whiteAlpha.100');
+  const menuBoxShadow = useColorModeValue(
+    '14px 17px 40px 4px rgba(112, 144, 176, 0.18)',
+    '0px 41px 75px #081132',
+  );
+  const menuBg = useColorModeValue('white', 'navy.800');
+  const menuItemHoverBg = useColorModeValue('gray.100', 'whiteAlpha.100');
   // Submit button text
   const getSubmitButtonText = (): string => {
     if (inputCode.trim() === '') {
@@ -287,6 +298,32 @@ export default function Chat(props: { apiKeyApp: string }) {
   useEffect(() => {
     checkExistingGmailAuth();
   }, []);
+
+  // Check if user has completed configuration and redirect to trace page
+  useEffect(() => {
+    // Only check after component has mounted (client-side only)
+    if (typeof window !== 'undefined') {
+      const userConfigured = localStorage.getItem('userConfigured');
+      const configParam = searchParams.get('config');
+      
+      // Skip redirect if user intentionally navigated to Camera Config
+      if (configParam === 'camera') {
+        console.log('🎯 User navigated to Camera Config - skipping auto-redirect');
+        setIsCheckingConfig(false); // Allow render
+        return;
+      }
+      
+      // If user has completed configuration, redirect to trace page
+      if (userConfigured === 'true') {
+        console.log('🔄 Redirecting configured user to trace page...');
+        router.push('/trace');
+        return; // Don't set isCheckingConfig to false, we're redirecting
+      }
+      
+      // First-time user or no config - allow normal render
+      setIsCheckingConfig(false);
+    }
+  }, [router, searchParams]);
 
   // Cleanup OAuth on component unmount
   useEffect(() => {
@@ -1665,6 +1702,23 @@ export default function Chat(props: { apiKeyApp: string }) {
     return await handleTimingSubmit();
   };
 
+  // Show loading while checking config to prevent UI flash
+  if (isCheckingConfig) {
+    return (
+      <Flex
+        w="100%"
+        h="100vh"
+        justify="center"
+        align="center"
+        bg={mainBg}
+      >
+        <Text fontSize="sm" color={textColor}>
+          Loading...
+        </Text>
+      </Flex>
+    );
+  }
+
   return (
     <Flex
       w="100%"
@@ -1879,23 +1933,20 @@ export default function Chat(props: { apiKeyApp: string }) {
                       justifyContent={'center'}
                       alignItems="center"
                       flexShrink={0}
-                      _hover={{ bg: useColorModeValue('gray.50', 'whiteAlpha.100') }}
+                      _hover={{ bg: menuHoverBg }}
                     >
                       <Icon as={MdAdd} width="16px" height="16px" color={chatTextColor} />
                     </MenuButton>
                     <MenuList
-                      boxShadow={useColorModeValue(
-                        '14px 17px 40px 4px rgba(112, 144, 176, 0.18)',
-                        '0px 41px 75px #081132',
-                      )}
+                      boxShadow={menuBoxShadow}
                       p="10px"
                       borderRadius="20px"
-                      bg={useColorModeValue('white', 'navy.800')}
+                      bg={menuBg}
                       border="none"
                     >
                       <MenuItem
                         onClick={handleFileUpload}
-                        _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                        _hover={{ bg: menuItemHoverBg }}
                         borderRadius="8px"
                         p="10px"
                       >
@@ -1904,7 +1955,7 @@ export default function Chat(props: { apiKeyApp: string }) {
                       </MenuItem>
                       <MenuItem
                         onClick={handleImageUpload}
-                        _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                        _hover={{ bg: menuItemHoverBg }}
                         borderRadius="8px"
                         p="10px"
                       >
@@ -1913,7 +1964,7 @@ export default function Chat(props: { apiKeyApp: string }) {
                       </MenuItem>
                       <MenuItem
                         onClick={handleVideoUpload}
-                        _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                        _hover={{ bg: menuItemHoverBg }}
                         borderRadius="8px"
                         p="10px"
                       >
@@ -2278,23 +2329,20 @@ export default function Chat(props: { apiKeyApp: string }) {
                   justifyContent={'center'}
                   alignItems="center"
                   flexShrink={0}
-                  _hover={{ bg: useColorModeValue('gray.50', 'whiteAlpha.100') }}
+                  _hover={{ bg: menuHoverBg }}
                 >
                   <Icon as={MdAdd} width="16px" height="16px" color={chatTextColor} />
                 </MenuButton>
                 <MenuList
-                  boxShadow={useColorModeValue(
-                    '14px 17px 40px 4px rgba(112, 144, 176, 0.18)',
-                    '0px 41px 75px #081132',
-                  )}
+                  boxShadow={menuBoxShadow}
                   p="10px"
                   borderRadius="20px"
-                  bg={useColorModeValue('white', 'navy.800')}
+                  bg={menuBg}
                   border="none"
                 >
                   <MenuItem
                     onClick={handleFileUpload}
-                    _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                    _hover={{ bg: menuItemHoverBg }}
                     borderRadius="8px"
                     p="10px"
                   >
@@ -2303,7 +2351,7 @@ export default function Chat(props: { apiKeyApp: string }) {
                   </MenuItem>
                   <MenuItem
                     onClick={handleImageUpload}
-                    _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                    _hover={{ bg: menuItemHoverBg }}
                     borderRadius="8px"
                     p="10px"
                   >
@@ -2312,7 +2360,7 @@ export default function Chat(props: { apiKeyApp: string }) {
                   </MenuItem>
                   <MenuItem
                     onClick={handleVideoUpload}
-                    _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                    _hover={{ bg: menuItemHoverBg }}
                     borderRadius="8px"
                     p="10px"
                   >
