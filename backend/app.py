@@ -375,6 +375,78 @@ def get_latest_user_wrapper():
     
     return cross_origin(origins=['http://localhost:3000'], supports_credentials=True)(get_latest_user)()
 
+# User logout API endpoint
+@app.route('/api/user/logout', methods=['POST', 'OPTIONS'])
+def logout_user():
+    """Logout user - clear session and authentication data"""
+    from flask import session, request
+    from flask_cors import cross_origin
+    
+    try:
+        # Clear Flask session if exists
+        if 'user_id' in session:
+            session.pop('user_id', None)
+        if 'user_email' in session:
+            session.pop('user_email', None)
+        if 'authenticated' in session:
+            session.pop('authenticated', None)
+            
+        # Clear all session data
+        session.clear()
+        
+        # Clear user profile from database to prevent auto-authentication
+        try:
+            from modules.db_utils.safe_connection import safe_db_connection
+            
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Get the latest user before deleting
+                cursor.execute("""
+                    SELECT gmail_address FROM user_profiles 
+                    ORDER BY last_login DESC 
+                    LIMIT 1
+                """)
+                
+                row = cursor.fetchone()
+                if row:
+                    user_email = row[0]
+                    
+                    # Delete user profile to ensure complete logout
+                    cursor.execute("DELETE FROM user_profiles WHERE gmail_address = ?", (user_email,))
+                    
+                    # Also clear any OAuth credentials/tokens if stored
+                    # cursor.execute("DELETE FROM oauth_tokens WHERE user_email = ?", (user_email,))
+                    
+                    logger.info(f"🗑️ User profile deleted for complete logout: {user_email}")
+                else:
+                    logger.info("ℹ️ No user profile found to delete")
+                    
+        except Exception as db_error:
+            logger.error(f"❌ Database cleanup error during logout: {db_error}")
+            # Continue with logout even if DB cleanup fails
+        
+        logger.info("✅ Complete user logout successful")
+        
+        return cross_origin(
+            origins=['http://localhost:3000', 'http://localhost:3003'], 
+            supports_credentials=True
+        )(lambda: {
+            'success': True,
+            'message': 'Logged out successfully - user profile cleared'
+        })()
+        
+    except Exception as e:
+        logger.error(f"❌ Logout error: {e}")
+        return cross_origin(
+            origins=['http://localhost:3000', 'http://localhost:3003'], 
+            supports_credentials=True
+        )(lambda: {
+            'success': False,
+            'message': 'Logout failed',
+            'error': str(e)
+        })()
+
 # Static file serving for cached avatars
 @app.route('/static/avatars/<filename>')
 def serve_cached_avatar(filename):

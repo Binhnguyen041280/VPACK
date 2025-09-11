@@ -41,7 +41,7 @@ interface SidebarContent extends PropsWithChildren {
 function SidebarContent(props: SidebarContent) {
   const { routes, collapsed = false, onToggle } = props;
   const { currentColors } = useColorTheme();
-  const { userInfo, refreshUserInfo } = useUser();
+  const { userInfo, refreshUserInfo, logout } = useUser();
   
   // UserContext will handle refreshing user info on mount
   // No additional refresh needed here
@@ -177,20 +177,26 @@ function SidebarContent(props: SidebarContent) {
               bg={bgColor}
             >
               <Box mb="30px">
-                <Flex align="center" w="100%" cursor={'not-allowed'}>
+                <Flex 
+                  align="center" 
+                  w="100%" 
+                  cursor={userInfo.authenticated ? 'pointer' : 'not-allowed'}
+                  _hover={userInfo.authenticated ? { opacity: 0.8 } : {}}
+                  transition="opacity 0.2s"
+                >
                   <Icon
                     as={MdOutlineManageAccounts}
                     width="24px"
                     height="24px"
-                    color={gray}
+                    color={userInfo.authenticated ? textColor : gray}
                     me="12px"
-                    opacity={'0.4'}
+                    opacity={userInfo.authenticated ? '1' : '0.4'}
                   />
                   <Text
-                    color={gray}
+                    color={userInfo.authenticated ? textColor : gray}
                     fontWeight="500"
                     fontSize="sm"
-                    opacity={'0.4'}
+                    opacity={userInfo.authenticated ? '1' : '0.4'}
                   >
                     Profile Settings
                   </Text>
@@ -227,16 +233,27 @@ function SidebarContent(props: SidebarContent) {
                 </Flex>
               </Box>
               <Box>
-                <Flex cursor={'not-allowed'} align="center">
+                <Flex 
+                  cursor={userInfo.authenticated ? 'pointer' : 'not-allowed'} 
+                  align="center" 
+                  onClick={userInfo.authenticated ? logout : undefined}
+                  _hover={userInfo.authenticated ? { opacity: 0.8 } : {}}
+                  transition="opacity 0.2s"
+                >
                   <Icon
                     as={FiLogOut}
                     width="24px"
                     height="24px"
-                    color={gray}
-                    opacity="0.4"
+                    color={userInfo.authenticated ? textColor : gray}
+                    opacity={userInfo.authenticated ? "1" : "0.4"}
                     me="12px"
                   />
-                  <Text color={gray} fontWeight="500" fontSize="sm" opacity="0.4">
+                  <Text 
+                    color={userInfo.authenticated ? textColor : gray} 
+                    fontWeight="500" 
+                    fontSize="sm" 
+                    opacity={userInfo.authenticated ? "1" : "0.4"}
+                  >
                     Logout
                   </Text>
                 </Flex>

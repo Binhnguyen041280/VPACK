@@ -12,6 +12,7 @@ interface UserContextType {
   userInfo: UserInfo;
   updateUserInfo: (info: Partial<UserInfo>) => void;
   refreshUserInfo: () => Promise<void>;
+  logout: () => void;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -89,6 +90,58 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     }
   };
 
+  const logout = async () => {
+    console.log('🚪 Starting logout process...');
+    
+    try {
+      // Call backend logout API to clear session
+      console.log('📡 Calling backend logout API...');
+      const response = await fetch('http://localhost:8080/api/user/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      const result = await response.json();
+      if (result.success) {
+        console.log('✅ Backend logout successful');
+      } else {
+        console.warn('⚠️ Backend logout failed:', result.message);
+      }
+    } catch (error) {
+      console.error('❌ Backend logout error:', error);
+      // Continue with frontend cleanup even if backend fails
+    }
+    
+    // Clear localStorage (except user preferences like colorTheme)
+    if (typeof window !== 'undefined') {
+      console.log('🧹 Clearing localStorage...');
+      localStorage.removeItem('userConfigured');
+      localStorage.removeItem('hasSeenWelcome');
+      // Keep colorTheme as user preference should persist
+    }
+    
+    // Reset frontend user state to guest
+    console.log('🔄 Resetting user state to guest...');
+    setUserInfo({
+      name: 'Guest',
+      avatar: '/img/avatars/avatar4.png',
+      email: '',
+      authenticated: false
+    });
+    
+    console.log('✅ Complete logout successful');
+    
+    // Redirect to home page with a small delay to ensure state is updated
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 100);
+    }
+  };
+
   // Auto-fetch on mount to check for existing user data
   useEffect(() => {
     console.log('🚀 UserProvider mounted - checking for existing user data');
@@ -96,7 +149,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   }, []);
 
   return (
-    <UserContext.Provider value={{ userInfo, updateUserInfo, refreshUserInfo }}>
+    <UserContext.Provider value={{ userInfo, updateUserInfo, refreshUserInfo, logout }}>
       {children}
     </UserContext.Provider>
   );
