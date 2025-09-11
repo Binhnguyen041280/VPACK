@@ -137,13 +137,13 @@ export default function Chat(props: { apiKeyApp: string }) {
     },
     timingStorageLoading: false
   });
-  // Step completion tracking for 5 steps - All start as completed with defaults
+  // Step completion tracking for 5 steps - Start as incomplete, mark completed when user interacts
   const [stepCompleted, setStepCompleted] = useState<{[key: string]: boolean}>({
-    brandname: true,   // Default: "Alan_go"
-    location_time: true,   // Default: Auto-detected timezone/schedule
-    video_source: true,   // Default: Camera settings
-    packing_area: true,   // Default: Detection zones
-    timing: true   // Default: Performance & file storage settings
+    brandname: false,   // Will be marked true when user completes step 1
+    location_time: false,   // Will be marked true when user completes step 2
+    video_source: false,   // Will be marked true when user completes step 3
+    packing_area: false,   // Will be marked true when user completes step 4
+    timing: false   // Will be marked true when user completes step 5
   });
   // Track highest step reached for progress display
   const [highestStepReached, setHighestStepReached] = useState<number>(1);
@@ -379,24 +379,34 @@ export default function Chat(props: { apiKeyApp: string }) {
   const handleSubmitCommand = (): string => {
     switch (configStep) {
       case 'brandname':
+        // Mark step as completed for navigation sync
+        setStepCompleted(prev => ({ ...prev, brandname: true }));
         // For Step 1, always use async API call - return flag to trigger async handling
         return 'ASYNC_SUBMIT_BRANDNAME_DEFAULT';
       
       case 'location_time':
+        // Mark step as completed for navigation sync
+        setStepCompleted(prev => ({ ...prev, location_time: true }));
         // For Step 2, always use async API call - return flag to trigger async handling
         return 'ASYNC_SUBMIT_LOCATION_TIME_DEFAULT';
       
       case 'video_source':
+        // Mark step as completed for navigation sync (same as other steps)
+        setStepCompleted(prev => ({ ...prev, video_source: true }));
         // For Step 3, always use async API call - return flag to trigger async handling
         return 'ASYNC_SUBMIT_VIDEO_SOURCE_DEFAULT';
       
       case 'packing_area':
+        // Mark step as completed for navigation sync
+        setStepCompleted(prev => ({ ...prev, packing_area: true }));
         // Auto-advance to next step
         setConfigStep('timing');
         setHighestStepReached(prev => Math.max(prev, 5));
         return '⏱️ Step 5: Timing & File Storage\n\nFinal step! Configure timing settings and file storage.\n\nSet up buffer times, packing time limits, storage paths, and retention policies.\n\n🚀 Timing and storage settings are ready for configuration.';
       
       case 'timing':
+        // Mark step as completed for navigation sync
+        setStepCompleted(prev => ({ ...prev, timing: true }));
         // For Step 5, always use async API call - return flag to trigger async handling
         return 'ASYNC_SUBMIT_TIMING_DEFAULT';
       
@@ -1151,6 +1161,15 @@ export default function Chat(props: { apiKeyApp: string }) {
 
   // Step Navigator click handler
   const handleStepClick = (stepKey: string) => {
+    // If user is moving back to a step they've already reached, mark current step as completed
+    const currentStepNumber = STEP_KEY_TO_NUMBER[configStep];
+    const targetStepNumber = STEP_KEY_TO_NUMBER[stepKey as keyof typeof STEP_KEY_TO_NUMBER];
+    
+    // Mark current step as completed if user has interacted with it and is moving to another step
+    if (currentStepNumber <= highestStepReached && currentStepNumber < targetStepNumber) {
+      setStepCompleted(prev => ({ ...prev, [configStep]: true }));
+    }
+    
     setConfigStep(stepKey as any);
   };
 
