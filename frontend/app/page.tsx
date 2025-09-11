@@ -68,6 +68,8 @@ export default function Chat(props: { apiKeyApp: string }) {
   const [gmailError, setGmailError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [authenticatedUser, setAuthenticatedUser] = useState<string>('');
+  // Auto-authentication state
+  const [authLoading, setAuthLoading] = useState<boolean>(true); // Start with true to check on mount
   // Configuration state - Updated for 5-step workflow
   const [configStep, setConfigStep] = useState<'brandname' | 'location_time' | 'video_source' | 'packing_area' | 'timing'>('brandname');
   const [companyName, setCompanyName] = useState<string>('');
@@ -203,7 +205,85 @@ export default function Chat(props: { apiKeyApp: string }) {
     }
   }, [messages, loading]);
 
-  // Remove auto-authentication check for clean first-time experience
+  // Auto-check existing Gmail authentication on page load
+  const checkExistingGmailAuth = async () => {
+    try {
+      console.log('🔍 Checking existing Gmail authentication...');
+      setAuthLoading(true);
+      
+      const response = await fetch('http://localhost:8080/api/cloud/gmail-auth-status', {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('📡 Gmail auth status result:', result);
+        
+        if (result.success && result.authenticated) {
+          console.log('✅ Existing Gmail authentication found for:', result.user_email);
+          
+          // Set authentication state
+          setIsAuthenticated(true);
+          setAuthenticatedUser(result.user_email);
+          
+          // Update user context immediately
+          updateUserInfo({
+            name: result.user_info?.name || result.user_email.split('@')[0],
+            email: result.user_email,
+            avatar: result.user_info?.photo_url || '/img/avatars/avatar4.png',
+            authenticated: true
+          });
+          
+          // Add welcome back message
+          const welcomeBackMessage: Message = {
+            id: Date.now().toString(),
+            content: `🎉 Welcome back, ${result.user_info?.name || result.user_email}! Your Gmail authentication is still active.`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          
+          const configMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `⚙️ Continuing with your configuration setup...`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          
+          setMessages([welcomeBackMessage, configMessage]);
+          
+          // IMMEDIATE transition to configuration layout
+          setShowConfigLayout(true);
+          setCurrentRoute('/camera-config'); // Set active route to Camera Config in sidebar
+          
+          // Start company name blinking animation
+          startAnimation();
+          
+          console.log('🚀 Auto-triggered configuration layout for returning user');
+          
+        } else {
+          console.log('📭 No existing Gmail authentication found');
+          // User needs to authenticate - stay in welcome mode
+        }
+      } else {
+        console.log('❌ Failed to check Gmail auth status:', response.status);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error checking existing Gmail auth:', error);
+      // Fallback to normal flow if auto-check fails
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Auto-check authentication on component mount
+  useEffect(() => {
+    checkExistingGmailAuth();
+  }, []);
 
   // Cleanup OAuth on component unmount
   useEffect(() => {
@@ -1941,8 +2021,43 @@ export default function Chat(props: { apiKeyApp: string }) {
               {/* Welcome Message */}
               <WelcomeMessage />
               
-              {/* Gmail Sign Up Button - Only show if not authenticated */}
-              {!isAuthenticated && (
+              {/* Auth Loading Indicator */}
+              {authLoading && (
+                <Flex w="100%" mb="24px" align="flex-start">
+                  <Flex
+                    borderRadius="full"
+                    justify="center"
+                    align="center"
+                    bg={currentColors.gradient}
+                    me="12px"
+                    h="32px"
+                    minH="32px"
+                    minW="32px"
+                    flexShrink={0}
+                  >
+                    <Icon
+                      as={MdAutoAwesome}
+                      width="16px"
+                      height="16px"
+                      color="white"
+                    />
+                  </Flex>
+                  <Flex
+                    bg={loadingBubbleBg}
+                    borderRadius="16px"
+                    px="16px"
+                    py="12px"
+                    align="center"
+                  >
+                    <Text fontSize="sm" color={textColor}>
+                      Checking existing authentication...
+                    </Text>
+                  </Flex>
+                </Flex>
+              )}
+
+              {/* Gmail Sign Up Button - Only show if not authenticated and not loading */}
+              {!isAuthenticated && !authLoading && (
                 <Flex w="100%" mb="24px" align="flex-start">
                   <Flex
                     borderRadius="full"

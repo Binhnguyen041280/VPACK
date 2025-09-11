@@ -221,7 +221,7 @@ export function SidebarLinks(props: SidebarLinksProps) {
                   )}
                   justifyContent={collapsed ? "center" : "flex-start"}
                 >
-                  {(route.name === 'Alan_Go' || !route.disabled) ? (
+                  {(route.name !== 'Alan_Go' && !route.disabled) ? (
                     <NavLink
                       href={
                         route.layout ? route.layout + route.path : route.path

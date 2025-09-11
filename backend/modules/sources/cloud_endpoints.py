@@ -634,66 +634,58 @@ def _create_gmail_error_page(error, details=None):
 @cloud_bp.route('/gmail-auth-status', methods=['GET', 'OPTIONS'])
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def gmail_auth_status():
-    """Check Gmail-only authentication status"""
+    """Simplified check: does user exist in database?"""
     try:
-        logger.info("🔍 Checking Gmail authentication status...")
+        logger.info("🔍 Checking user profile existence...")
         
-        # Check session for Gmail authentication
-        gmail_authenticated = session.get('gmail_authenticated', False)
-        gmail_user_email = session.get('gmail_user_email')
-        gmail_session_token = session.get('gmail_session_token')
-        gmail_user_info = session.get('gmail_user_info', {})
+        # Get latest user from database (reuse existing function from app.py)
+        from modules.db_utils.safe_connection import safe_db_connection
         
-        if gmail_authenticated and gmail_user_email and gmail_session_token:
-            # Verify session token is still valid
-            try:
-                token_payload = verify_session_token(gmail_session_token)
-                if token_payload and token_payload.get('user_email') == gmail_user_email:
-                    return jsonify({
-                        'success': True,
-                        'authenticated': True,
-                        'user_email': gmail_user_email,
-                        'user_info': gmail_user_info,
-                        'authentication_method': 'gmail_only',
-                        'google_drive_connected': False,
-                        'session_token': gmail_session_token,
-                        'message': 'Gmail authentication verified'
-                    }), 200
-                else:
-                    # Token expired, clear session
-                    session.pop('gmail_authenticated', None)
-                    session.pop('gmail_user_email', None)
-                    session.pop('gmail_session_token', None)
-                    session.pop('gmail_user_info', None)
-                    
-                    return jsonify({
-                        'success': False,
-                        'authenticated': False,
-                        'message': 'Gmail session expired',
-                        'requires_reauth': True
-                    }), 200
-            except Exception as token_error:
-                logger.error(f"❌ Gmail token validation error: {token_error}")
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT gmail_address, display_name, photo_url, last_login 
+                FROM user_profiles 
+                ORDER BY last_login DESC 
+                LIMIT 1
+            """)
+            
+            row = cursor.fetchone()
+            
+            if row:
+                gmail_address, display_name, photo_url, last_login = row
+                
+                logger.info(f"✅ User profile found: {gmail_address}")
+                
+                return jsonify({
+                    'success': True,
+                    'authenticated': True,
+                    'user_email': gmail_address,
+                    'user_info': {
+                        'name': display_name,
+                        'email': gmail_address,
+                        'photo_url': photo_url
+                    },
+                    'authentication_method': 'profile_based',
+                    'google_drive_connected': False,
+                    'message': f'User profile found - continuing configuration for {display_name}'
+                }), 200
+            else:
+                logger.info("📭 No user profile found in database")
                 return jsonify({
                     'success': False,
                     'authenticated': False,
-                    'message': 'Gmail token validation failed',
-                    'requires_reauth': True
+                    'message': 'No user profile found - signup required'
                 }), 200
-        else:
-            return jsonify({
-                'success': False,
-                'authenticated': False,
-                'message': 'No Gmail authentication found'
-            }), 200
             
     except Exception as e:
-        logger.error(f"❌ Gmail auth status check error: {e}")
+        logger.error(f"❌ User profile check error: {e}")
         return jsonify({
             'success': False,
             'authenticated': False,
             'error': str(e),
-            'message': 'Gmail auth status check failed'
+            'message': 'User profile check failed'
         }), 500
 
 @cloud_bp.route('/oauth/callback', methods=['GET', 'OPTIONS'])
