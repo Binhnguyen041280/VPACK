@@ -39,7 +39,7 @@ const routes: IRoute[] = [
   {
     name: 'Camera Config',
     disabled: false,
-    path: '/camera-config',
+    path: '/',
     icon: <Icon as={MdVideocam} width="20px" height="20px" color="inherit" />,
     collapse: false,
   },

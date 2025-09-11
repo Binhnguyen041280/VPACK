@@ -22,6 +22,7 @@ import {
   useColorModeValue,
 } from '@chakra-ui/react';
 import { useEffect, useState, useContext, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { MdAutoAwesome, MdEdit, MdPerson, MdAdd, MdAttachFile, MdImage, MdVideoFile } from 'react-icons/md';
 import Bg from '../public/img/chat/bg-image.png';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
@@ -57,6 +58,8 @@ const STEP_KEY_TO_NUMBER: { [key: string]: number } = {
 };
 
 export default function Chat(props: { apiKeyApp: string }) {
+  const searchParams = useSearchParams();
+  
   // Input States
   const [inputCode, setInputCode] = useState<string>('');
   // Messages history
@@ -1188,6 +1191,7 @@ export default function Chat(props: { apiKeyApp: string }) {
           isLoading: false 
         }));
         setCompanyName(result.data.brand_name); // Sync with local state
+        setRouteCompanyName(result.data.brand_name); // Sync with RouteContext for sidebar
       }
     } catch (error) {
       console.error('Error loading brandname:', error);
