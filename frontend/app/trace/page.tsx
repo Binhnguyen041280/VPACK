@@ -5,7 +5,6 @@ import {
   Box,
   Button,
   Flex,
-  HStack,
   Icon,
   Img,
   Input,
@@ -40,14 +39,24 @@ export default function TracePage() {
   const { toggleSidebar } = useContext(SidebarContext);
   const { setCurrentRoute } = useRoute();
   
-  // Color mode values
+  // Color mode values - ALL at top level to prevent hooks order violation
   const textColor = useColorModeValue('navy.700', 'white');
   const mainBg = useColorModeValue('white', 'navy.900');
   const chatBorderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
+  const chatTextColor = useColorModeValue('navy.700', 'white');
   const placeholderColor = useColorModeValue(
     { color: 'gray.500' },
     { color: 'whiteAlpha.600' },
   );
+  const loadingBg = useColorModeValue('gray.50', 'whiteAlpha.100');
+  // Menu colors to prevent hooks order violation
+  const menuHoverBg = useColorModeValue('gray.50', 'whiteAlpha.100');
+  const menuBoxShadow = useColorModeValue(
+    '14px 17px 40px 4px rgba(112, 144, 176, 0.18)',
+    '0px 41px 75px #081132',
+  );
+  const menuBg = useColorModeValue('white', 'navy.800');
+  const menuItemHoverBg = useColorModeValue('gray.100', 'whiteAlpha.100');
 
   // Set active route to Trace when component mounts
   useEffect(() => {
@@ -100,34 +109,29 @@ export default function TracePage() {
       };
       setMessages(prev => [...prev, botMessage]);
       setLoading(false);
-    }, 800);
+    }, 1000);
 
     setInputCode('');
   };
 
   const getTraceResponse = (input: string): string => {
-    const lowerInput = input.toLowerCase().trim();
+    const lowerInput = input.toLowerCase();
     
-    if (lowerInput.includes('upload') || lowerInput.includes('video')) {
-      return '📹 Video Upload\n\nPlease select the video files you want to process. The system will analyze packaging events automatically.\n\nSupported formats: MP4, AVI, MOV\nMax file size: 2GB per file';
+    if (lowerInput.includes('video') || lowerInput.includes('upload')) {
+      return `📹 Video Processing Available:\n\n• Drag and drop your video files\n• Supported formats: MP4, AVI, MOV\n• Real-time processing status\n• Automatic quality detection\n\nReady to process your videos!`;
     }
     
-    if (lowerInput.includes('monitor') || lowerInput.includes('status')) {
-      return '📊 System Status\n\n✅ All systems operational\n📹 Camera feeds: Active\n🔍 Detection engine: Running\n💾 Storage: 85% available\n\nReal-time monitoring is active.';
+    if (lowerInput.includes('monitor') || lowerInput.includes('tracking')) {
+      return `📊 System Monitoring:\n\n• Real-time packaging events\n• Production line status\n• Quality metrics dashboard\n• Alert notifications\n\nMonitoring is active and running smoothly.`;
     }
     
-    if (lowerInput.includes('report') || lowerInput.includes('trace')) {
-      return '📋 Trace Reports\n\nGenerating comprehensive reports for:\n• Packaging event timeline\n• Performance metrics\n• Error logs\n• Processing statistics\n\nWould you like to generate a specific report?';
+    if (lowerInput.includes('report') || lowerInput.includes('analytics')) {
+      return `📈 Trace Reports:\n\n• Daily production summaries\n• Quality analysis reports\n• Performance metrics\n• Export to PDF/Excel\n\nGenerate your custom reports here.`;
     }
     
-    if (lowerInput.includes('help')) {
-      return 'Available commands in Trace module:\n• "upload video" - Process new videos\n• "monitor status" - Check system status\n• "generate report" - Create trace reports\n• "view logs" - Access system logs\n• "help" - Show this help\n\nOr describe what you want to do!';
-    }
-    
-    return `Processing your request: "${input}"\n\nThe Trace module is analyzing your input. This feature will be expanded based on your specific needs.\n\nType "help" for available commands.`;
+    return `✨ V.PACK Trace System:\n\nI can help you with:\n• Video processing and analysis\n• System monitoring and alerts\n• Performance reports and analytics\n• Quality control tracking\n\nWhat specific task would you like to accomplish?`;
   };
 
-  // File upload handlers
   const handleFileUpload = () => {
     console.log('File upload clicked');
   };
@@ -148,7 +152,7 @@ export default function TracePage() {
       overflow="hidden"
       h="100vh"
     >
-      {/* Background Image */}
+      {/* Background Image - same as main page */}
       <Img
         src={Bg.src}
         position={'absolute'}
@@ -158,7 +162,7 @@ export default function TracePage() {
         transform={'translate(-50%, -50%)'}
       />
       
-      {/* Content Area */}
+      {/* Original Single-Panel Layout - Exact copy from main page */}
       <Flex
         direction="column"
         mx="auto"
@@ -167,8 +171,9 @@ export default function TracePage() {
         maxW="1000px"
         position="relative"
       >
-        {/* Messages Area */}
-        <Flex direction="column" flex="1" pb="100px" pt="36px" overflowY="auto">
+        {/* Content Area */}
+        <Flex direction="column" flex="1" pb="100px" pt="36px" overflow="hidden">
+          {/* Main Box */}
           <Flex
             direction="column"
             w="100%"
@@ -207,14 +212,14 @@ export default function TracePage() {
                   />
                 </Flex>
                 <Flex
-                  bg={useColorModeValue('gray.50', 'whiteAlpha.100')}
+                  bg={loadingBg}
                   borderRadius="16px"
                   px="16px"
                   py="12px"
                   align="center"
                 >
                   <Text fontSize="sm" color={textColor}>
-                    Processing...
+                    Typing...
                   </Text>
                 </Flex>
               </Flex>
@@ -225,7 +230,7 @@ export default function TracePage() {
           </Flex>
         </Flex>
         
-        {/* Chat Input */}
+        {/* Chat Input - Exact same as main page */}
         <Flex
           position="fixed"
           bottom="0"
@@ -249,7 +254,7 @@ export default function TracePage() {
               fontSize="sm"
               fontWeight="500"
               _focus={{ borderColor: 'none' }}
-              color={textColor}
+              color={chatTextColor}
               _placeholder={placeholderColor}
               placeholder="Ask about video processing, monitoring, or reports..."
               value={inputCode}
@@ -260,7 +265,7 @@ export default function TracePage() {
                 }
               }}
             />
-            {/* Add Button Menu */}
+            {/* Add Button Menu - Inside Input - Same as main page */}
             <Menu>
               <MenuButton
                 as={Button}
@@ -280,23 +285,20 @@ export default function TracePage() {
                 justifyContent={'center'}
                 alignItems="center"
                 flexShrink={0}
-                _hover={{ bg: useColorModeValue('gray.50', 'whiteAlpha.100') }}
+                _hover={{ bg: menuHoverBg }}
               >
-                <Icon as={MdAdd} width="16px" height="16px" color={textColor} />
+                <Icon as={MdAdd} width="16px" height="16px" color={chatTextColor} />
               </MenuButton>
               <MenuList
-                boxShadow={useColorModeValue(
-                  '14px 17px 40px 4px rgba(112, 144, 176, 0.18)',
-                  '0px 41px 75px #081132',
-                )}
+                boxShadow={menuBoxShadow}
                 p="10px"
                 borderRadius="20px"
-                bg={useColorModeValue('white', 'navy.800')}
+                bg={menuBg}
                 border="none"
               >
                 <MenuItem
                   onClick={handleFileUpload}
-                  _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                  _hover={{ bg: menuItemHoverBg }}
                   borderRadius="8px"
                   p="10px"
                 >
@@ -305,7 +307,7 @@ export default function TracePage() {
                 </MenuItem>
                 <MenuItem
                   onClick={handleImageUpload}
-                  _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                  _hover={{ bg: menuItemHoverBg }}
                   borderRadius="8px"
                   p="10px"
                 >
@@ -314,7 +316,7 @@ export default function TracePage() {
                 </MenuItem>
                 <MenuItem
                   onClick={handleVideoUpload}
-                  _hover={{ bg: useColorModeValue('gray.100', 'whiteAlpha.100') }}
+                  _hover={{ bg: menuItemHoverBg }}
                   borderRadius="8px"
                   p="10px"
                 >
@@ -324,6 +326,7 @@ export default function TracePage() {
               </MenuList>
             </Menu>
           </Box>
+
           <Button
             bg={currentColors.gradient}
             color="white"
