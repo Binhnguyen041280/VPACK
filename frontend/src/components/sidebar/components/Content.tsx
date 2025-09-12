@@ -20,14 +20,15 @@ import Brand from '@/components/sidebar/components/Brand';
 import Links from '@/components/sidebar/components/Links';
 import SidebarCard from '@/components/sidebar/components/SidebarCard';
 import { RoundedChart } from '@/components/icons/Icons';
-import { PropsWithChildren } from 'react';
+import { PropsWithChildren, useState } from 'react';
 import { IRoute } from '@/types/navigation';
 import { IoMdPerson } from 'react-icons/io';
 import { FiLogOut, FiSidebar } from 'react-icons/fi';
-import { MdOutlineManageAccounts, MdOutlineSettings } from 'react-icons/md';
+import { MdOutlineManageAccounts, MdOutlineSettings, MdCreditCard } from 'react-icons/md';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
 import { useUser } from '@/contexts/UserContext';
 import { useEffect } from 'react';
+import MyPlanModal from '@/components/account/MyPlanModal';
 
 // FUNCTIONS
 
@@ -42,6 +43,7 @@ function SidebarContent(props: SidebarContent) {
   const { routes, collapsed = false, onToggle } = props;
   const { currentColors } = useColorTheme();
   const { userInfo, refreshUserInfo, logout } = useUser();
+  const [isMyPlanOpen, setIsMyPlanOpen] = useState(false);
   
   // UserContext will handle refreshing user info on mount
   // No additional refresh needed here
@@ -100,7 +102,7 @@ function SidebarContent(props: SidebarContent) {
           <NextAvatar 
             h="27px" 
             w="27px" 
-            src={userInfo.avatar} 
+            src={userInfo.avatar || null} 
             style={{
               aspectRatio: '1',
               objectFit: 'cover',
@@ -123,7 +125,7 @@ function SidebarContent(props: SidebarContent) {
           <NextAvatar 
             h="34px" 
             w="34px" 
-            src={userInfo.avatar} 
+            src={userInfo.avatar || null} 
             me="10px" 
             style={{
               aspectRatio: '1',
@@ -218,16 +220,21 @@ function SidebarContent(props: SidebarContent) {
                 </Flex>
               </Box>
               <Box mb="30px">
-                <Flex cursor={'not-allowed'} align="center">
+                <Flex 
+                  cursor={'pointer'} 
+                  align="center"
+                  onClick={() => setIsMyPlanOpen(true)}
+                  _hover={{ opacity: 0.8 }}
+                  transition="opacity 0.2s"
+                >
                   <Icon
-                    as={IoMdPerson}
+                    as={MdCreditCard}
                     width="24px"
                     height="24px"
-                    color={gray}
-                    opacity="0.4"
+                    color={textColor}
                     me="12px"
                   />
-                  <Text color={gray} fontWeight="500" fontSize="sm" opacity="0.4">
+                  <Text color={textColor} fontWeight="500" fontSize="sm">
                     My Plan
                   </Text>
                 </Flex>
@@ -281,6 +288,12 @@ function SidebarContent(props: SidebarContent) {
           </Button>
         </Flex>
       )}
+      
+      {/* My Plan Modal */}
+      <MyPlanModal 
+        isOpen={isMyPlanOpen} 
+        onClose={() => setIsMyPlanOpen(false)} 
+      />
     </Flex>
   );
 }

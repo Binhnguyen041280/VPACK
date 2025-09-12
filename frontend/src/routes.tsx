@@ -5,6 +5,7 @@ import {
   MdCode,
   MdTimeline,
   MdVideocam,
+  MdCreditCard,
 } from 'react-icons/md';
 import { IoMdPerson } from 'react-icons/io';
 import { LuHistory } from 'react-icons/lu';
@@ -78,7 +79,7 @@ const routes: IRoute[] = [
     name: 'My plan',
     disabled: true,
     path: '/my-plan',
-    icon: <Icon as={RoundedChart} width="20px" height="20px" color="inherit" />,
+    icon: <Icon as={MdCreditCard} width="20px" height="20px" color="inherit" />,
     invisible: true,
     collapse: false,
   },
