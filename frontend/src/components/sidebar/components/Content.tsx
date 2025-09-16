@@ -28,7 +28,7 @@ import { MdOutlineManageAccounts, MdOutlineSettings, MdCreditCard } from 'react-
 import { useColorTheme } from '@/contexts/ColorThemeContext';
 import { useUser } from '@/contexts/UserContext';
 import { useEffect } from 'react';
-import MyPlanModal from '@/components/account/MyPlanModal';
+import { useRouter } from 'next/navigation';
 
 // FUNCTIONS
 
@@ -43,7 +43,7 @@ function SidebarContent(props: SidebarContent) {
   const { routes, collapsed = false, onToggle } = props;
   const { currentColors } = useColorTheme();
   const { userInfo, refreshUserInfo, logout } = useUser();
-  const [isMyPlanOpen, setIsMyPlanOpen] = useState(false);
+  const router = useRouter();
   
   // UserContext will handle refreshing user info on mount
   // No additional refresh needed here
@@ -223,7 +223,7 @@ function SidebarContent(props: SidebarContent) {
                 <Flex 
                   cursor={'pointer'} 
                   align="center"
-                  onClick={() => setIsMyPlanOpen(true)}
+                  onClick={() => router.push('/plan')}
                   _hover={{ opacity: 0.8 }}
                   transition="opacity 0.2s"
                 >
@@ -289,11 +289,7 @@ function SidebarContent(props: SidebarContent) {
         </Flex>
       )}
       
-      {/* My Plan Modal */}
-      <MyPlanModal 
-        isOpen={isMyPlanOpen} 
-        onClose={() => setIsMyPlanOpen(false)} 
-      />
+      {/* My Plan Modal removed - now uses routing */}
     </Flex>
   );
 }

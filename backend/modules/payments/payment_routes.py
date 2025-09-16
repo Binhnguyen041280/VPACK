@@ -930,10 +930,13 @@ def get_license_status():
                         'license_key': license_data.get('license_key', ''),
                         'customer_email': license_data.get('customer_email', ''),
                         'package_name': license_data.get('product_type', 'desktop'),
+                        'package_type': license_data.get('product_type', 'desktop'),
                         'expires_at': license_data.get('expires_at'),
                         'status': license_data.get('status', 'active'),
                         'features': features_list,
-                        'activated_at': license_data.get('activated_at')
+                        'activated_at': license_data.get('activated_at'),
+                        'is_active': True,
+                        'is_trial': license_data.get('product_type', '').startswith('trial')
                     },
                     'system_status': {
                         'online': is_online,
@@ -941,6 +944,29 @@ def get_license_status():
                         'timestamp': datetime.now().isoformat()
                     }
                 }
+
+                # NEW: Add trial_status for trial licenses
+                if license_data.get('product_type', '').startswith('trial'):
+                    try:
+                        expires_at = license_data.get('expires_at')
+                        if expires_at:
+                            expiry_date = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+                            days_left = (expiry_date - datetime.now()).days
+
+                            response_data['trial_status'] = {
+                                'is_trial': True,
+                                'status': 'active' if days_left > 0 else 'expired',
+                                'days_left': max(0, days_left),
+                                'expires_at': expires_at
+                            }
+                            logger.info(f"✅ Trial status added: {days_left} days left")
+                    except Exception as e:
+                        logger.warning(f"Failed to calculate trial days: {e}")
+                        response_data['trial_status'] = {
+                            'is_trial': True,
+                            'status': 'unknown',
+                            'days_left': 0
+                        }
                 
                 # Add offline warning if not connected
                 if not is_online:
@@ -951,16 +977,127 @@ def get_license_status():
                 
                 return jsonify(response_data)
             else:
-                return jsonify({
-                    'success': True,
-                    'license': None,
-                    'message': 'No active license found',
-                    'system_status': {
-                        'online': False,
-                        'source': 'database',
-                        'timestamp': datetime.now().isoformat()
-                    }
-                })
+                # NEW: No paid license found - check auto trial
+                logger.info("💡 No paid license found, checking auto trial...")
+
+                try:
+                    # Import auto trial service
+                    try:
+                        from modules.trial.auto_trial import AutoTrialService
+                    except ImportError:
+                        from backend.modules.trial.auto_trial import AutoTrialService
+
+                    # Check or create auto trial
+                    auto_trial_result = AutoTrialService.check_auto_trial()
+
+                    if auto_trial_result.get('type') == 'trial' and auto_trial_result.get('status') == 'active':
+                        # Active trial found/created
+                        trial_license_data = auto_trial_result.get('license_data', {})
+
+                        logger.info(f"✅ Auto trial active: {auto_trial_result.get('days_left', 0)} days left")
+
+                        return jsonify({
+                            'success': True,
+                            'license': {
+                                'license_key': trial_license_data.get('license_key', ''),
+                                'customer_email': trial_license_data.get('customer_email', 'trial@local.dev'),
+                                'package_name': trial_license_data.get('product_type', 'trial_7d'),
+                                'package_type': trial_license_data.get('product_type', 'trial_7d'),
+                                'expires_at': trial_license_data.get('expires_at'),
+                                'status': 'active',
+                                'features': trial_license_data.get('features', ['trial_access']),
+                                'activated_at': trial_license_data.get('activated_at'),
+                                'is_trial': True
+                            },
+                            'trial_status': {
+                                'is_trial': True,
+                                'days_left': auto_trial_result.get('days_left', 0),
+                                'source': auto_trial_result.get('source', 'auto_generated'),
+                                'machine_id': auto_trial_result.get('machine_id', '')[:16] + "..." if auto_trial_result.get('machine_id') else ''
+                            },
+                            'system_status': {
+                                'online': True,  # We need internet for trial generation
+                                'source': 'auto_trial',
+                                'timestamp': datetime.now().isoformat()
+                            }
+                        })
+
+                    elif auto_trial_result.get('type') == 'trial' and auto_trial_result.get('status') == 'expired':
+                        # Trial expired
+                        logger.info("❌ Trial expired")
+
+                        return jsonify({
+                            'success': True,
+                            'license': None,
+                            'trial_status': {
+                                'is_trial': False,
+                                'status': 'expired',
+                                'expired_at': auto_trial_result.get('expired_at'),
+                                'message': 'Trial period has ended'
+                            },
+                            'message': 'Trial expired - please purchase a license',
+                            'system_status': {
+                                'online': False,
+                                'source': 'trial_expired',
+                                'timestamp': datetime.now().isoformat()
+                            }
+                        })
+
+                    elif auto_trial_result.get('status') == 'not_eligible':
+                        # Not eligible for trial (already used)
+                        logger.info(f"❌ Not eligible for trial: {auto_trial_result.get('reason')}")
+
+                        return jsonify({
+                            'success': True,
+                            'license': None,
+                            'trial_status': {
+                                'is_trial': False,
+                                'eligible': False,
+                                'reason': auto_trial_result.get('reason'),
+                                'message': auto_trial_result.get('message', 'Trial not available')
+                            },
+                            'message': 'No license found and trial not available',
+                            'system_status': {
+                                'online': False,
+                                'source': 'no_license_no_trial',
+                                'timestamp': datetime.now().isoformat()
+                            }
+                        })
+
+                    else:
+                        # Auto trial failed or other error
+                        logger.warning(f"⚠️ Auto trial check failed: {auto_trial_result.get('error')}")
+
+                        return jsonify({
+                            'success': True,
+                            'license': None,
+                            'trial_status': {
+                                'is_trial': False,
+                                'error': auto_trial_result.get('error', 'Trial check failed')
+                            },
+                            'message': 'No active license found',
+                            'system_status': {
+                                'online': False,
+                                'source': 'database',
+                                'timestamp': datetime.now().isoformat()
+                            }
+                        })
+
+                except Exception as trial_error:
+                    logger.error(f"❌ Auto trial integration failed: {str(trial_error)}")
+
+                    # Fallback to original response if trial system fails
+                    return jsonify({
+                        'success': True,
+                        'license': None,
+                        'message': 'No active license found',
+                        'trial_error': str(trial_error),
+                        'system_status': {
+                            'online': False,
+                            'source': 'database',
+                            'timestamp': datetime.now().isoformat()
+                        }
+                    })
                 
     except Exception as e:
         logger.error(f"License status check failed: {str(e)}")

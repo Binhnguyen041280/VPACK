@@ -77,10 +77,10 @@ const routes: IRoute[] = [
   },
   {
     name: 'My plan',
-    disabled: true,
-    path: '/my-plan',
+    disabled: false,
+    path: '/plan',
     icon: <Icon as={MdCreditCard} width="20px" height="20px" color="inherit" />,
-    invisible: true,
+    invisible: false,
     collapse: false,
   },
   // -------------- Prompt Pages --------------

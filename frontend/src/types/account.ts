@@ -27,12 +27,20 @@ export interface LicenseInfo {
   features: string[];
   machine_fingerprint?: string;
   activation_date?: string;
+  is_trial?: boolean;
 }
 
 export interface LicenseStatusResponse {
   success: boolean;
   valid: boolean;
   license?: LicenseInfo;
+  trial_status?: {
+    is_trial: boolean;
+    status: string;
+    days_left: number;
+    eligible?: boolean;
+    expires_at?: string;
+  };
   error?: string;
 }
 

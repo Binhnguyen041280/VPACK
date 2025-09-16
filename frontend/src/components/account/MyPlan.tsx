@@ -48,9 +48,11 @@ const MyPlan: React.FC = () => {
   const [packages, setPackages] = useState<Record<string, PricingPackage>>({});
   const [currentLicense, setCurrentLicense] = useState<LicenseInfo | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+
+  // NEW: Trial status state
+  const [trialStatus, setTrialStatus] = useState<any>(null);
   
   // UI state
-  const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -83,6 +85,71 @@ const MyPlan: React.FC = () => {
     setTimeout(() => setNotification(null), 5000);
   };
 
+  // NEW: Get license status for badge display
+  const getLicenseStatusBadge = () => {
+    console.log('🔍 Badge logic - currentLicense:', currentLicense);
+    console.log('🔍 Badge logic - trialStatus:', trialStatus);
+
+    // Priority 1: Active paid license
+    if (currentLicense?.is_active && currentLicense?.package_type && !currentLicense.is_trial) {
+      const packageType = currentLicense.package_type;
+      const formattedType = packageType
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, l => l.toUpperCase());
+
+      return {
+        text: `🔑 ${formattedType}`,
+        color: "green"
+      };
+    }
+
+    // Priority 2: Active trial (from license or trial_status)
+    if ((currentLicense?.is_trial && currentLicense?.is_active) ||
+        (trialStatus?.is_trial && trialStatus?.days_left > 0)) {
+
+      const daysLeft = trialStatus?.days_left ||
+        (currentLicense?.expires_at ?
+          Math.ceil((new Date(currentLicense.expires_at).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) :
+          0);
+
+      return {
+        text: `🔑 Trial: ${daysLeft}d left`,
+        color: daysLeft > 3 ? "blue" : "orange"
+      };
+    }
+
+    // Priority 3: Expired trial
+    if (trialStatus?.status === 'expired' ||
+        (currentLicense?.is_trial && !currentLicense?.is_active)) {
+      return {
+        text: "🔑 Trial Expired",
+        color: "red"
+      };
+    }
+
+    // Priority 4: Expired paid license
+    if (currentLicense && !currentLicense.is_active) {
+      return {
+        text: "🔑 License Expired",
+        color: "red"
+      };
+    }
+
+    // Priority 5: No license, not eligible for trial
+    if (trialStatus?.eligible === false) {
+      return {
+        text: "🔑 Buy License",
+        color: "purple"
+      };
+    }
+
+    // Fallback: No license
+    return {
+      text: "🔑 No License",
+      color: "gray"
+    };
+  };
+
   // Load initial data
   useEffect(() => {
     const loadInitialData = async () => {
@@ -107,6 +174,18 @@ const MyPlan: React.FC = () => {
         // Handle license
         if (licenseRes.status === 'fulfilled' && licenseRes.value.success) {
           setCurrentLicense(licenseRes.value.license || null);
+
+          // DEBUG: Log full license response
+          console.log('🔍 Full license response:', licenseRes.value);
+
+          // NEW: Capture trial status from enhanced API response
+          if (licenseRes.value.trial_status) {
+            setTrialStatus(licenseRes.value.trial_status);
+            console.log('✅ Trial status loaded:', licenseRes.value.trial_status);
+          } else {
+            setTrialStatus(null);
+            console.log('❌ No trial_status field found in response');
+          }
         } else {
           console.warn('Failed to load license:', licenseRes);
         }
@@ -129,11 +208,6 @@ const MyPlan: React.FC = () => {
     
     loadInitialData();
   }, []);
-
-  // Handle section toggle
-  const handleSectionToggle = (section: string) => {
-    setExpandedSection(expandedSection === section ? null : section);
-  };
 
   // Handle package selection for payment
   const handlePackageSelect = (packageCode: string) => {
@@ -260,107 +334,14 @@ const MyPlan: React.FC = () => {
           </HStack>
           
           <HStack spacing={2}>
-            <Button
-              size="sm"
-              variant="ghost"
-              rightIcon={expandedSection === 'details' ? <MdExpandLess /> : <MdExpandMore />}
-              onClick={() => handleSectionToggle('details')}
-            >
-              📊 Details
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              rightIcon={expandedSection === 'account' ? <MdExpandLess /> : <MdExpandMore />}
-              onClick={() => handleSectionToggle('account')}
-            >
-              👤 Account
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              rightIcon={expandedSection === 'history' ? <MdExpandLess /> : <MdExpandMore />}
-              onClick={() => handleSectionToggle('history')}
-            >
-              📋 History
-            </Button>
+            {userProfile && (
+              <Text fontSize="sm" color={secondaryText}>
+                📧 {userProfile.email}
+              </Text>
+            )}
           </HStack>
         </Flex>
       </Card>
-
-      {/* Expandable Sections */}
-      <Collapse in={expandedSection === 'details'}>
-        <Card p={6} bg={bgColor} borderColor={borderColor}>
-          <VStack align="stretch" spacing={4}>
-            <Text fontSize="lg" fontWeight="bold" color={textColor}>
-              📊 License Status Details
-            </Text>
-            
-            {currentLicense ? (
-              <>
-                <HStack spacing={4}>
-                  <IconBox icon="🔑" bg="blue.500" color="white" />
-                  <VStack align="start" spacing={1}>
-                    <Text fontWeight="medium">{currentLicense.package_type} License</Text>
-                    <Text fontSize="sm" color={secondaryText}>
-                      Expires: {AccountService.formatDate(currentLicense.expires_at || '')}
-                    </Text>
-                  </VStack>
-                  <Badge colorScheme={statusColor} ml="auto">
-                    {currentLicense.is_active ? 'Active' : 'Expired'}
-                  </Badge>
-                </HStack>
-                
-                <Box>
-                  <Text fontWeight="medium" mb={2}>Current Features:</Text>
-                  <Flex wrap="wrap" gap={2}>
-                    {currentLicense.features.map((feature, idx) => (
-                      <Badge key={idx} colorScheme="green" variant="subtle">
-                        ✅ {feature}
-                      </Badge>
-                    ))}
-                  </Flex>
-                </Box>
-              </>
-            ) : (
-              <Text color={secondaryText}>No active license found. Choose a plan below to get started.</Text>
-            )}
-          </VStack>
-        </Card>
-      </Collapse>
-
-      <Collapse in={expandedSection === 'account'}>
-        <Card p={6} bg={bgColor} borderColor={borderColor}>
-          <VStack align="stretch" spacing={4}>
-            <Text fontSize="lg" fontWeight="bold" color={textColor}>
-              👤 Account Information
-            </Text>
-            
-            {userProfile && (
-              <HStack spacing={4}>
-                <NextAvatar 
-                  src={userProfile.avatar}
-                  showBorder={true}
-                  width={60}
-                  height={60}
-                />
-                <VStack align="start" spacing={1} flex={1}>
-                  <Text fontWeight="bold">{userProfile.name}</Text>
-                  <Text color={secondaryText}>{userProfile.email}</Text>
-                  <HStack spacing={4} mt={2}>
-                    <Badge colorScheme={userProfile.google_drive_connected ? 'green' : 'red'}>
-                      📱 Google Drive: {userProfile.google_drive_connected ? 'Connected' : 'Disconnected'}
-                    </Badge>
-                    <Badge colorScheme={userProfile.oauth_session_active ? 'green' : 'red'}>
-                      🔐 OAuth: {userProfile.oauth_session_active ? 'Active' : 'Expired'}
-                    </Badge>
-                  </HStack>
-                </VStack>
-              </HStack>
-            )}
-          </VStack>
-        </Card>
-      </Collapse>
 
       {/* Main Pricing Packages Grid - Always Visible */}
       <PricingPackagesGrid
