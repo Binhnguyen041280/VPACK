@@ -25,8 +25,7 @@ export class AccountService {
       }
       
       const userData = await response.json();
-      console.log('📊 User data received:', userData);
-      
+
       if (userData.success && userData.user) {
         const profile = {
           name: userData.user.display_name || 'User',
@@ -36,7 +35,6 @@ export class AccountService {
           oauth_session_active: true,
           oauth_expires_at: new Date(Date.now() + 87 * 24 * 60 * 60 * 1000).toISOString()
         };
-        console.log('✅ Returning profile:', profile);
         return profile;
       } else {
         console.warn('❌ Invalid user data structure:', userData);

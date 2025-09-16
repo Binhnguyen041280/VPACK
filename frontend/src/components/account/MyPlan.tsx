@@ -87,9 +87,6 @@ const MyPlan: React.FC = () => {
 
   // NEW: Get license status for badge display
   const getLicenseStatusBadge = () => {
-    console.log('🔍 Badge logic - currentLicense:', currentLicense);
-    console.log('🔍 Badge logic - trialStatus:', trialStatus);
-
     // Priority 1: Active paid license
     if (currentLicense?.is_active && currentLicense?.package_type && !currentLicense.is_trial) {
       const packageType = currentLicense.package_type;
@@ -175,16 +172,11 @@ const MyPlan: React.FC = () => {
         if (licenseRes.status === 'fulfilled' && licenseRes.value.success) {
           setCurrentLicense(licenseRes.value.license || null);
 
-          // DEBUG: Log full license response
-          console.log('🔍 Full license response:', licenseRes.value);
-
           // NEW: Capture trial status from enhanced API response
           if (licenseRes.value.trial_status) {
             setTrialStatus(licenseRes.value.trial_status);
-            console.log('✅ Trial status loaded:', licenseRes.value.trial_status);
           } else {
             setTrialStatus(null);
-            console.log('❌ No trial_status field found in response');
           }
         } else {
           console.warn('Failed to load license:', licenseRes);

@@ -593,10 +593,26 @@ class VTrackCloudClient:
                     'error': 'No internet connection - trial generation unavailable'
                 }
 
+            # Get current user email for proper trial attribution
+            try:
+                from modules.db_utils.safe_connection import safe_db_connection
+                user_email = None
+
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT gmail_address FROM user_profiles ORDER BY last_login DESC LIMIT 1")
+                    row = cursor.fetchone()
+                    if row:
+                        user_email = row[0]
+            except Exception as e:
+                logger.warning(f"Failed to get user email: {e}")
+                user_email = None
+
             # Prepare request data
             request_data = {
                 'action': 'generate_trial_license',
                 'machine_fingerprint': machine_fingerprint,
+                'customer_email': user_email,  # Add real user email
                 'app_version': self.user_agent,
                 'timestamp': datetime.now().isoformat(),
                 'trial_duration_days': 7

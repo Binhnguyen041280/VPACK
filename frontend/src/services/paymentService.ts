@@ -106,8 +106,7 @@ export class PaymentService {
       }
 
       const data = await response.json();
-      console.log('📊 License status data received:', data);
-      
+
       return data;
     } catch (error) {
       console.error('❌ Failed to get license status:', error);
