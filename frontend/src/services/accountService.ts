@@ -20,10 +20,23 @@ export class AccountService {
       });
       
       if (!response.ok) {
+        // Handle authentication errors gracefully
+        if (response.status === 401 || response.status === 403) {
+          console.info('ℹ️ User not authenticated - returning guest profile');
+          return {
+            name: 'Guest User',
+            email: '',
+            avatar: '/img/avatars/avatar4.png',
+            google_drive_connected: false,
+            oauth_session_active: false,
+            oauth_expires_at: new Date(Date.now() + 87 * 24 * 60 * 60 * 1000).toISOString()
+          };
+        }
+
         console.warn('❌ API response not ok:', response.status, response.statusText);
         throw new Error(`API responded with ${response.status}`);
       }
-      
+
       const userData = await response.json();
 
       if (userData.success && userData.user) {
@@ -37,8 +50,18 @@ export class AccountService {
         };
         return profile;
       } else {
+        // Handle case where user data exists but structure is invalid
         console.warn('❌ Invalid user data structure:', userData);
-        throw new Error('Invalid user data received');
+
+        // Return guest profile instead of throwing error
+        return {
+          name: 'Guest User',
+          email: '',
+          avatar: '/img/avatars/avatar4.png',
+          google_drive_connected: false,
+          oauth_session_active: false,
+          oauth_expires_at: new Date(Date.now() + 87 * 24 * 60 * 60 * 1000).toISOString()
+        };
       }
       
     } catch (error) {

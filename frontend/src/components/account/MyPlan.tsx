@@ -132,7 +132,15 @@ const MyPlan: React.FC = () => {
       };
     }
 
-    // Priority 5: No license, not eligible for trial
+    // Priority 5: Authentication required (unauthenticated user)
+    if (trialStatus?.reason === 'authentication_required' || (!userProfile?.email)) {
+      return {
+        text: "🔐 Sign Up Required",
+        color: "orange"
+      };
+    }
+
+    // Priority 6: No license, not eligible for trial
     if (trialStatus?.eligible === false) {
       return {
         text: "🔑 Buy License",
@@ -326,9 +334,13 @@ const MyPlan: React.FC = () => {
           </HStack>
           
           <HStack spacing={2}>
-            {userProfile && (
+            {userProfile && userProfile.email ? (
               <Text fontSize="sm" color={secondaryText}>
                 📧 {userProfile.email}
+              </Text>
+            ) : (
+              <Text fontSize="sm" color="orange.500">
+                🔐 Please sign up to access features
               </Text>
             )}
           </HStack>

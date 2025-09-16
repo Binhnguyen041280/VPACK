@@ -348,21 +348,25 @@ class AutoTrialService:
 
     @staticmethod
     def _get_current_user_email() -> str:
-        """Get current user email from database"""
+        """Get current authenticated user email from database"""
         try:
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT gmail_address FROM user_profiles
+                    WHERE gmail_address IS NOT NULL
+                    AND gmail_address != ''
                     ORDER BY last_login DESC
                     LIMIT 1
                 """)
 
                 row = cursor.fetchone()
-                if row:
+                if row and row[0]:
+                    logger.info(f"✅ Using authenticated user email: {row[0]}")
                     return row[0]
                 else:
-                    logger.warning("No user profile found, using fallback email")
+                    logger.error("❌ No authenticated user found - trial should not be created")
+                    # This should not happen if authentication gate is working
                     return 'trial@local.dev'
 
         except Exception as e:
@@ -370,15 +374,53 @@ class AutoTrialService:
             return 'trial@local.dev'
 
     @staticmethod
+    def _is_user_authenticated() -> bool:
+        """
+        Check if there's an authenticated user in the system
+
+        Returns:
+            True if user is authenticated, False otherwise
+        """
+        try:
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT COUNT(*) FROM user_profiles
+                    WHERE gmail_address IS NOT NULL
+                    AND gmail_address != ''
+                """)
+
+                count = cursor.fetchone()[0]
+                return count > 0
+
+        except Exception as e:
+            logger.error(f"Failed to check user authentication: {e}")
+            return False
+
+    @staticmethod
     def check_auto_trial() -> Dict[str, Any]:
         """
         Convenience method: Auto-generate machine ID and check trial
         Used by API endpoints for easy integration
+        NOW WITH AUTHENTICATION GATE - Only authenticated users get trials
 
         Returns:
             Auto trial check result with machine ID
         """
         try:
+            # AUTHENTICATION GATE: Only create trials for authenticated users
+            if not AutoTrialService._is_user_authenticated():
+                logger.info("❌ Trial blocked - user not authenticated")
+                return {
+                    'type': 'none',
+                    'status': 'not_eligible',
+                    'reason': 'authentication_required',
+                    'message': 'Please sign up to access trial',
+                    'machine_id': None
+                }
+
+            # User is authenticated - proceed with trial check/creation
+            logger.info("✅ User authenticated - checking trial eligibility")
             machine_id = generate_machine_id()
             result = AutoTrialService.check_or_create_trial(machine_id)
             result['machine_id'] = machine_id

@@ -1044,25 +1044,49 @@ def get_license_status():
                         })
 
                     elif auto_trial_result.get('status') == 'not_eligible':
-                        # Not eligible for trial (already used)
-                        logger.info(f"❌ Not eligible for trial: {auto_trial_result.get('reason')}")
+                        # Check if it's authentication issue vs trial already used
+                        reason = auto_trial_result.get('reason')
 
-                        return jsonify({
-                            'success': True,
-                            'license': None,
-                            'trial_status': {
-                                'is_trial': False,
-                                'eligible': False,
-                                'reason': auto_trial_result.get('reason'),
-                                'message': auto_trial_result.get('message', 'Trial not available')
-                            },
-                            'message': 'No license found and trial not available',
-                            'system_status': {
-                                'online': False,
-                                'source': 'no_license_no_trial',
-                                'timestamp': datetime.now().isoformat()
-                            }
-                        })
+                        if reason == 'authentication_required':
+                            # User not authenticated - special handling
+                            logger.info("❌ Trial blocked - authentication required")
+
+                            return jsonify({
+                                'success': True,
+                                'license': None,
+                                'trial_status': {
+                                    'is_trial': False,
+                                    'eligible': False,
+                                    'reason': 'authentication_required',
+                                    'message': 'Please sign up to access trial'
+                                },
+                                'message': 'Please sign up to access V_Track features',
+                                'system_status': {
+                                    'online': False,
+                                    'source': 'unauthenticated',
+                                    'timestamp': datetime.now().isoformat()
+                                }
+                            })
+                        else:
+                            # Not eligible for trial (already used)
+                            logger.info(f"❌ Not eligible for trial: {reason}")
+
+                            return jsonify({
+                                'success': True,
+                                'license': None,
+                                'trial_status': {
+                                    'is_trial': False,
+                                    'eligible': False,
+                                    'reason': reason,
+                                    'message': auto_trial_result.get('message', 'Trial not available')
+                                },
+                                'message': 'No license found and trial not available',
+                                'system_status': {
+                                    'online': False,
+                                    'source': 'no_license_no_trial',
+                                    'timestamp': datetime.now().isoformat()
+                                }
+                            })
 
                     else:
                         # Auto trial failed or other error
