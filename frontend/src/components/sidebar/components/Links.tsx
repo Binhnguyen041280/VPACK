@@ -72,11 +72,9 @@ export function SidebarLinks(props: SidebarLinksProps) {
     (routeName: string) => {
       // If currentRoute is set, use it for active detection
       if (currentRoute) {
-        console.log('🔍 ActiveRoute check:', { routeName, currentRoute, result: currentRoute.includes(routeName) });
         return currentRoute.includes(routeName);
       }
       // Otherwise use pathname as before
-      console.log('🔍 ActiveRoute check (pathname):', { routeName, pathname, result: pathname?.includes(routeName) });
       return pathname?.includes(routeName);
     },
     [pathname, currentRoute],

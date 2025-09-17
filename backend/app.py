@@ -24,6 +24,12 @@ os.environ['PYTHONWARNINGS'] = 'ignore'
 import warnings
 warnings.filterwarnings('ignore')
 
+# Configure third-party library logging levels
+import logging
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
+logging.getLogger('modules.licensing.repositories').setLevel(logging.INFO)
+
 # ==================== IMPORT CORE MODULES ====================
 from modules.config.logging_config import setup_logging, get_logger
 from modules.config.config import config_bp, init_app_and_config

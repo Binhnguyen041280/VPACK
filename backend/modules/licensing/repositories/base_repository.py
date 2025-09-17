@@ -57,7 +57,7 @@ class BaseRepository(ABC):
                 self._connection_tested = (result is not None)
                 
                 if self._connection_tested:
-                    logger.debug("✅ Database connection verified")
+                    pass
                 else:
                     logger.error("❌ Database connection test failed")
                     
@@ -81,7 +81,6 @@ class BaseRepository(ABC):
                 if not columns:
                     raise DatabaseError(f"Table '{table_name}' not found or has no columns")
                 
-                logger.debug(f"📋 Retrieved {len(columns)} columns for table '{table_name}'")
                 return columns
                 
         except Exception as e:
@@ -114,7 +113,6 @@ class BaseRepository(ABC):
                 row = row[:min_length]
             
             result = dict(zip(columns, row))
-            logger.debug(f"✅ Converted row to dict: {len(result)} fields")
             return result
             
         except Exception as e:
@@ -146,7 +144,6 @@ class BaseRepository(ABC):
             
             # Parse JSON string
             parsed_data = json.loads(field_value)
-            logger.debug(f"✅ Parsed JSON field '{field_name}': {type(parsed_data)}")
             return parsed_data
             
         except (json.JSONDecodeError, TypeError) as e:
@@ -180,7 +177,6 @@ class BaseRepository(ABC):
                 rows = cursor.fetchall()
                 
                 if not rows:
-                    logger.debug(f"🔍 Query returned no results")
                     return []
                 
                 # Auto-detect table name from query if not provided
@@ -198,7 +194,6 @@ class BaseRepository(ABC):
                     row_dict = self._row_to_dict(row, table_name)
                     results.append(row_dict)
                 
-                logger.debug(f"✅ Query executed: {len(results)} rows returned")
                 return results
                 
         except sqlite3.Error as e:
@@ -250,18 +245,15 @@ class BaseRepository(ABC):
                 if operation.startswith('INSERT'):
                     result = cursor.lastrowid
                     conn.commit()
-                    logger.debug(f"✅ INSERT executed: ID {result}")
                     # Ensure we return int, not int | None
                     return result if result is not None else 0
                 elif operation.startswith(('UPDATE', 'DELETE')):
                     affected_rows = cursor.rowcount
                     conn.commit()
                     success = affected_rows > 0
-                    logger.debug(f"✅ {operation[:6]} executed: {affected_rows} rows affected")
                     return success
                 else:
                     conn.commit()
-                    logger.debug(f"✅ Query executed successfully")
                     return True
                     
         except sqlite3.IntegrityError as e:
@@ -381,7 +373,6 @@ class BaseRepository(ABC):
                 logger.error(f"❌ Empty required fields: {empty_fields}")
                 return False
             
-            logger.debug(f"✅ All {len(required_fields)} required fields validated")
             return True
             
         except Exception as e:

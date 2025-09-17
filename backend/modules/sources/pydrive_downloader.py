@@ -42,7 +42,6 @@ class PyDriveDownloader:
         self.core = PyDriveCore()
         self.error_manager = PyDriveErrorManager()
         
-        logger.info("🚀 PyDriveDownloader initialized - Simple & Reliable")
     
     # ==================== DATABASE HELPER FUNCTIONS ====================
     
@@ -114,7 +113,6 @@ class PyDriveDownloader:
             self.sync_locks[source_id] = threading.Lock()
             self._schedule_next_sync(source_id)
             
-            logger.info(f"✅ Auto-sync started for source {source_id}")
             return True
             
         except Exception as e:
@@ -130,7 +128,6 @@ class PyDriveDownloader:
                 del self.sync_locks[source_id]
             
             self._update_simple_status(source_id, 'stopped', 'Đã dừng bởi người dùng')
-            logger.info(f"✅ Auto-sync stopped for source {source_id}")
             return True
             
         except Exception as e:
@@ -392,7 +389,6 @@ class PyDriveDownloader:
     def auto_start_all_enabled_sources(self) -> Dict:
         """Start all enabled sources - simple reporting"""
         try:
-            logger.info("🚀 Auto-starting enabled cloud sources...")
             
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
@@ -410,7 +406,6 @@ class PyDriveDownloader:
                     if self.start_auto_sync(source_id):
                         started_count += 1
             
-            logger.info(f"🎉 Auto-started {started_count}/{len(sources)} sources")
             return {'success': True, 'started_count': started_count, 'total_sources': len(sources)}
             
         except Exception as e:

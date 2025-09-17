@@ -33,7 +33,6 @@ def safe_db_connection(timeout: int = 60, retry_attempts: int = 3, retry_delay: 
     connection = None
     attempt = 0
     
-    logger.debug(f"Attempting database connection with timeout={timeout}s, retries={retry_attempts}")
     
     while attempt < retry_attempts:
         try:
@@ -44,12 +43,10 @@ def safe_db_connection(timeout: int = 60, retry_attempts: int = 3, retry_delay: 
             # Test connection with a simple query
             connection.execute("SELECT 1").fetchone()
             
-            logger.debug(f"Database connection established successfully on attempt {attempt + 1}")
             yield connection
             
             # If we reach here, operation was successful
             connection.commit()
-            logger.debug("Database transaction committed successfully")
             return
             
         except sqlite3.OperationalError as e:
@@ -82,7 +79,6 @@ def safe_db_connection(timeout: int = 60, retry_attempts: int = 3, retry_delay: 
             if connection:
                 try:
                     connection.close()
-                    logger.debug("Database connection closed successfully")
                 except Exception as e:
                     logger.warning(f"Error closing database connection: {e}")
 
