@@ -16,7 +16,16 @@ class SecurityConfig:
     def __init__(self):
         # Initialize encryption keys
         self.jwt_secret = os.getenv('JWT_SECRET_KEY', self._generate_jwt_secret())
-        self.encryption_key = os.getenv('ENCRYPTION_KEY', self._generate_encryption_key())
+        # Use persistent OAuth encryption key from cloud_auth module
+        try:
+            from ..sources.cloud_auth import ENCRYPTION_KEY
+            self.encryption_key = ENCRYPTION_KEY
+            logger.info("✅ Using persistent OAuth encryption key from cloud_auth module")
+        except ImportError:
+            # Fallback to original behavior
+            self.encryption_key = os.getenv('ENCRYPTION_KEY', self._generate_encryption_key())
+            logger.warning("⚠️ Fallback to non-persistent encryption key")
+
         self.cipher_suite = Fernet(self.encryption_key.encode() if isinstance(self.encryption_key, str) else self.encryption_key)
         
         # V_TRACK BACKGROUND SERVICE: Long-running authentication for "set it and forget it" model

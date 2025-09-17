@@ -1,0 +1,224 @@
+{
+  "project": "V_Track",
+  "description": "Computer Vision Processing & NVR Camera Integration Desktop Application",
+  "generated": "2025-09-17",
+  "features": {
+    "authentication": {
+      "name": "User Authentication & License Management",
+      "category": "authentication",
+      "confidence": "high",
+      "keywords": ["auth", "login", "register", "oauth", "license", "trial"],
+      "files": [
+        "app.py",
+        "modules/license/license_manager.py",
+        "modules/trial/auto_trial.py",
+        "modules/sources/cloud_auth.py"
+      ],
+      "routes": ["/register", "/api/user/logout", "/api/license-status"],
+      "description": "OAuth2 authentication, auto-trial system, license activation and management"
+    },
+    "payment_billing": {
+      "name": "Payment & Billing System",
+      "category": "e-commerce",
+      "confidence": "high",
+      "keywords": ["payment", "zalopay", "billing", "subscription", "plan"],
+      "files": [
+        "modules/payments/payment_routes.py",
+        "../frontend/src/components/account/PaymentModal.tsx",
+        "../frontend/src/components/account/PricingPackagesGrid.tsx"
+      ],
+      "routes": ["/payment", "/payment/redirect", "/plan"],
+      "description": "ZaloPay integration, subscription management, pricing packages"
+    },
+    "computer_vision": {
+      "name": "Computer Vision Processing",
+      "category": "core-ai",
+      "confidence": "high",
+      "keywords": ["mediapipe", "opencv", "detection", "roi", "hand", "qr"],
+      "files": [
+        "blueprints/hand_detection_bp.py",
+        "blueprints/qr_detection_bp.py",
+        "blueprints/roi_bp.py",
+        "modules/technician/event_detector.py",
+        "../frontend/src/components/roi/"
+      ],
+      "routes": ["/api/hand-detection", "/api/qr-detection", "/api/roi"],
+      "description": "Hand detection, QR code scanning, ROI configuration, computer vision pipelines"
+    },
+    "configuration_wizard": {
+      "name": "5-Step Configuration Wizard",
+      "category": "admin",
+      "confidence": "high",
+      "keywords": ["config", "step", "wizard", "brandname", "location", "timing", "video", "packing"],
+      "files": [
+        "modules/config/routes/steps/step1_brandname_routes.py",
+        "modules/config/routes/steps/step2_location_time_routes.py",
+        "modules/config/routes/steps/step3_video_source_routes.py",
+        "modules/config/routes/steps/step4_packing_area_routes.py",
+        "modules/config/routes/steps/step5_timing_routes.py",
+        "../frontend/src/components/canvas/BrandnameCanvas.tsx",
+        "../frontend/src/components/canvas/LocationTimeCanvas.tsx",
+        "../frontend/src/components/canvas/VideoSourceCanvas.tsx",
+        "../frontend/src/components/canvas/PackingAreaCanvas.tsx",
+        "../frontend/src/components/canvas/TimingCanvas.tsx"
+      ],
+      "routes": [
+        "/api/config/step/brandname",
+        "/api/config/step/location-time",
+        "/api/config/step/video-source",
+        "/api/config/step/packing-area",
+        "/api/config/step/timing"
+      ],
+      "description": "Step-by-step system configuration: brandname, location/time, video sources, packing areas, timing settings"
+    },
+    "camera_nvr": {
+      "name": "Camera & NVR Integration",
+      "category": "hardware",
+      "confidence": "high",
+      "keywords": ["camera", "nvr", "video", "stream", "recording"],
+      "files": [
+        "modules/config/routes/camera_routes.py",
+        "modules/config/routes/source_routes.py",
+        "wsdl/"
+      ],
+      "routes": ["/?config=camera", "/api/config/camera", "/api/config/source"],
+      "description": "NVR camera integration, video stream management, recording configuration"
+    },
+    "cloud_storage": {
+      "name": "Cloud Storage Sync",
+      "category": "cloud",
+      "confidence": "high",
+      "keywords": ["cloud", "google", "drive", "sync", "storage", "folder"],
+      "files": [
+        "modules/sources/cloud_endpoints.py",
+        "modules/sources/cloud_manager.py",
+        "modules/sources/google_drive_service.py",
+        "modules/sources/auto_sync_service.py",
+        "../frontend/src/components/canvas/GoogleDriveFolderTree.tsx"
+      ],
+      "routes": ["/api/cloud", "/api/sync"],
+      "description": "Google Drive integration, automated sync, cloud folder management"
+    },
+    "analytics_dashboard": {
+      "name": "Analytics & Reporting",
+      "category": "analytics",
+      "confidence": "medium",
+      "keywords": ["analytics", "dashboard", "trace", "report", "statistics"],
+      "files": [
+        "../frontend/app/trace/page.tsx"
+      ],
+      "routes": ["/analytics", "/trace"],
+      "description": "Event tracing, analytics dashboard, performance reporting"
+    },
+    "scheduler": {
+      "name": "Job Scheduling System",
+      "category": "core-utilities",
+      "confidence": "high",
+      "keywords": ["scheduler", "job", "task", "program", "automation"],
+      "files": [
+        "modules/scheduler/program.py",
+        "modules/scheduler/config/scheduler_config.py"
+      ],
+      "routes": ["/program"],
+      "description": "Background job scheduling, automated task execution, program management"
+    },
+    "user_interface": {
+      "name": "Main User Interface",
+      "category": "frontend",
+      "confidence": "high",
+      "keywords": ["ui", "interface", "sidebar", "navbar", "theme"],
+      "files": [
+        "../frontend/src/components/sidebar/Sidebar.tsx",
+        "../frontend/src/components/navbar/NavbarAdmin.tsx",
+        "../frontend/src/contexts/ColorThemeContext.tsx",
+        "../frontend/app/layout.tsx",
+        "../frontend/app/page.tsx"
+      ],
+      "routes": ["/", "/settings"],
+      "description": "Main application interface, sidebar navigation, theme management, responsive layout"
+    },
+    "file_management": {
+      "name": "File & Video Management",
+      "category": "storage",
+      "confidence": "high",
+      "keywords": ["file", "video", "upload", "storage", "path", "directory"],
+      "files": [
+        "modules/sources/path_manager.py",
+        "database.py",
+        "static/avatars/"
+      ],
+      "routes": ["/static/avatars/<filename>"],
+      "description": "File upload/download, video processing, directory management, avatar storage"
+    },
+    "database_operations": {
+      "name": "Database Management",
+      "category": "core-utilities",
+      "confidence": "high",
+      "keywords": ["database", "sqlite", "events", "processing", "config"],
+      "files": [
+        "database.py",
+        "database/events.db",
+        "modules/db_utils/"
+      ],
+      "tables": [
+        "events", "processing_config", "program_status", "file_list",
+        "frame_settings", "general_info", "processed_logs", "packing_profiles",
+        "timezone_metadata", "camera_configs"
+      ],
+      "description": "SQLite database operations, event logging, configuration storage, data persistence"
+    },
+    "system_monitoring": {
+      "name": "System Health & Monitoring",
+      "category": "admin",
+      "confidence": "medium",
+      "keywords": ["health", "system", "monitor", "status", "diagnostics"],
+      "files": [
+        "app.py"
+      ],
+      "routes": ["/health", "/api/system-info"],
+      "description": "System health checks, status monitoring, diagnostic information"
+    }
+  },
+  "categories": {
+    "authentication": {
+      "description": "User authentication and authorization",
+      "color": "#4CAF50"
+    },
+    "e-commerce": {
+      "description": "Payment and billing functionality",
+      "color": "#FF9800"
+    },
+    "core-ai": {
+      "description": "AI and computer vision features",
+      "color": "#2196F3"
+    },
+    "admin": {
+      "description": "Administrative and system management",
+      "color": "#9C27B0"
+    },
+    "hardware": {
+      "description": "Hardware integration and control",
+      "color": "#607D8B"
+    },
+    "cloud": {
+      "description": "Cloud storage and synchronization",
+      "color": "#00BCD4"
+    },
+    "analytics": {
+      "description": "Analytics and reporting features",
+      "color": "#795548"
+    },
+    "core-utilities": {
+      "description": "Core utilities and infrastructure",
+      "color": "#757575"
+    },
+    "frontend": {
+      "description": "User interface components",
+      "color": "#E91E63"
+    },
+    "storage": {
+      "description": "File and data storage management",
+      "color": "#FFC107"
+    }
+  }
+}

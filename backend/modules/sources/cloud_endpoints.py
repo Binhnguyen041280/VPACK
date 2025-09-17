@@ -36,10 +36,8 @@ logger = logging.getLogger(__name__)
 # Secret key for JWT - In production, use environment variable
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'your-secret-key-change-in-production')
 
-# Encryption key for credentials - In production, use environment variable  
-ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY', Fernet.generate_key())
-if isinstance(ENCRYPTION_KEY, str):
-    ENCRYPTION_KEY = ENCRYPTION_KEY.encode()
+# Import persistent encryption key from cloud_auth module
+from .cloud_auth import ENCRYPTION_KEY
 
 def generate_session_token(user_email, user_info, expires_minutes=129600):  # 90 days = 90*24*60 = 129600 minutes
     """Generate JWT session token for V_track background service (90 days duration)"""
@@ -505,6 +503,9 @@ def gmail_oauth_callback():
             session['gmail_user_info'] = user_info
             session['gmail_session_token'] = session_token
             session['authentication_method'] = 'gmail_only'
+            # Store consistent user_email for unified credential system
+            session['user_email'] = user_info['email']
+            session.permanent = True
             
             logger.info("✅ Gmail authentication data stored in session")
         except Exception as storage_error:
@@ -1246,16 +1247,33 @@ def drive_auth_status():
         return response
     
     try:
+        # 🎯 CHECK SETUP CONTEXT FIRST
+        setup_step = session.get('current_setup_step')
+        is_video_source_setup = (setup_step == 'video-source')
+
+        if is_video_source_setup:
+            # Step 3 setup: Always return NOT authenticated to force manual auth
+            logger.info("🎯 Step 3 setup detected - Drive auth status: NOT AUTHENTICATED")
+            result = {
+                'success': True,
+                'authenticated': False,
+                'message': 'Setup mode - manual Google Drive auth required',
+                'setup_mode': True,
+                'requires_auth': True
+            }
+            return jsonify(result), 200
+
+        # Normal mode: Check actual session tokens
         cache_key = get_cache_key('auth_status', session.get('_id', 'anonymous'))
         cached_result = get_cached_data(cache_key)
-        
+
         if cached_result:
             logger.debug("📋 Auth status cache hit")
             return jsonify(cached_result), 200
-        
+
         # 🔐 PHASE 1: Get session token from request headers or session
         session_token = request.headers.get('Authorization', '').replace('Bearer ', '') or session.get('session_token')
-        
+
         if session_token:
             # Verify session token
             token_payload = verify_session_token(session_token)
@@ -1638,22 +1656,74 @@ def get_credentials_from_session():
     try:
         # Get session token from request headers or session
         session_token = request.headers.get('Authorization', '').replace('Bearer ', '') or session.get('session_token')
-        
+
         if not session_token:
             return None
-        
+
         # Verify session token
         token_payload = verify_session_token(session_token)
         if not token_payload:
             return None
-        
+
         user_email = token_payload.get('user_email')
         if not user_email:
             return None
-        
+
         # Load encrypted credentials for this user
         return load_encrypted_credentials_for_user(user_email)
-        
+
     except Exception as e:
         logger.error(f"❌ Error getting credentials from session: {e}")
         return None
+
+@cloud_bp.route('/set-setup-step', methods=['POST', 'OPTIONS'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
+def set_setup_step():
+    """Set current setup step for tracking initial setup flow"""
+    try:
+        data = request.get_json()
+        step = data.get('step')
+
+        if step:
+            session['current_setup_step'] = step
+            session.permanent = True
+            logger.info(f"📍 Setup step set: {step}")
+
+            return jsonify({
+                'success': True,
+                'step': step,
+                'message': f'Setup step set to: {step}'
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Step parameter required'
+            }), 400
+
+    except Exception as e:
+        logger.error(f"❌ Error setting setup step: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Failed to set setup step: {str(e)}'
+        }), 500
+
+@cloud_bp.route('/clear-setup-step', methods=['POST', 'OPTIONS'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
+def clear_setup_step():
+    """Clear setup step - marks setup as completed"""
+    try:
+        session.pop('current_setup_step', None)
+        session.permanent = True
+        logger.info("✅ Setup step cleared - setup completed")
+
+        return jsonify({
+            'success': True,
+            'message': 'Setup completed - step cleared'
+        }), 200
+
+    except Exception as e:
+        logger.error(f"❌ Error clearing setup step: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Failed to clear setup step: {str(e)}'
+        }), 500

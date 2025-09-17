@@ -38,10 +38,41 @@ logger = logging.getLogger(__name__)
 # Secret key for JWT - In production, use environment variable
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'your-secret-key-change-in-production')
 
-# Encryption key for credentials - In production, use environment variable  
-ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY', Fernet.generate_key())
-if isinstance(ENCRYPTION_KEY, str):
-    ENCRYPTION_KEY = ENCRYPTION_KEY.encode()
+# Encryption key for credentials - Load from persistent file or generate new one
+def _load_or_generate_oauth_encryption_key():
+    """Load existing OAuth encryption key or generate new one with persistence"""
+    try:
+        # Define key file path
+        keys_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'keys')
+        os.makedirs(keys_dir, exist_ok=True)
+        key_path = os.path.join(keys_dir, 'oauth_encryption.key')
+
+        if os.path.exists(key_path):
+            # Load existing key
+            with open(key_path, 'rb') as f:
+                key = f.read()
+            logger.info("✅ Loaded existing OAuth encryption key")
+            return key
+        else:
+            # Generate new key and save
+            key = Fernet.generate_key()
+            with open(key_path, 'wb') as f:
+                f.write(key)
+            # Set secure permissions (owner read/write only)
+            os.chmod(key_path, 0o600)
+            logger.info("🔑 Generated new persistent OAuth encryption key")
+            return key
+    except Exception as e:
+        logger.error(f"❌ OAuth encryption key initialization error: {e}")
+        # Fallback to environment variable or temporary key
+        env_key = os.getenv('ENCRYPTION_KEY')
+        if env_key:
+            return env_key.encode() if isinstance(env_key, str) else env_key
+        else:
+            logger.warning("⚠️ Using temporary encryption key - credentials won't persist across restarts")
+            return Fernet.generate_key()
+
+ENCRYPTION_KEY = _load_or_generate_oauth_encryption_key()
 
 class CloudAuthManager:
     """

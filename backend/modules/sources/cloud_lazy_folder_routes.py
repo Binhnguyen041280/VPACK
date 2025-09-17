@@ -20,6 +20,7 @@ import os
 from google.auth.transport.requests import Request
 from cryptography.fernet import Fernet
 import base64
+from .cloud_auth import CloudAuthManager
 
 logger = logging.getLogger(__name__)
 
@@ -67,17 +68,55 @@ def lazy_folder_rate_limit(endpoint_type='folder_discovery'):
         return decorated_function
     return decorator
 
-def get_credentials_from_session():
-    """Get Google Drive credentials from session data (old working version)"""
+def get_credentials_simple():
+    """
+    🎯 SIMPLE CREDENTIALS - Bước 3 = manual auth required, but allow after successful auth
+    """
+    try:
+        # Check if this is initial setup (step 3)
+        setup_step = session.get('current_setup_step')
+        is_video_source_setup = (setup_step == 'video-source')
+
+        logger.info(f"🔍 Setup step check: '{setup_step}' -> is_setup: {is_video_source_setup}")
+
+        if is_video_source_setup:
+            # Step 3 setup: Check if user has just authenticated
+            session_token = session.get('session_token')
+            auth_result = session.get('auth_result')
+
+            if session_token or (auth_result and auth_result.get('credentials')):
+                logger.info("🎯 Step 3 setup: Found session token/credentials - allowing folder access")
+                # Use the new session-based credential loading
+                from .cloud_endpoints import get_credentials_from_session
+                credentials = get_credentials_from_session()
+                if credentials:
+                    return credentials
+                else:
+                    # Fallback to legacy method
+                    return _get_credentials_from_legacy_session()
+            else:
+                logger.info("🎯 Step 3 setup: No credentials - forcing manual Google Drive auth")
+                return None
+        else:
+            # Setup completed: use saved credentials
+            logger.info("🔄 Normal usage - loading saved credentials...")
+            return _get_credentials_from_legacy_session()
+
+    except Exception as e:
+        logger.error(f"❌ Simple credential error: {e}")
+        return None
+
+def _get_credentials_from_legacy_session():
+    """Get Google Drive credentials from session data (legacy method)"""
     try:
         auth_result = session.get('auth_result')
         if not auth_result or not auth_result.get('credentials'):
-            logger.warning("⚠️ No credentials found in auth_result")
+            logger.debug("⚠️ No credentials found in legacy auth_result")
             return None
-        
+
         cred_data = auth_result['credentials']
-        logger.info(f"✅ Found credentials in session for: {auth_result.get('user_email', 'unknown')}")
-        
+        logger.info(f"✅ Found legacy credentials for: {auth_result.get('user_email', 'unknown')}")
+
         # Create credentials object from session data
         credentials = Credentials(
             token=cred_data.get('token'),
@@ -87,110 +126,26 @@ def get_credentials_from_session():
             client_secret=cred_data.get('client_secret'),
             scopes=cred_data.get('scopes')
         )
-        
+
         # Refresh token if needed
         if credentials.expired and credentials.refresh_token:
-            logger.info("🔄 Refreshing expired credentials...")
+            logger.info("🔄 Refreshing expired legacy credentials...")
             credentials.refresh(Request())
-            
+
             # Update session with new token
             auth_result['credentials']['token'] = credentials.token
             session['auth_result'] = auth_result
             session.permanent = True
-            
+
         return credentials
-        
+
     except Exception as e:
-        logger.error(f"❌ Error getting credentials from session: {e}")
+        logger.error(f"❌ Error getting legacy session credentials: {e}")
         return None
 
-def _decrypt_credentials(encrypted_data):
-    """Decrypt stored credentials (copied from cloud_endpoints.py)"""
-    try:
-        # Get encryption key from environment or generate one
-        ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY', Fernet.generate_key())
-        if isinstance(ENCRYPTION_KEY, str):
-            ENCRYPTION_KEY = ENCRYPTION_KEY.encode()
-        
-        fernet = Fernet(ENCRYPTION_KEY)
-        encrypted_bytes = base64.b64decode(encrypted_data.encode())
-        decrypted_data = fernet.decrypt(encrypted_bytes)
-        return json.loads(decrypted_data.decode())
-    except Exception as e:
-        logger.error(f"❌ Credential decryption error: {e}")
-        return None
+# Removed complex database fallback - not needed for simple flow
 
-def _encrypt_credentials(credentials_dict):
-    """Encrypt credentials before storage (copied from cloud_endpoints.py)"""
-    try:
-        # Get encryption key from environment or generate one
-        ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY', Fernet.generate_key())
-        if isinstance(ENCRYPTION_KEY, str):
-            ENCRYPTION_KEY = ENCRYPTION_KEY.encode()
-        
-        fernet = Fernet(ENCRYPTION_KEY)
-        credentials_json = json.dumps(credentials_dict).encode()
-        encrypted_data = fernet.encrypt(credentials_json)
-        return base64.b64encode(encrypted_data).decode()
-    except Exception as e:
-        logger.error(f"❌ Credential encryption error: {e}")
-        return None
-
-def _load_encrypted_credentials_for_user(user_email):
-    """Load and decrypt credentials for backend operations (copied from cloud_endpoints.py)"""
-    try:
-        tokens_dir = os.path.join(os.path.dirname(__file__), 'tokens')
-        email_hash = hashlib.sha256(user_email.encode()).hexdigest()[:16]
-        token_filename = f"google_drive_{email_hash}.json"
-        token_filepath = os.path.join(tokens_dir, token_filename)
-        
-        if not os.path.exists(token_filepath):
-            logger.warning(f"⚠️ No encrypted credentials found for: {user_email}")
-            return None
-        
-        # Load encrypted storage
-        with open(token_filepath, 'r') as f:
-            encrypted_storage = json.load(f)
-        
-        # Decrypt credentials
-        credential_data = _decrypt_credentials(encrypted_storage['encrypted_data'])
-        if not credential_data:
-            logger.error(f"❌ Failed to decrypt credentials for: {user_email}")
-            return None
-        
-        # Reconstruct credentials object
-        credentials = Credentials(
-            token=credential_data['token'],
-            refresh_token=credential_data['refresh_token'],
-            token_uri=credential_data['token_uri'],
-            client_id=credential_data['client_id'],
-            client_secret=credential_data['client_secret'],
-            scopes=credential_data['scopes']
-        )
-        
-        # Refresh if expired
-        if credentials.expired and credentials.refresh_token:
-            logger.info("🔄 Refreshing expired credentials...")
-            credentials.refresh(Request())
-            
-            # Update stored credentials with new token
-            credential_data['token'] = credentials.token
-            credential_data['expires_at'] = credentials.expiry.isoformat() if credentials.expiry else None
-            
-            encrypted_updated = _encrypt_credentials(credential_data)
-            if encrypted_updated:
-                encrypted_storage['encrypted_data'] = encrypted_updated
-                encrypted_storage['updated_at'] = datetime.now().isoformat()
-                with open(token_filepath, 'w') as f:
-                    json.dump(encrypted_storage, f, indent=2)
-                os.chmod(token_filepath, 0o600)
-        
-        logger.info(f"✅ Loaded encrypted credentials for: {user_email}")
-        return credentials
-        
-    except Exception as e:
-        logger.error(f"❌ Error loading encrypted credentials: {e}")
-        return None
+# Removed complex CloudAuthManager integration - keeping it simple
 
 # Create Blueprint for lazy folder routes
 lazy_folder_bp = Blueprint('lazy_folders', __name__)
@@ -226,13 +181,15 @@ def list_subfolders():
         
         logger.info(f"📂 Listing subfolders for parent: {parent_id}")
         
-        # Get credentials
-        credentials = get_credentials_from_session()
+        # Get credentials using simple system
+        credentials = get_credentials_simple()
         if not credentials:
             return jsonify({
                 'success': False,
                 'message': 'No valid Google Drive credentials found. Please authenticate first.',
-                'requires_auth': True
+                'requires_auth': True,
+                'error_code': 'CREDENTIALS_NOT_FOUND',
+                'suggestion': 'Please re-authenticate with Google Drive'
             }), 401
         
         # Initialize folder service
@@ -335,8 +292,8 @@ def get_folder_depth():
                 'message': 'folder_id is required'
             }), 400
         
-        # Get credentials
-        credentials = get_credentials_from_session()
+        # Get credentials using simple system
+        credentials = get_credentials_simple()
         if not credentials:
             return jsonify({
                 'success': False,
@@ -400,8 +357,8 @@ def search_folders():
                 'message': 'Search query is required'
             }), 400
         
-        # Get credentials
-        credentials = get_credentials_from_session()
+        # Get credentials using simple system
+        credentials = get_credentials_simple()
         if not credentials:
             return jsonify({
                 'success': False,
@@ -454,8 +411,8 @@ def get_folder_info():
                 'message': 'folder_id is required'
             }), 400
         
-        # Get credentials
-        credentials = get_credentials_from_session()
+        # Get credentials using simple system
+        credentials = get_credentials_simple()
         if not credentials:
             return jsonify({
                 'success': False,
@@ -493,7 +450,7 @@ def clear_folder_cache():
     """Clear Google Drive folder service cache"""
     try:
         # If we have active credentials, clear service cache
-        credentials = get_credentials_from_session()
+        credentials = get_unified_credentials()
         if credentials:
             folder_service = GoogleDriveFolderService(credentials)
             folder_service.clear_cache()
@@ -543,8 +500,8 @@ def get_folder_breadcrumb():
                 'message': 'folder_id is required'
             }), 400
         
-        # Get credentials
-        credentials = get_credentials_from_session()
+        # Get credentials using simple system
+        credentials = get_credentials_simple()
         if not credentials:
             return jsonify({
                 'success': False,
@@ -629,8 +586,8 @@ def validate_folder_selection():
                 'message': 'folder_ids array is required'
             }), 400
         
-        # Get credentials
-        credentials = get_credentials_from_session()
+        # Get credentials using simple system
+        credentials = get_credentials_simple()
         if not credentials:
             return jsonify({
                 'success': False,

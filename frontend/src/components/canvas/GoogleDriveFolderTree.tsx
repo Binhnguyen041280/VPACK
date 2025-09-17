@@ -51,6 +51,7 @@ interface SelectedFolder {
 
 interface GoogleDriveFolderTreeProps {
   session_token?: string; // Optional, not used - kept for compatibility
+  folders?: DriveFolder[]; // NEW: Pre-loaded folders from parent component
   onFoldersSelected: (folders: SelectedFolder[]) => void;
   maxDepth?: number;
   className?: string;
@@ -61,9 +62,10 @@ interface AuthStatus {
   loading: boolean;
 }
 
-const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({ 
-  session_token, 
-  onFoldersSelected, 
+const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
+  session_token,
+  folders = [], // NEW: Pre-loaded folders from parent
+  onFoldersSelected,
   maxDepth = 3,
   className = ''
 }) => {
@@ -83,41 +85,32 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [authStatus, setAuthStatus] = useState<AuthStatus>({ authenticated: false, loading: true });
 
-  // Initialize component and check session credentials
+  // Initialize component with pre-loaded folders
   useEffect(() => {
-    const initializeComponent = async () => {
+    const initializeComponent = () => {
       try {
         setAuthStatus({ authenticated: false, loading: true });
-        
-        // Check if we have session credentials (no token needed)
-        const response = await fetch('http://localhost:8080/api/cloud/drive-auth-status', {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include'  // Use session cookies only
-        });
 
-        if (response.ok) {
-          const result = await response.json();
-          if (result.success && result.authenticated) {
-            setAuthStatus({ authenticated: true, loading: false });
-            await loadRootFolders();
-          } else {
-            setAuthStatus({ authenticated: false, loading: false });
-            setError('Session expired. Please re-authenticate.');
-          }
+        // Use pre-loaded folders from parent component if available
+        if (folders && folders.length > 0) {
+          console.log(`📁 Initializing with ${folders.length} pre-loaded folders`);
+          loadPreloadedFolders(folders);
+          setAuthStatus({ authenticated: true, loading: false });
+          setError(null);
         } else {
+          console.log('⚠️ No pre-loaded folders available');
           setAuthStatus({ authenticated: false, loading: false });
-          setError('Authentication validation failed.');
+          setError('No folders available. Please connect Google Drive first.');
         }
       } catch (error) {
-        console.error('Session validation error:', error);
+        console.error('Folder initialization error:', error);
         setAuthStatus({ authenticated: false, loading: false });
-        setError('Failed to validate session.');
+        setError('Failed to initialize folders.');
       }
     };
 
     initializeComponent();
-  }, []); // Remove session_token dependency
+  }, [folders]); // Re-run when folders prop changes
 
   // Notify parent when selection changes
   useEffect(() => {
@@ -125,6 +118,46 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
       onFoldersSelected(selectedFolders);
     }
   }, [selectedFolders]); // Remove onFoldersSelected from dependencies
+
+  // NEW: Load pre-loaded folders from parent component
+  const loadPreloadedFolders = (folderList: DriveFolder[]) => {
+    try {
+      console.log('📁 Processing pre-loaded folders:', folderList);
+
+      // Convert folders to tree format
+      const newTreeData: TreeData = {
+        root: {
+          id: 'root',
+          name: 'Google Drive',
+          depth: 0,
+          selectable: false,
+          has_subfolders: true,
+          children: folderList,
+          loaded: true
+        }
+      };
+
+      // Add each folder to tree data
+      folderList.forEach(folder => {
+        newTreeData[folder.id] = {
+          id: folder.id,
+          name: folder.name,
+          depth: folder.depth || 1,
+          selectable: folder.selectable !== false, // Default to true if not specified
+          has_subfolders: folder.has_subfolders || false,
+          children: [],
+          loaded: false
+        };
+      });
+
+      setTreeData(newTreeData);
+      console.log(`✅ Loaded ${folderList.length} folders into tree`);
+
+    } catch (error) {
+      console.error('❌ Error processing pre-loaded folders:', error);
+      setError('Failed to process folder data');
+    }
+  };
 
   const loadRootFolders = async () => {
     try {

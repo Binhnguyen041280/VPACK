@@ -119,6 +119,24 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   
   // Check Google Drive connection status on component mount
   React.useEffect(() => {
+    // Set setup step flag for backend
+    const setSetupStep = async () => {
+      try {
+        await fetch('http://localhost:8080/api/cloud/set-setup-step', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({ step: 'video-source' })
+        });
+        console.log('✅ Setup step set to video-source');
+      } catch (error) {
+        console.error('❌ Failed to set setup step:', error);
+      }
+    };
+
+    setSetupStep();
     checkDriveConnectionStatus();
     loadCurrentVideoSourceState();
   }, []);
@@ -427,12 +445,30 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
       });
       
       const data = await response.json();
-      
+      console.log('🔍 Drive auth status:', data);
+
       if (data.success && data.authenticated) {
-        setDriveConnected(true);
-        setDriveUserEmail(data.user_email || '');
-        // Load initial folder tree
-        loadInitialFolders();
+        // Check if we're in setup mode - if so, don't show as connected
+        if (data.setup_mode) {
+          console.log('🎯 Setup mode detected - keeping Drive as disconnected for manual auth');
+          console.log('🔴 DEBUG: setDriveConnected(false) from checkDriveConnectionStatus setup_mode');
+          setDriveConnected(false);
+          setDriveUserEmail('');
+          setDriveFolders([]);
+        } else {
+          console.log('✅ Drive connected - setting UI to connected state');
+          console.log('🔴 DEBUG: setDriveConnected(true) from checkDriveConnectionStatus');
+          setDriveConnected(true);
+          setDriveUserEmail(data.user_email || '');
+          // Note: loadInitialFolders() removed - only load after manual auth
+        }
+      } else {
+        console.log('❌ Drive not connected - resetting UI state');
+        console.log('🔴 DEBUG: setDriveConnected(false) from checkDriveConnectionStatus else');
+        // Not authenticated or setup mode - reset connection state
+        setDriveConnected(false);
+        setDriveUserEmail('');
+        setDriveFolders([]);
       }
     } catch (error) {
       console.log('Drive connection check failed:', error);
@@ -886,6 +922,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                                   window.removeEventListener('message', handleMessage);
                                   
                                   // Update UI state to show connected status
+                                  console.log('🔴 DEBUG: setDriveConnected(true) from OAUTH_SUCCESS');
                                   setDriveConnected(true);
                                   setDriveUserEmail(event.data.user_email || '');
                                   driveSessionTokenRef.current = event.data.session_token || '';
@@ -931,10 +968,26 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                                       
                                       if (statusData.success && statusData.authenticated) {
                                         console.log(`✅ Connection confirmed via status check (attempt ${retryCount})`);
-                                        setDriveConnected(true);
-                                        setDriveUserEmail(statusData.user_email || '');
-                                        setDriveConnecting(false);
-                                        loadInitialFolders();
+                                        // Only set connected if NOT in setup mode (avoid setup mode override)
+                                        if (!statusData.setup_mode) {
+                                          console.log('🔴 DEBUG: setDriveConnected(true) from polling retry');
+                                          setDriveConnected(true);
+                                          setDriveUserEmail(statusData.user_email || '');
+                                          setDriveConnecting(false);
+                                          loadInitialFolders();
+                                        } else {
+                                          console.log('🎯 Setup mode detected in polling - ignoring connection status');
+                                        }
+
+                                        // Clear setup step - Drive setup completed
+                                        fetch('http://localhost:8080/api/cloud/clear-setup-step', {
+                                          method: 'POST',
+                                          credentials: 'include'
+                                        }).then(() => {
+                                          console.log('✅ Setup step cleared - Drive setup completed');
+                                        }).catch((error) => {
+                                          console.error('❌ Failed to clear setup step:', error);
+                                        });
                                       } else if (retryCount < maxRetries) {
                                         console.log(`⏳ Connection not found, retrying... (${retryCount}/${maxRetries})`);
                                         setTimeout(checkStatus, 2000); // Wait 2 seconds before retry
@@ -971,7 +1024,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                           }
                         }}
                       >
-                        Connect Google Drive
+                        Connect
                       </Button>
                       )}
                       
@@ -989,6 +1042,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                                 body: JSON.stringify({ provider: 'google_drive', user_email: driveUserEmail })
                               });
                               
+                              console.log('🔴 DEBUG: setDriveConnected(false) from disconnect button');
                               setDriveConnected(false);
                               setDriveUserEmail('');
                               driveSessionTokenRef.current = '';
@@ -999,7 +1053,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                             }
                           }}
                         >
-                          Disconnect
+                          STOP
                         </Button>
                       )}
                     </HStack>
@@ -1059,6 +1113,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 >
                   <GoogleDriveFolderTree
                     session_token={driveSessionTokenRef.current}
+                    folders={driveFolders}
                     onFoldersSelected={handleTreeFolderSelection}
                     maxDepth={3}
                   />
