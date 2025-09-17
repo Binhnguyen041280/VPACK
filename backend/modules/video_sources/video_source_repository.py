@@ -53,65 +53,74 @@ class VideoSourceRepository:
     
     def upsert_video_source(self, source_data: Dict[str, Any]) -> Optional[int]:
         """
-        UPSERT video source using Option B pattern:
-        1. DELETE all existing sources
-        2. INSERT new source as the only active source
-        3. CASCADE cleanup related tables
-        
+        UPSERT video source using predefined ID pattern:
+        1. Determine target source ID (1=local, 2=cloud)
+        2. UPDATE existing source with new configuration
+        3. Deactivate other sources
+
         Args:
             source_data: Dict containing source configuration
-            
+
         Returns:
             source_id if successful, None if failed
         """
         try:
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
-                
+
                 # Start transaction for atomic UPSERT
                 cursor.execute("BEGIN TRANSACTION")
-                
-                self.logger.info("🔄 Starting UPSERT operation: clearing all existing sources")
-                
-                # STEP 1: DELETE all existing video sources (CASCADE will handle related tables)
-                cursor.execute("DELETE FROM video_sources")
-                deleted_count = cursor.rowcount
-                self.logger.info(f"✅ Deleted {deleted_count} existing video sources")
-                
-                # STEP 2: INSERT new source as the only active source
+
+                # Determine target source ID based on type
+                source_type = source_data.get('source_type', 'local')
+                target_source_id = 1 if source_type == 'local' else 2
+
+                self.logger.info(f"🔄 Starting UPSERT operation for {source_type} source (ID: {target_source_id})")
+
+                # STEP 1: Deactivate all sources
+                cursor.execute("UPDATE video_sources SET active = 0")
+                self.logger.info("✅ Deactivated all existing sources")
+
+                # STEP 2: Update target source with new configuration
                 config_json = json.dumps(source_data.get('config', {}))
-                
+
                 cursor.execute("""
-                    INSERT INTO video_sources (
-                        source_type, name, path, config, active, 
-                        folder_depth, parent_folder_id, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    UPDATE video_sources
+                    SET name = ?, path = ?, config = ?, active = 1,
+                        folder_depth = ?, parent_folder_id = ?, created_at = ?
+                    WHERE id = ?
                 """, (
-                    source_data.get('source_type', 'local'),
-                    source_data.get('name', 'Unnamed Source'),
+                    source_data.get('name', f"{'Local' if source_type == 'local' else 'Google'} Storage"),
                     source_data.get('path', ''),
                     config_json,
-                    1,  # Always active (single source)
                     source_data.get('folder_depth', 0),
                     source_data.get('parent_folder_id', ''),
-                    datetime.now().isoformat()
+                    datetime.now().isoformat(),
+                    target_source_id
                 ))
-                
-                new_source_id = cursor.lastrowid
-                
-                # STEP 3: Initialize related tables for the new source
-                self._initialize_source_relations(cursor, new_source_id, source_data)
-                
+
+                updated_rows = cursor.rowcount
+                if updated_rows == 0:
+                    self.logger.error(f"❌ No source found with ID {target_source_id}")
+                    cursor.execute("ROLLBACK")
+                    return None
+
+                # STEP 3: Clean up related tables for this source
+                self._cleanup_source_relations(cursor, target_source_id)
+
+                # STEP 4: Initialize related tables for the updated source
+                self._initialize_source_relations(cursor, target_source_id, source_data)
+
                 # Commit transaction
                 cursor.execute("COMMIT")
-                
-                self.logger.info(f"✅ UPSERT completed successfully: new source_id={new_source_id}")
-                self.logger.info(f"   Type: {source_data.get('source_type')}")
+
+                self.logger.info(f"✅ UPSERT completed successfully: source_id={target_source_id}")
+                self.logger.info(f"   Type: {source_type}")
                 self.logger.info(f"   Name: {source_data.get('name')}")
                 self.logger.info(f"   Path: {source_data.get('path')}")
-                
-                return new_source_id
-                
+
+                return target_source_id
+
         except Exception as e:
             self.logger.error(f"❌ UPSERT failed: {e}")
             try:
@@ -121,6 +130,26 @@ class VideoSourceRepository:
                 pass
             return None
     
+    def _cleanup_source_relations(self, cursor, source_id: int):
+        """Clean up related tables for a specific source"""
+        try:
+            # Clean camera configurations
+            cursor.execute("DELETE FROM camera_configurations WHERE source_id = ?", (source_id,))
+
+            # Clean sync status
+            cursor.execute("DELETE FROM sync_status WHERE source_id = ?", (source_id,))
+
+            # Clean downloaded files
+            cursor.execute("DELETE FROM downloaded_files WHERE source_id = ?", (source_id,))
+
+            # Clean last downloaded file
+            cursor.execute("DELETE FROM last_downloaded_file WHERE source_id = ?", (source_id,))
+
+            self.logger.info(f"✅ Cleaned up related tables for source_id={source_id}")
+
+        except Exception as e:
+            self.logger.error(f"⚠️ Error cleaning up source relations: {e}")
+
     def _initialize_source_relations(self, cursor, source_id: int, source_data: Dict[str, Any]):
         """Initialize related tables for the new source"""
         try:

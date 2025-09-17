@@ -84,6 +84,8 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
   const [loadingFolders, setLoadingFolders] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [authStatus, setAuthStatus] = useState<AuthStatus>({ authenticated: false, loading: true });
+  const [hasHadInitialLoad, setHasHadInitialLoad] = useState(false);
+  const [hasTriedRetry, setHasTriedRetry] = useState(false);
 
   // Initialize component with pre-loaded folders
   useEffect(() => {
@@ -98,10 +100,11 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
           setAuthStatus({ authenticated: true, loading: false });
           setError(null);
         } else {
-          console.log('⚠️ No pre-loaded folders available');
-          setAuthStatus({ authenticated: false, loading: false });
-          setError('No folders available. Please connect Google Drive first.');
+          console.log('⚠️ No pre-loaded folders available - attempting to load from API');
+          // Keep loading state and try to load from API
+          loadRootFolders();
         }
+        setHasHadInitialLoad(true);
       } catch (error) {
         console.error('Folder initialization error:', error);
         setAuthStatus({ authenticated: false, loading: false });
@@ -111,6 +114,23 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
 
     initializeComponent();
   }, [folders]); // Re-run when folders prop changes
+
+  // Auto-retry ONLY after initial load (for stop & auth scenarios) - ONE TIME ONLY
+  useEffect(() => {
+    // Only retry if we've had initial load, now unauthenticated, and haven't tried retry yet
+    if (hasHadInitialLoad && !authStatus.authenticated && !authStatus.loading && !hasTriedRetry) {
+      console.log('🔄 Auth change detected after initial load, auto-retrying ONCE...');
+      setHasTriedRetry(true); // Prevent multiple retries
+
+      const timeout = setTimeout(() => {
+        setAuthStatus({ authenticated: false, loading: true });
+        setError(null);
+        loadRootFolders();
+      }, 1000);
+
+      return () => clearTimeout(timeout);
+    }
+  }, [hasHadInitialLoad, authStatus.authenticated, authStatus.loading, hasTriedRetry]);
 
   // Notify parent when selection changes
   useEffect(() => {
@@ -200,10 +220,20 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
       });
 
       console.log(`✅ Loaded ${(data.folders || []).length} root folders`);
+      setAuthStatus({ authenticated: true, loading: false });
 
     } catch (error) {
       console.error('❌ Error loading root folders:', error);
-      setError(error instanceof Error ? error.message : 'Failed to load folders');
+
+      // Handle 401 as authentication required, not error
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load folders';
+      if (errorMessage.includes('401') || errorMessage.includes('authenticate')) {
+        setError(null); // Don't show 401 as error
+        setAuthStatus({ authenticated: false, loading: false });
+      } else {
+        setError(errorMessage);
+        setAuthStatus({ authenticated: false, loading: false });
+      }
     } finally {
       setLoadingFolders(prev => {
         const next = new Set(prev);
@@ -577,18 +607,17 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
         <AlertIcon />
         <HStack>
           <Spinner size="sm" />
-          <Text>Validating authentication...</Text>
+          <Text>🔄 Loading folders...</Text>
         </HStack>
       </Alert>
     );
   }
 
-  if (!authStatus.authenticated) {
+  if (!authStatus.authenticated && !authStatus.loading) {
     return (
       <Alert status="error" borderRadius="md">
         <AlertIcon />
         <Box>
-          <Text>Authentication required</Text>
           <Text fontSize="sm" mt={1}>
             {error || 'Please re-authenticate with Google Drive'}
           </Text>
@@ -599,6 +628,7 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
 
   return (
     <Box className={className}>
+
 
 
       {/* Error Display */}

@@ -582,9 +582,6 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
               <Text fontSize="sm" fontWeight="500" color="green.800">
                 {currentActiveSource.name} ({currentActiveSource.source_type === 'local' ? 'Local Storage' : 'Cloud Storage'})
               </Text>
-              <Text fontSize="xs" color="green.600">
-                📁 Path: {currentActiveSource.path}
-              </Text>
             </VStack>
             <VStack align="end" spacing="2px">
               <Text fontSize="xs" color="green.600">

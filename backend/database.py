@@ -354,6 +354,18 @@ def update_database():
                 )
             """)
 
+            # Initialize predefined sources with fixed IDs if table is empty
+            cursor.execute("SELECT COUNT(*) FROM video_sources")
+            if cursor.fetchone()[0] == 0:
+                # Insert predefined sources with specific IDs
+                cursor.execute("""
+                    INSERT INTO video_sources (id, source_type, name, path, config, active, created_at, folder_depth, parent_folder_id)
+                    VALUES
+                    (1, 'local', 'Local Storage', '', '{}', 0, datetime('now'), 0, ''),
+                    (2, 'cloud', 'Google Storage', '', '{}', 0, datetime('now'), 0, '')
+                """)
+                print("✅ Initialized predefined sources: ID 1 (Local Storage), ID 2 (Google Storage)")
+
             # Add folder depth tracking columns if missing
             try:
                 cursor.execute("ALTER TABLE video_sources ADD COLUMN folder_depth INTEGER DEFAULT 0")

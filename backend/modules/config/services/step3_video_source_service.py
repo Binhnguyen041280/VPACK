@@ -292,7 +292,7 @@ class Step3VideoSourceService:
         """
         camera_paths = {}
         actual_selected_cameras = selected_cameras.copy()
-        actual_input_path = input_path
+        actual_input_path = input_path  # Will be overridden for cloud sources
         
         if db_source_type == 'local' and detected_folders:
             # Local storage: build camera_paths from detected_folders
@@ -307,30 +307,37 @@ class Step3VideoSourceService:
             print("🔄 Converting cloud folders to camera format...")
             actual_selected_cameras = []
             camera_paths = {}
-            
+
+            # Find common parent path (root folder for cameras)
+            root_path = None
             for folder in selected_tree_folders:
                 folder_name = folder.get('name', '')
                 folder_path = folder.get('path', '')
-                
-                if folder_name:
+                folder_id = folder.get('id', '')
+
+                if folder_name and folder_path:
                     actual_selected_cameras.append(folder_name)
-                    # FIXED: For cloud, use local sync paths for processing_config compatibility
-                    # Build working path for the source
-                    working_path = get_working_path_for_source('cloud', 'CloudStorage_temp', folder_path)
-                    local_camera_path = os.path.join(working_path, folder_name)
-                    camera_paths[folder_name] = local_camera_path
-                    
-                    print(f"📁 Cloud camera: {folder_name} → {camera_paths[folder_name]}")
-            
-            # For cloud: set actual_input_path to first folder or working path
-            if selected_tree_folders and len(selected_tree_folders) > 0:
-                first_folder = selected_tree_folders[0]
-                first_folder_path = first_folder.get('path', '')
-                # Use working path for cloud sources
-                if first_folder_path:
-                    actual_input_path = get_working_path_for_source('cloud', 'CloudStorage', first_folder_path)
-                else:
-                    actual_input_path = "google_drive://"
+                    # Store Google Drive folder ID for camera_paths
+                    camera_paths[folder_name] = folder_id
+
+                    # Extract root path (parent directory of camera folders)
+                    if root_path is None:
+                        # Get parent path by removing the camera folder name from the end
+                        path_parts = folder_path.rstrip('/').split('/')
+                        if len(path_parts) > 1:
+                            root_path = '/'.join(path_parts[:-1])
+                        else:
+                            root_path = folder_path
+
+                    print(f"📁 Cloud camera: {folder_name} → ID: {folder_id}")
+
+            # Set actual_input_path to the root folder path (parent of camera folders)
+            if root_path:
+                actual_input_path = root_path
+                print(f"🎯 Root path for Google Drive: {actual_input_path}")
+            else:
+                actual_input_path = "/My Drive"
+                print("⚠️ Using default root path: /My Drive")
         
         return actual_selected_cameras, camera_paths, actual_input_path
     
