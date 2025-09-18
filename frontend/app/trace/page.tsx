@@ -21,6 +21,13 @@ import { useColorTheme } from '@/contexts/ColorThemeContext';
 import ChatMessage from '@/components/ChatMessage';
 import { SidebarContext } from '@/contexts/SidebarContext';
 import { useRoute } from '@/contexts/RouteContext';
+import TraceHeader from '@/components/trace/TraceHeader';
+import {
+  formatDateTimeForAPI,
+  getCurrentDateTime,
+  formatDateTimeForDisplay,
+  autoSetDateRange
+} from '@/utils/dateTimeHelpers';
 
 interface Message {
   id: string;
@@ -33,7 +40,20 @@ export default function TracePage() {
   const [inputCode, setInputCode] = useState<string>('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  
+
+  // DateTime state for TraceHeader
+  const [fromDateTime, setFromDateTime] = useState<string>('');
+  const [toDateTime, setToDateTime] = useState<string>('');
+  const [defaultDays, setDefaultDays] = useState<number>(7);
+
+  // Camera state
+  const [selectedCameras, setSelectedCameras] = useState<string[]>([]);
+  const [availableCameras] = useState<string[]>(['Camera01', 'Camera02', 'Camera03']);
+
+  // Header visibility state
+  const [isHeaderHidden, setIsHeaderHidden] = useState<boolean>(false);
+  const [isHovering, setIsHovering] = useState<boolean>(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { currentColors } = useColorTheme();
   const { toggleSidebar } = useContext(SidebarContext);
@@ -63,6 +83,24 @@ export default function TracePage() {
     setCurrentRoute('/trace');
   }, [setCurrentRoute]);
 
+  // Auto-set date range when defaultDays changes
+  useEffect(() => {
+    const { fromDateTime, toDateTime } = autoSetDateRange(defaultDays);
+    setFromDateTime(fromDateTime);
+    setToDateTime(toDateTime);
+  }, [defaultDays]);
+
+  // Auto-hide header after 3 seconds of no activity
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!isHovering) {
+        setIsHeaderHidden(true);
+      }
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [isHovering]);
+
   // Auto-scroll to bottom when new message
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -74,7 +112,7 @@ export default function TracePage() {
   useEffect(() => {
     const welcomeMessage: Message = {
       id: Date.now().toString(),
-      content: `🎉 Welcome to Trace Module!\n\nYour V.PACK system is ready for video processing and monitoring.\n\nYou can now:\n• Upload videos for processing\n• Monitor packaging events\n• Generate trace reports\n• Track system performance\n\nWhat would you like to do?`,
+      content: `🎉 Welcome to Trace Module!\n\nYour V.PACK system is ready for event querying and video processing.\n\n✨ Quick Start:\n• Set time range and cameras in the header\n• Enter tracking codes like: TC001, TC002\n• Upload CSV files for bulk queries\n• Process videos for event detection\n\nTry typing "time settings" to see current configuration!`,
       type: 'bot',
       timestamp: new Date()
     };
@@ -116,20 +154,35 @@ export default function TracePage() {
 
   const getTraceResponse = (input: string): string => {
     const lowerInput = input.toLowerCase();
-    
+
+    // Check if input looks like tracking codes
+    if (/^[A-Z0-9\-,\s]+$/.test(input.trim()) && input.length > 2) {
+      const displayFrom = fromDateTime ? new Date(fromDateTime).toLocaleString() : 'Not set';
+      const displayTo = toDateTime ? new Date(toDateTime).toLocaleString() : 'Not set';
+
+      return `🔍 Searching for tracking codes: ${input}\n\n📅 Time Range: ${displayFrom} to ${displayTo}\n📹 Cameras: ${selectedCameras.length > 0 ? selectedCameras.join(', ') : 'All cameras'}\n🗓️ Default: Last ${defaultDays} days\n\n⏳ Please wait while I search the database...`;
+    }
+
     if (lowerInput.includes('video') || lowerInput.includes('upload')) {
       return `📹 Video Processing Available:\n\n• Drag and drop your video files\n• Supported formats: MP4, AVI, MOV\n• Real-time processing status\n• Automatic quality detection\n\nReady to process your videos!`;
     }
-    
+
     if (lowerInput.includes('monitor') || lowerInput.includes('tracking')) {
       return `📊 System Monitoring:\n\n• Real-time packaging events\n• Production line status\n• Quality metrics dashboard\n• Alert notifications\n\nMonitoring is active and running smoothly.`;
     }
-    
+
     if (lowerInput.includes('report') || lowerInput.includes('analytics')) {
       return `📈 Trace Reports:\n\n• Daily production summaries\n• Quality analysis reports\n• Performance metrics\n• Export to PDF/Excel\n\nGenerate your custom reports here.`;
     }
-    
-    return `✨ V.PACK Trace System:\n\nI can help you with:\n• Video processing and analysis\n• System monitoring and alerts\n• Performance reports and analytics\n• Quality control tracking\n\nWhat specific task would you like to accomplish?`;
+
+    if (lowerInput.includes('time') || lowerInput.includes('date')) {
+      const displayFrom = fromDateTime ? new Date(fromDateTime).toLocaleString() : 'Not set';
+      const displayTo = toDateTime ? new Date(toDateTime).toLocaleString() : 'Not set';
+
+      return `🕐 Time Range Settings:\n\nCurrent configuration:\n• From: ${displayFrom}\n• To: ${displayTo}\n• Default: Last ${defaultDays} days\n• Cameras: ${selectedCameras.length > 0 ? selectedCameras.join(', ') : 'All cameras'}\n\nUse the header controls to adjust your time range and camera selection.`;
+    }
+
+    return `✨ V.PACK Trace System:\n\nI can help you with:\n• Video processing and analysis\n• Event query with tracking codes\n• Time range and camera filtering\n• Performance reports and analytics\n\nTry entering tracking codes like: TC001, TC002\nOr ask about "time settings", "video upload", etc.`;
   };
 
   const handleFileUpload = () => {
@@ -152,6 +205,26 @@ export default function TracePage() {
       overflow="hidden"
       h="100vh"
     >
+      {/* TraceHeader - Fixed at top with auto-hide */}
+      <TraceHeader
+        fromDateTime={fromDateTime}
+        toDateTime={toDateTime}
+        defaultDays={defaultDays}
+        onFromDateTimeChange={setFromDateTime}
+        onToDateTimeChange={setToDateTime}
+        onDefaultDaysChange={setDefaultDays}
+        availableCameras={availableCameras}
+        selectedCameras={selectedCameras}
+        onCameraToggle={setSelectedCameras}
+        isHeaderHidden={isHeaderHidden}
+        isHovering={isHovering}
+        onMouseEnter={() => {
+          setIsHovering(true);
+          setIsHeaderHidden(false);
+        }}
+        onMouseLeave={() => setIsHovering(false)}
+      />
+
       {/* Background Image - same as main page */}
       <Img
         src={Bg.src}
@@ -161,8 +234,8 @@ export default function TracePage() {
         top="50%"
         transform={'translate(-50%, -50%)'}
       />
-      
-      {/* Original Single-Panel Layout - Exact copy from main page */}
+
+      {/* Main Content with dynamic padding-top for header */}
       <Flex
         direction="column"
         mx="auto"
@@ -170,9 +243,11 @@ export default function TracePage() {
         minH="100vh"
         maxW="1000px"
         position="relative"
+        pt={(!isHeaderHidden || isHovering) ? "80px" : "20px"}
+        transition="padding-top 0.3s ease-in-out"
       >
         {/* Content Area */}
-        <Flex direction="column" flex="1" pb="100px" pt="36px" overflow="hidden">
+        <Flex direction="column" flex="1" pb="100px" overflow="hidden">
           {/* Main Box */}
           <Flex
             direction="column"
