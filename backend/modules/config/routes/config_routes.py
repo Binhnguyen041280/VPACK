@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, session
 from flask_cors import cross_origin
 from typing import Dict, Any, Tuple, Optional
 import json
@@ -1268,17 +1268,33 @@ def update_step_video_source():
         # FIXED: Use appropriate camera_paths for video_sources table
         video_sources_config_camera_paths = video_sources_camera_paths if db_source_type == 'cloud' and 'video_sources_camera_paths' in locals() else camera_paths
         
+        # Get current user email for cloud sources
+        config_data = {
+            'selected_cameras': actual_selected_cameras,  # Use converted cameras for cloud
+            'camera_paths': video_sources_config_camera_paths,  # FIXED: Use Google Drive folder IDs for cloud
+            'detected_folders': detected_folders,
+            'selected_tree_folders': selected_tree_folders,  # Keep original tree data
+            'original_source_type': source_type  # Keep original for reference
+        }
+
+        # CRITICAL FIX: Auto-inject user_email for cloud sources
+        if db_source_type == 'cloud':
+            user_email = (
+                session.get('user_email') or
+                session.get('gmail_user_email') or
+                session.get('gmail_address')
+            )
+            if user_email:
+                config_data['user_email'] = user_email
+                print(f"✅ AUTO-INJECTED user_email for cloud source: {user_email}")
+            else:
+                print("⚠️ WARNING: No user_email found in session for cloud source")
+
         source_data = {
             'source_type': db_source_type,
             'name': source_name,
             'path': actual_input_path,
-            'config': {
-                'selected_cameras': actual_selected_cameras,  # Use converted cameras for cloud
-                'camera_paths': video_sources_config_camera_paths,  # FIXED: Use Google Drive folder IDs for cloud
-                'detected_folders': detected_folders,
-                'selected_tree_folders': selected_tree_folders,  # Keep original tree data
-                'original_source_type': source_type  # Keep original for reference
-            }
+            'config': config_data
         }
         
         print(f"UPSERT Source Data: {json.dumps(source_data, indent=2)}")
