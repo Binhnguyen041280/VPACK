@@ -2,7 +2,7 @@
 #!/usr/bin/env python3
 
 from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
+from oauth2client.client import OAuth2Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -14,7 +14,7 @@ import os
 import logging
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, session
-from google.oauth2.credentials import Credentials
+from oauth2client.client import OAuth2Credentials
 from flask_cors import CORS, cross_origin
 from functools import wraps
 from flask import g
@@ -848,14 +848,14 @@ def cloud_oauth_callback():
             'backend_port': 8080,
             'timestamp': datetime.now().isoformat(),
             'security_mode': 'encrypted_storage',  # Indicate security enhancement
-            # ✅ ADDED BACK: 'credentials' field for list_subfolders endpoint
+            # ✅ ADDED BACK: 'credentials' field for list_subfolders endpoint (google-auth format)
             'credentials': {
                 'token': credentials.token,
                 'refresh_token': credentials.refresh_token,
                 'token_uri': credentials.token_uri,
                 'client_id': credentials.client_id,
                 'client_secret': credentials.client_secret,
-                'scopes': credentials.scopes
+                'scopes': list(credentials.scopes) if credentials.scopes else []
             }
         }    
             # Store in session with longer lifetime
@@ -954,14 +954,14 @@ def _store_credentials_safely(credentials, user_info):
     try:
         tokens_dir = os.path.join(os.path.dirname(__file__), 'tokens')
         os.makedirs(tokens_dir, exist_ok=True)
-        
+
         email_hash = hashlib.sha256(user_info['email'].encode()).hexdigest()[:16]
         token_filename = f"google_drive_{email_hash}.json"
         token_filepath = os.path.join(tokens_dir, token_filename)
-        
-        # Prepare credential data
+
+        # Convert google-auth credentials to oauth2client format for consistent storage
         credential_data = {
-            'token': credentials.token,
+            'token': credentials.token,  # google-auth uses 'token' not 'access_token'
             'refresh_token': credentials.refresh_token,
             'token_uri': credentials.token_uri,
             'client_id': credentials.client_id,
@@ -1596,24 +1596,34 @@ def load_encrypted_credentials_for_user(user_email):
             logger.error(f"❌ Failed to decrypt credentials for: {user_email}")
             return None
         
-        # Reconstruct credentials object
-        credentials = Credentials(
-            token=credential_data['token'],
-            refresh_token=credential_data['refresh_token'],
-            token_uri=credential_data['token_uri'],
+        # Reconstruct credentials object using oauth2client for PyDrive2 compatibility
+        from datetime import datetime, timezone
+
+        # Convert expires_at to datetime if it exists
+        token_expiry = None
+        if 'expires_at' in credential_data and credential_data['expires_at']:
+            token_expiry = datetime.fromisoformat(credential_data['expires_at'].replace('Z', '+00:00'))
+
+        credentials = OAuth2Credentials(
+            access_token=credential_data['token'],
             client_id=credential_data['client_id'],
             client_secret=credential_data['client_secret'],
-            scopes=credential_data['scopes']
+            refresh_token=credential_data['refresh_token'],
+            token_expiry=token_expiry,
+            token_uri=credential_data['token_uri'],
+            user_agent="VTrack-PyDrive2-Client/1.0"
         )
         
-        # Refresh if expired
-        if credentials.expired and credentials.refresh_token:
+        # Refresh if expired (oauth2client compatibility)
+        if credentials.access_token_expired and credentials.refresh_token:
             logger.info("🔄 Refreshing expired credentials...")
-            credentials.refresh(Request())
-            
+            import httplib2
+            http = httplib2.Http()
+            credentials.refresh(http)
+
             # Update stored credentials with new token
-            credential_data['token'] = credentials.token
-            credential_data['expires_at'] = credentials.expiry.isoformat() if credentials.expiry else None
+            credential_data['token'] = credentials.access_token
+            credential_data['expires_at'] = credentials.token_expiry.isoformat() if credentials.token_expiry else None
             
             encrypted_updated = encrypt_credentials(credential_data)
             if encrypted_updated:

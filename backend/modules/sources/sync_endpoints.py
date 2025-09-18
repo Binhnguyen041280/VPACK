@@ -348,20 +348,37 @@ def debug_credentials(source_id: int):
                 'debug_info': debug_info
             }), 500
         
-        # Step 6: Test credentials object creation
+        # Step 6: Test credentials object creation - FIXED: Use oauth2client for PyDrive2 compatibility
         try:
-            from google.oauth2.credentials import Credentials
-            credentials = Credentials(
-                token=credential_data.get('token'),
-                refresh_token=credential_data.get('refresh_token'),
-                token_uri=credential_data.get('token_uri'),
+            from oauth2client.client import OAuth2Credentials
+            from datetime import datetime, timezone
+
+            # Convert expires_at to datetime if it exists
+            token_expiry = None
+            if credential_data and credential_data.get('expires_at'):
+                try:
+                    # Handle both timestamp and datetime formats
+                    expires_at = credential_data.get('expires_at')
+                    if isinstance(expires_at, (int, float)):
+                        token_expiry = datetime.fromtimestamp(expires_at, tz=timezone.utc)
+                    elif isinstance(expires_at, str):
+                        token_expiry = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+                except Exception as exp_e:
+                    debug_info['step6_expiry_parse_warning'] = f"Could not parse expires_at: {exp_e}"
+
+            credentials = OAuth2Credentials(
+                access_token=credential_data.get('token'),
                 client_id=credential_data.get('client_id'),
                 client_secret=credential_data.get('client_secret'),
-                scopes=credential_data.get('scopes')
+                refresh_token=credential_data.get('refresh_token'),
+                token_expiry=token_expiry,
+                token_uri=credential_data.get('token_uri', 'https://oauth2.googleapis.com/token'),
+                user_agent="VTrack-PyDrive2-Client/1.0"
             ) if credential_data else None
+
             debug_info['step6_credentials_created'] = credentials is not None
             if credentials:
-                debug_info['step6_credentials_expired'] = credentials.expired
+                debug_info['step6_credentials_expired'] = credentials.access_token_expired
                 debug_info['step6_has_refresh_token'] = credentials.refresh_token is not None
             else:
                 debug_info['step6_credentials_error'] = 'Credentials object is None'
@@ -369,7 +386,7 @@ def debug_credentials(source_id: int):
             debug_info['step6_credentials_error'] = str(e)
             return jsonify({
                 'success': False,
-                'error': f'Credentials object creation failed: {str(e)}',
+                'error': f'OAuth2Client credentials creation failed: {str(e)}',
                 'debug_info': debug_info
             }), 500
         
@@ -377,8 +394,28 @@ def debug_credentials(source_id: int):
         try:
             from pydrive2.auth import GoogleAuth
             from pydrive2.drive import GoogleDrive
-            
+
+            # Configure GoogleAuth with proper settings (same as pydrive_core.py)
             gauth = GoogleAuth()
+            gauth.settings = {
+                'client_config_backend': 'service',
+                'client_config': {
+                    'client_id': credentials.client_id,
+                    'client_secret': credentials.client_secret,
+                    'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
+                    'token_uri': 'https://oauth2.googleapis.com/token',
+                    'redirect_uri': 'http://localhost:8080/api/cloud/oauth/callback'
+                },
+                'save_credentials': False,
+                'save_credentials_backend': 'file',
+                'save_credentials_file': None,
+                'get_refresh_token': True,
+                'oauth_scope': [
+                    'https://www.googleapis.com/auth/drive.file',
+                    'https://www.googleapis.com/auth/drive.readonly',
+                    'https://www.googleapis.com/auth/drive.metadata.readonly'
+                ]
+            }
             gauth.credentials = credentials
             drive = GoogleDrive(gauth)
             
