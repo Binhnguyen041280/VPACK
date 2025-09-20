@@ -121,7 +121,7 @@ const EventSearchResults: React.FC<EventSearchResultsProps> = ({
         </VStack>
       </VStack>
 
-      {/* Event Cards */}
+      {/* Event Cards - Auto-process all events */}
       <VStack spacing={0} align="stretch">
         {events.map((event, index) => (
           <EventCard
@@ -129,6 +129,7 @@ const EventSearchResults: React.FC<EventSearchResultsProps> = ({
             event={event}
             index={index}
             onClick={onEventClick}
+            autoProcess={true}
           />
         ))}
       </VStack>

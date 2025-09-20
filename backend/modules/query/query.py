@@ -817,3 +817,152 @@ def get_cameras():
         return jsonify({
             "error": f"Failed to get cameras: {str(e)}"
         }), 500
+
+import time
+import threading
+import uuid
+
+# Store processing tasks
+processing_tasks = {}
+
+@query_bp.route('/process-event', methods=['POST'])
+def process_event():
+    """Start processing an event (mock with 5s download simulation)"""
+    try:
+        data = request.get_json()
+        event_id = data.get('event_id')
+        tracking_code = data.get('tracking_code')
+
+        if not event_id or not tracking_code:
+            return jsonify({"error": "Missing event_id or tracking_code"}), 400
+
+        # Generate unique task ID
+        task_id = str(uuid.uuid4())
+
+        # Initialize task
+        processing_tasks[task_id] = {
+            "status": "starting",
+            "progress": 0,
+            "event_id": event_id,
+            "tracking_code": tracking_code,
+            "output_path": None,
+            "error": None
+        }
+
+        # Start background processing
+        def process_video():
+            try:
+                # Phase 1: Mock download (3 seconds, 0-60%)
+                processing_tasks[task_id]["status"] = "downloading"
+                for i in range(31):  # 0-30 steps for 60% progress
+                    processing_tasks[task_id]["progress"] = i * 2  # 0-60%
+                    time.sleep(0.1)  # 3 seconds total
+
+                # Phase 2: Mock cutting (2 seconds, 60-100%)
+                processing_tasks[task_id]["status"] = "cutting"
+                for i in range(21):  # 21 steps for 40% progress (60% to 100%)
+                    processing_tasks[task_id]["progress"] = 60 + (i * 2)  # 60-100%
+                    time.sleep(0.1)  # 2 seconds total
+
+                # Fixed output path for demo
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_filename = f"demo_{tracking_code}_{timestamp}.mp4"
+                output_path = f"/Users/annhu/Movies/VTrack/Output/{output_filename}"
+
+                # Ensure output directory exists
+                os.makedirs("/Users/annhu/Movies/VTrack/Output", exist_ok=True)
+
+                # Create demo file for UI testing
+                with open(output_path, 'w') as f:
+                    f.write(f"Demo video file for {tracking_code} - {datetime.now()}")
+
+                logger.info(f"Demo video file created: {output_path}")
+
+                # Complete
+                processing_tasks[task_id]["status"] = "completed"
+                processing_tasks[task_id]["progress"] = 100
+                processing_tasks[task_id]["output_path"] = output_path
+
+            except Exception as e:
+                logger.error(f"Video processing error: {e}")
+                processing_tasks[task_id]["status"] = "error"
+                processing_tasks[task_id]["error"] = str(e)
+
+        # Start processing in background thread
+        thread = threading.Thread(target=process_video)
+        thread.daemon = True
+        thread.start()
+
+        return jsonify({
+            "task_id": task_id,
+            "status": "started",
+            "message": f"Processing started for {tracking_code}"
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error starting event processing: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@query_bp.route('/process-status/<task_id>', methods=['GET'])
+def get_process_status(task_id):
+    """Get processing status for a task"""
+    try:
+        if task_id not in processing_tasks:
+            return jsonify({"error": "Task not found"}), 404
+
+        task = processing_tasks[task_id]
+        return jsonify(task), 200
+
+    except Exception as e:
+        logger.error(f"Error getting process status: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@query_bp.route('/play-video', methods=['POST'])
+def play_video():
+    """Open video player - for demo, opens the output directory"""
+    try:
+        # For demo: open the output directory instead of specific file
+        output_dir = "/Users/annhu/Movies/VTrack/Output"
+
+        # Use system default file manager
+        import subprocess
+        import platform
+
+        system = platform.system()
+        if system == "Darwin":  # macOS
+            subprocess.run(["open", output_dir])
+        elif system == "Windows":
+            subprocess.run(["explorer", output_dir])
+        else:  # Linux
+            subprocess.run(["xdg-open", output_dir])
+
+        return jsonify({"message": "Output directory opened"}), 200
+
+    except Exception as e:
+        logger.error(f"Error opening directory: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@query_bp.route('/browse-location', methods=['POST'])
+def browse_location():
+    """Open file explorer at output directory"""
+    try:
+        # For demo: always open the output directory
+        output_dir = "/Users/annhu/Movies/VTrack/Output"
+
+        # Open file explorer
+        import subprocess
+        import platform
+
+        system = platform.system()
+        if system == "Darwin":  # macOS
+            subprocess.run(["open", output_dir])
+        elif system == "Windows":
+            subprocess.run(["explorer", output_dir])
+        else:  # Linux
+            subprocess.run(["nautilus", output_dir])
+
+        return jsonify({"message": "Output directory opened"}), 200
+
+    except Exception as e:
+        logger.error(f"Error opening directory: {e}")
+        return jsonify({"error": str(e)}), 500
