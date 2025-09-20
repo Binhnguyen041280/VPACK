@@ -95,16 +95,21 @@ export default function TracePage() {
     }
   }, []); // Only run once on mount
 
-  // Fetch available cameras from active_cameras view
+  // Fetch available cameras from API
   useEffect(() => {
     const fetchCameras = async () => {
       try {
-        // For now, use the cameras from active_cameras view
-        // TODO: Create dedicated API endpoint for cameras
-        setAvailableCameras(['Cloud_Cam1', 'Cloud_Cam2', 'Cloud_Cam3']);
+        const response = await fetch('http://localhost:8080/get-cameras');
+        if (!response.ok) {
+          throw new Error(`Failed to fetch cameras: ${response.status}`);
+        }
+        const data = await response.json();
+        const cameraNames = data.cameras?.map((camera: any) => camera.name) || [];
+        setAvailableCameras(cameraNames);
       } catch (error) {
         console.error('Error fetching cameras:', error);
-        setAvailableCameras([]);
+        // Fallback to hardcoded cameras in case of API failure
+        setAvailableCameras(['Cloud_Cam1', 'Cloud_Cam2', 'Cloud_Cam3']);
       }
     };
 

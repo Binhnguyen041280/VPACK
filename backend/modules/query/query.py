@@ -787,11 +787,33 @@ def get_query_performance_metrics():
                 'caching_enabled': False  # Cache removed
             }
         }
-        
+
         return jsonify(response_data), 200
-        
+
     except Exception as e:
         logger.error(f"Error getting performance metrics: {e}")
         return jsonify({
             'error': f"Failed to get performance metrics: {str(e)}"
+        }), 500
+
+@query_bp.route('/get-cameras', methods=['GET'])
+def get_cameras():
+    """Get active cameras from active_cameras view - single source of truth."""
+    try:
+        with db_rwlock.gen_rlock():
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT DISTINCT camera_name FROM active_cameras ORDER BY camera_name")
+                cameras = [row[0] for row in cursor.fetchall()]
+
+        return jsonify({
+            "cameras": [{"name": camera} for camera in cameras],
+            "count": len(cameras),
+            "source": "active_cameras_view"
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting cameras: {e}")
+        return jsonify({
+            "error": f"Failed to get cameras: {str(e)}"
         }), 500

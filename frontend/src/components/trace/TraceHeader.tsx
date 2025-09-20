@@ -158,7 +158,9 @@ const TraceHeader: React.FC<TraceHeaderProps> = ({
                 ? 'Camera'
                 : selectedCameras.length === availableCameras.length
                 ? 'All'
-                : `(${selectedCameras.length})`
+                : selectedCameras.length === 1
+                ? selectedCameras[0]
+                : 'Cameras...'
               }
             </MenuButton>
 
