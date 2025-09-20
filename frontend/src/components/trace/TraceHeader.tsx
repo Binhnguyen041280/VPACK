@@ -55,6 +55,7 @@ const TraceHeader: React.FC<TraceHeaderProps> = ({
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
   const inputBg = useColorModeValue('gray.50', 'navy.700');
   const menuBg = useColorModeValue('white', 'navy.700');
+  const menuItemHoverBg = useColorModeValue('gray.50', 'navy.600');
 
   // Generate days options from 1 to 30
   const defaultDaysOptions = Array.from({ length: 30 }, (_, i) => ({
@@ -170,7 +171,7 @@ const TraceHeader: React.FC<TraceHeaderProps> = ({
                 <MenuItemOption
                   value="all"
                   fontSize="sm"
-                  _hover={{ bg: useColorModeValue('gray.50', 'navy.600') }}
+                  _hover={{ bg: menuItemHoverBg }}
                   onClick={() => {
                     if (selectedCameras.length === availableCameras.length) {
                       onCameraToggle([]);
@@ -186,7 +187,7 @@ const TraceHeader: React.FC<TraceHeaderProps> = ({
                     key={camera}
                     value={camera}
                     fontSize="sm"
-                    _hover={{ bg: useColorModeValue('gray.50', 'navy.600') }}
+                    _hover={{ bg: menuItemHoverBg }}
                   >
                     {camera}
                   </MenuItemOption>

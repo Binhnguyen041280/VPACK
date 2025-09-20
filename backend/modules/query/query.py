@@ -15,7 +15,7 @@ from modules.scheduler.db_sync import db_rwlock  # Thêm import db_rwlock
 from zoneinfo import ZoneInfo
 from modules.config.logging_config import get_logger
 # Removed timezone_validation - using simple validation inline
-from .enhanced_timezone_query import enhanced_timezone_query
+# Removed enhanced_timezone_query import - consolidating into single file
 from modules.utils.simple_timezone import simple_validate_timezone, get_available_timezones
 
 query_bp = Blueprint('query', __name__)
@@ -138,9 +138,13 @@ def query_events():
         if not tz_result['valid']:
             return jsonify({"error": f"Invalid timezone: {timezone_str}"}), 400
             
-        # Parse timestamps - these will be handled later in the function
-        from_timestamp = from_time
-        to_timestamp = to_time
+        # Parse timestamps and convert to Unix milliseconds for database query
+        time_range_result = parse_time_range(from_time, to_time, 7, tz_result['timezone'])
+        if time_range_result['error']:
+            return jsonify({"error": time_range_result['error']}), 400
+
+        from_timestamp = time_range_result['from_timestamp']
+        to_timestamp = time_range_result['to_timestamp']
         # Extract other parameters
         user_tz = ZoneInfo(tz_result['timezone'])
         tracking_codes = data.get('tracking_codes', [])
@@ -617,16 +621,63 @@ def query_events_enhanced():
         if not user_timezone:
             user_timezone = "Asia/Ho_Chi_Minh"
         
-        # Execute enhanced timezone-aware query
-        result = enhanced_timezone_query.query_events_timezone_aware(
-            from_time=from_time,
-            to_time=to_time,
-            cameras=cameras,
-            tracking_codes=tracking_codes,
-            user_timezone=user_timezone,
-            include_processed=include_processed,
-            search_string=search_string
-        )
+        # Use the existing query logic in this file instead of enhanced module
+        with db_rwlock.gen_rlock():
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+
+                query = """
+                SELECT event_id, ts, te, duration, tracking_codes, video_file, packing_time_start, packing_time_end,
+                       timezone_info, camera_name, created_at_utc, updated_at_utc
+                FROM events
+                WHERE is_processed = 0
+            """
+                params = []
+
+                # Add time filtering
+                if from_timestamp and to_timestamp:
+                    query += " AND (packing_time_start IS NULL OR (packing_time_start >= ? AND packing_time_start <= ?))"
+                    params.extend([from_timestamp, to_timestamp])
+
+                # Add camera filtering
+                if cameras:
+                    query += " AND camera_name IN ({})".format(','.join('?' * len(cameras)))
+                    params.extend(cameras)
+
+                logger.info(f"Executing consolidated query with params: {params}")
+                cursor.execute(query, params)
+                events = cursor.fetchall()
+
+                # Process and format events
+                formatted_events = []
+                for event in events:
+                    event_dict = {
+                        'event_id': event[0],
+                        'ts': event[1],
+                        'te': event[2],
+                        'duration': event[3],
+                        'tracking_codes_raw': event[4],
+                        'video_file': event[5],
+                        'packing_time_start': event[6],
+                        'packing_time_end': event[7],
+                        'timezone_info': event[8],
+                        'camera_name': event[9],
+                        'created_at_utc': event[10],
+                        'updated_at_utc': event[11]
+                    }
+
+                    # Parse tracking codes
+                    tracking_codes_parsed = parse_tracking_codes(event[4], event[0])
+                    event_dict['tracking_codes_parsed'] = tracking_codes_parsed
+
+                    formatted_events.append(event_dict)
+
+                result = {
+                    'events': formatted_events,
+                    'total_count': len(formatted_events),
+                    'query_time_ms': 0,  # Simplified - no performance tracking
+                    'timezone_info': user_timezone
+                }
         
         # Format response
         response_data = {
@@ -723,14 +774,17 @@ def get_timezone_info():
 def get_query_performance_metrics():
     """Get query performance metrics for monitoring."""
     try:
-        metrics = enhanced_timezone_query.get_performance_metrics()
-        
+        # Simplified metrics without enhanced module
         response_data = {
-            'performance_metrics': metrics,
+            'performance_metrics': {
+                'total_queries': 0,
+                'average_query_time_ms': 0,
+                'cache_hit_rate': 0  # No cache anymore
+            },
             'optimization_info': {
-                'query_optimizer_enabled': True,
+                'query_optimizer_enabled': False,
                 'timezone_aware_indexing': True,
-                'caching_enabled': True
+                'caching_enabled': False  # Cache removed
             }
         }
         

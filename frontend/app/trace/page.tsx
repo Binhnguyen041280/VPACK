@@ -44,11 +44,11 @@ export default function TracePage() {
   // DateTime state for TraceHeader
   const [fromDateTime, setFromDateTime] = useState<string>('');
   const [toDateTime, setToDateTime] = useState<string>('');
-  const [defaultDays, setDefaultDays] = useState<number>(7);
+  const [defaultDays, setDefaultDays] = useState<number>(3);
 
   // Camera state
   const [selectedCameras, setSelectedCameras] = useState<string[]>([]);
-  const [availableCameras] = useState<string[]>(['Camera01', 'Camera02', 'Camera03']);
+  const [availableCameras, setAvailableCameras] = useState<string[]>([]);
 
   // Header visibility state
   const [isHeaderHidden, setIsHeaderHidden] = useState<boolean>(false);
@@ -83,12 +83,42 @@ export default function TracePage() {
     setCurrentRoute('/trace');
   }, [setCurrentRoute]);
 
-  // Auto-set date range when defaultDays changes
+  // State to track manual vs automatic time changes
+  const [isManualTimeChange, setIsManualTimeChange] = useState<boolean>(false);
+
+  // Initial date range setup only (removed auto-reset to prevent search interference)
   useEffect(() => {
-    const { fromDateTime, toDateTime } = autoSetDateRange(defaultDays);
-    setFromDateTime(fromDateTime);
-    setToDateTime(toDateTime);
-  }, [defaultDays]);
+    if (!fromDateTime && !toDateTime) {
+      const { fromDateTime: initialFrom, toDateTime: initialTo } = autoSetDateRange(defaultDays);
+      setFromDateTime(initialFrom);
+      setToDateTime(initialTo);
+    }
+  }, []); // Only run once on mount
+
+  // Fetch available cameras from active_cameras view
+  useEffect(() => {
+    const fetchCameras = async () => {
+      try {
+        // For now, use the cameras from active_cameras view
+        // TODO: Create dedicated API endpoint for cameras
+        setAvailableCameras(['Cloud_Cam1', 'Cloud_Cam2', 'Cloud_Cam3']);
+      } catch (error) {
+        console.error('Error fetching cameras:', error);
+        setAvailableCameras([]);
+      }
+    };
+
+    fetchCameras();
+  }, []); // Only run once on mount
+
+  // Update time range when defaultDays changes (only if not manually changed)
+  useEffect(() => {
+    if (!isManualTimeChange) {
+      const { fromDateTime: newFrom, toDateTime: newTo } = autoSetDateRange(defaultDays);
+      setFromDateTime(newFrom);
+      setToDateTime(newTo);
+    }
+  }, [defaultDays, isManualTimeChange]);
 
   // Auto-hide header after 3 seconds of no activity
   useEffect(() => {
@@ -270,9 +300,18 @@ export default function TracePage() {
           fromDateTime={fromDateTime}
           toDateTime={toDateTime}
           defaultDays={defaultDays}
-          onFromDateTimeChange={setFromDateTime}
-          onToDateTimeChange={setToDateTime}
-          onDefaultDaysChange={setDefaultDays}
+          onFromDateTimeChange={(dateTime) => {
+            setFromDateTime(dateTime);
+            setIsManualTimeChange(true);
+          }}
+          onToDateTimeChange={(dateTime) => {
+            setToDateTime(dateTime);
+            setIsManualTimeChange(true);
+          }}
+          onDefaultDaysChange={(days) => {
+            setDefaultDays(days);
+            setIsManualTimeChange(false); // Reset manual flag when defaultDays changes
+          }}
           availableCameras={availableCameras}
           selectedCameras={selectedCameras}
           onCameraToggle={setSelectedCameras}
