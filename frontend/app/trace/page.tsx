@@ -14,6 +14,13 @@ import {
   MenuList,
   MenuItem,
   useColorModeValue,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalCloseButton,
+  useDisclosure,
 } from '@chakra-ui/react';
 import { MdAutoAwesome, MdAdd, MdAttachFile, MdImage, MdVideoFile } from 'react-icons/md';
 import Bg from '../../public/img/chat/bg-image.png';
@@ -22,6 +29,7 @@ import ChatMessage from '@/components/ChatMessage';
 import { SidebarContext } from '@/contexts/SidebarContext';
 import { useRoute } from '@/contexts/RouteContext';
 import TraceHeader from '@/components/trace/TraceHeader';
+import EventSearchResults from '@/components/trace/EventSearchResults';
 import {
   formatDateTimeForAPI,
   getCurrentDateTime,
@@ -29,11 +37,24 @@ import {
   autoSetDateRange
 } from '@/utils/dateTimeHelpers';
 
+interface EventData {
+  event_id: number;
+  tracking_codes_parsed: string[];
+  camera_name: string;
+  packing_time_start: number;
+  packing_time_end: number;
+  duration: number;
+}
+
 interface Message {
   id: string;
   content: string;
   type: 'user' | 'bot';
   timestamp: Date;
+  eventData?: {
+    searchInput: string;
+    events: EventData[];
+  };
 }
 
 export default function TracePage() {
@@ -53,6 +74,16 @@ export default function TracePage() {
   // Header visibility state
   const [isHeaderHidden, setIsHeaderHidden] = useState<boolean>(false);
   const [isHovering, setIsHovering] = useState<boolean>(false);
+
+  // Event modal state
+  const [selectedEvent, setSelectedEvent] = useState<EventData | null>(null);
+  const { isOpen, onOpen, onClose } = useDisclosure();
+
+  // Handle event click
+  const handleEventClick = (event: EventData) => {
+    setSelectedEvent(event);
+    onOpen();
+  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { currentColors } = useColorTheme();
@@ -176,9 +207,10 @@ export default function TracePage() {
       const botResponse = await getTraceResponse(inputCode);
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: botResponse,
+        content: botResponse.content,
         type: 'bot',
-        timestamp: new Date()
+        timestamp: new Date(),
+        eventData: botResponse.eventData
       };
       setMessages(prev => [...prev, botMessage]);
     } catch (error) {
@@ -198,7 +230,7 @@ export default function TracePage() {
   };
 
   // Real API call for tracking codes
-  const handleTrackingCodes = async (input: string): Promise<string> => {
+  const handleTrackingCodes = async (input: string): Promise<{ type: 'text' | 'events', content: string, eventData?: { searchInput: string, events: EventData[] } }> => {
     try {
       const response = await fetch('http://localhost:8080/query', {
         method: 'POST',
@@ -222,36 +254,31 @@ export default function TracePage() {
       const data = await response.json();
       const events = data.events || [];
 
-      if (events.length === 0) {
-        return `🔍 Search Results for: ${input}\n\n❌ No events found\n\n📅 Time Range: ${fromDateTime ? new Date(fromDateTime).toLocaleString() : 'Not set'} to ${toDateTime ? new Date(toDateTime).toLocaleString() : 'Not set'}\n📹 Cameras: ${selectedCameras.length > 0 ? selectedCameras.join(', ') : 'All cameras'}`;
-      }
+      // Truncate long search string for display
+      const trackingCodes = input.split(',').map(code => code.trim()).filter(code => code.length > 0);
+      const displayInput = trackingCodes.length > 3
+        ? `${trackingCodes.slice(0, 3).join(', ')}...`
+        : input;
 
-      let result = `🔍 Search Results for: ${input}\n\n✅ Found ${events.length} event(s)\n\n`;
-
-      events.forEach((event: any, index: number) => {
-        const startTime = new Date(event.packing_time_start).toLocaleString();
-        const endTime = new Date(event.packing_time_end).toLocaleString();
-        const duration = event.duration || 0;
-        const trackingCodes = event.tracking_codes_parsed || [];
-
-        result += `📦 Event ${index + 1}:\n`;
-        result += `   • Event ID: ${event.event_id}\n`;
-        result += `   • Tracking Codes: ${trackingCodes.join(', ')}\n`;
-        result += `   • Camera: ${event.camera_name || 'Unknown'}\n`;
-        result += `   • Start: ${startTime}\n`;
-        result += `   • End: ${endTime}\n`;
-        result += `   • Duration: ${duration}s\n`;
-        result += `   • Video: ${event.video_file || 'N/A'}\n\n`;
-      });
-
-      return result;
+      // Return event data for interactive display
+      return {
+        type: 'events',
+        content: '',
+        eventData: {
+          searchInput: input,
+          events: events
+        }
+      };
     } catch (error) {
       console.error('Error querying tracking codes:', error);
-      return `❌ Error searching for tracking codes: ${input}\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease check if the backend server is running on port 8080.`;
+      return {
+        type: 'text',
+        content: `❌ Error searching for tracking codes: ${input}\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease check if the backend server is running on port 8080.`
+      };
     }
   };
 
-  const getTraceResponse = async (input: string): Promise<string> => {
+  const getTraceResponse = async (input: string): Promise<{ type: 'text' | 'events', content: string, eventData?: { searchInput: string, events: EventData[] } }> => {
     const lowerInput = input.toLowerCase();
 
     // Check if input looks like tracking codes
@@ -260,25 +287,40 @@ export default function TracePage() {
     }
 
     if (lowerInput.includes('video') || lowerInput.includes('upload')) {
-      return `📹 Video Processing Available:\n\n• Drag and drop your video files\n• Supported formats: MP4, AVI, MOV\n• Real-time processing status\n• Automatic quality detection\n\nReady to process your videos!`;
+      return {
+        type: 'text',
+        content: `📹 Video Processing Available:\n\n• Drag and drop your video files\n• Supported formats: MP4, AVI, MOV\n• Real-time processing status\n• Automatic quality detection\n\nReady to process your videos!`
+      };
     }
 
     if (lowerInput.includes('monitor') || lowerInput.includes('tracking')) {
-      return `📊 System Monitoring:\n\n• Real-time packaging events\n• Production line status\n• Quality metrics dashboard\n• Alert notifications\n\nMonitoring is active and running smoothly.`;
+      return {
+        type: 'text',
+        content: `📊 System Monitoring:\n\n• Real-time packaging events\n• Production line status\n• Quality metrics dashboard\n• Alert notifications\n\nMonitoring is active and running smoothly.`
+      };
     }
 
     if (lowerInput.includes('report') || lowerInput.includes('analytics')) {
-      return `📈 Trace Reports:\n\n• Daily production summaries\n• Quality analysis reports\n• Performance metrics\n• Export to PDF/Excel\n\nGenerate your custom reports here.`;
+      return {
+        type: 'text',
+        content: `📈 Trace Reports:\n\n• Daily production summaries\n• Quality analysis reports\n• Performance metrics\n• Export to PDF/Excel\n\nGenerate your custom reports here.`
+      };
     }
 
     if (lowerInput.includes('time') || lowerInput.includes('date')) {
       const displayFrom = fromDateTime ? new Date(fromDateTime).toLocaleString() : 'Not set';
       const displayTo = toDateTime ? new Date(toDateTime).toLocaleString() : 'Not set';
 
-      return `🕐 Time Range Settings:\n\nCurrent configuration:\n• From: ${displayFrom}\n• To: ${displayTo}\n• Default: Last ${defaultDays} days\n• Cameras: ${selectedCameras.length > 0 ? selectedCameras.join(', ') : 'All cameras'}\n\nUse the header controls to adjust your time range and camera selection.`;
+      return {
+        type: 'text',
+        content: `🕐 Time Range Settings:\n\nCurrent configuration:\n• From: ${displayFrom}\n• To: ${displayTo}\n• Default: Last ${defaultDays} days\n• Cameras: ${selectedCameras.length > 0 ? selectedCameras.join(', ') : 'All cameras'}\n\nUse the header controls to adjust your time range and camera selection.`
+      };
     }
 
-    return `✨ V.PACK Trace System:\n\nI can help you with:\n• Video processing and analysis\n• Event query with tracking codes\n• Time range and camera filtering\n• Performance reports and analytics\n\nTry entering tracking codes like: TC01, TC02\nOr ask about "time settings", "video upload", etc.`;
+    return {
+      type: 'text',
+      content: `✨ V.PACK Trace System:\n\nI can help you with:\n• Video processing and analysis\n• Event query with tracking codes\n• Time range and camera filtering\n• Performance reports and analytics\n\nTry entering tracking codes like: TC01, TC02\nOr ask about "time settings", "video upload", etc.`
+    };
   };
 
   const handleFileUpload = () => {
@@ -359,14 +401,30 @@ export default function TracePage() {
               w="100%"
             >
               {/* Chat Messages History */}
-              {messages.map((message) => (
-                <ChatMessage
-                  key={message.id}
-                  content={message.content}
-                  type={message.type}
-                  timestamp={message.timestamp}
-                />
-              ))}
+              {messages.map((message) => {
+                // If message has event data, render EventSearchResults
+                if (message.eventData) {
+                  return (
+                    <Box key={message.id} mb="16px">
+                      <EventSearchResults
+                        searchInput={message.eventData.searchInput}
+                        events={message.eventData.events}
+                        onEventClick={handleEventClick}
+                      />
+                    </Box>
+                  );
+                }
+
+                // Otherwise render normal ChatMessage
+                return (
+                  <ChatMessage
+                    key={message.id}
+                    content={message.content}
+                    type={message.type}
+                    timestamp={message.timestamp}
+                  />
+                );
+              })}
 
               {/* Loading indicator */}
               {loading && (
@@ -545,6 +603,31 @@ export default function TracePage() {
           </Button>
         </Flex>
       </Flex>
+
+      {/* Event Details Modal */}
+      <Modal isOpen={isOpen} onClose={onClose} size="4xl">
+        <ModalOverlay bg="blackAlpha.300" />
+        <ModalContent maxW="90vw" maxH="90vh">
+          <ModalHeader>
+            📦 Event Details - {selectedEvent?.tracking_codes_parsed.join(', ')}
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            {selectedEvent && (
+              <Box>
+                <Text><strong>Camera:</strong> {selectedEvent.camera_name}</Text>
+                <Text><strong>Start Time:</strong> {new Date(selectedEvent.packing_time_start).toLocaleString()}</Text>
+                <Text><strong>End Time:</strong> {new Date(selectedEvent.packing_time_end).toLocaleString()}</Text>
+                <Text><strong>Duration:</strong> {selectedEvent.duration}s</Text>
+                <Text><strong>Event ID:</strong> {selectedEvent.event_id}</Text>
+                <Text mt={4} color="gray.600">
+                  🚧 Full event processing interface coming in Phase 2!
+                </Text>
+              </Box>
+            )}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </>
   );
 }
