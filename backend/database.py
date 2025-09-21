@@ -231,9 +231,41 @@ def update_database():
                       "Asia/Ho_Chi_Minh", "Vietnam (Ho Chi Minh City)", 7.0, 
                       "iana_standard", 1, datetime.now().isoformat(), "vi"))
 
+            # ==================== PLATFORM MANAGEMENT TABLES ====================
+
+            # 6. Platform Column Mappings Table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS platform_column_mappings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    platform_name TEXT NOT NULL,
+                    column_letter TEXT NOT NULL,
+
+                    -- Detection patterns
+                    header_pattern TEXT,              -- JSON: ["Order ID", "Tracking", "Status"]
+                    tracking_code_pattern TEXT,       -- Regex: "^SPX[A-Z]{2}\\d{9}$"
+                    file_name_pattern TEXT,          -- Regex: "shopee.*order.*\\.xlsx?"
+
+                    -- Learning metrics
+                    usage_count INTEGER DEFAULT 0,
+                    last_used_at TIMESTAMP,
+                    confidence_threshold REAL DEFAULT 50.0,
+
+                    -- Metadata
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    is_active BOOLEAN DEFAULT 1,
+
+                    -- Constraints
+                    UNIQUE(platform_name, column_letter)
+                )
+            """)
+
+            # Platform mappings table is ready - no default data seeding
+            logger.info("Platform column mappings table ready for user-defined configurations")
+
             # ==================== VIDEO PROCESSING TABLES ====================
-            
-            # 6. Events Table
+
+            # 7. Events Table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS events (
                     event_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -620,9 +652,14 @@ def update_database():
             """)
 
             # ==================== CREATE ALL INDEXES ====================
-            
+
             # Core table indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_te_event_id ON events(te, event_id)")
+
+            # Platform management indexes
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_platform_mappings_name ON platform_column_mappings(platform_name)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_platform_mappings_active ON platform_column_mappings(is_active, usage_count DESC)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_platform_mappings_usage ON platform_column_mappings(usage_count DESC, last_used_at DESC)")
             
             # ==================== TIMEZONE INDEXES ====================
             
@@ -821,7 +858,17 @@ def update_database():
             """)
 
             # ==================== CREATE TRIGGERS ====================
-            
+
+            # Update platform mappings timestamp trigger
+            cursor.execute("""
+                CREATE TRIGGER IF NOT EXISTS update_platform_mappings_timestamp
+                AFTER UPDATE ON platform_column_mappings
+                FOR EACH ROW
+                BEGIN
+                    UPDATE platform_column_mappings SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+                END
+            """)
+
             # Update licenses timestamp trigger
             cursor.execute("""
                 CREATE TRIGGER IF NOT EXISTS update_licenses_timestamp
@@ -864,7 +911,9 @@ def update_database():
 
             conn.commit()
             print(f"🎉 Database updated successfully at {DB_PATH}")
-            print("✅ All 22 tables created successfully")
+            print("✅ All 23 tables created successfully")
+            print("✅ Platform management system implemented")
+            print("   - Added platform_column_mappings table with auto-detection patterns")
             print("✅ Enhanced timezone management system implemented")
             print("   - Enhanced general_info table with 7 timezone columns")
             print("   - Enhanced events table with timezone metadata")

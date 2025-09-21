@@ -942,6 +942,208 @@ def play_video():
         logger.error(f"Error opening directory: {e}")
         return jsonify({"error": str(e)}), 500
 
+@query_bp.route('/detect-platform', methods=['POST'])
+def detect_platform():
+    """Auto-detect platform from file analysis"""
+    try:
+        from ..utils.platform_detector import PlatformDetector
+
+        data = request.get_json()
+        headers = data.get('headers', [])
+        sample_data = data.get('sample_data', [])
+        filename = data.get('filename', '')
+
+        if not headers:
+            return jsonify({'error': 'Headers are required'}), 400
+
+        detector = PlatformDetector()
+        result = detector.detect_platform(headers, sample_data, filename)
+
+        logger.info(f"Platform detection for '{filename}': {result.get('platform', 'None')} ({result.get('confidence', 0):.1f}%)")
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        logger.error(f"Error in platform detection: {e}")
+        return jsonify({'error': f'Platform detection failed: {str(e)}'}), 500
+
+@query_bp.route('/save-platform-preference', methods=['POST'])
+def save_platform_preference():
+    """Save user's platform preference for future auto-detection"""
+    try:
+        from ..utils.platform_detector import PlatformDetector
+
+        data = request.get_json()
+        platform_name = data.get('platform_name')
+        column_letter = data.get('column_letter')
+        headers = data.get('headers', [])
+        sample_data = data.get('sample_data', [])
+        filename = data.get('filename', '')
+        enforce_unique = data.get('enforce_unique', False)
+
+        if not platform_name or not column_letter:
+            return jsonify({'error': 'Platform name and column letter are required'}), 400
+
+        detector = PlatformDetector()
+
+        if enforce_unique:
+            # Check if platform already exists (case-insensitive)
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, platform_name, column_letter, usage_count
+                    FROM platform_column_mappings
+                    WHERE LOWER(platform_name) = LOWER(?)
+                """, (platform_name,))
+
+                existing = cursor.fetchone()
+
+                if existing:
+                    # Update existing platform with new column and data
+                    existing_id, existing_name, existing_column, existing_usage = existing
+
+                    # Generate patterns for the updated data
+                    header_pattern = json.dumps(headers) if headers else None
+                    tracking_pattern = detector._generate_tracking_pattern(sample_data) if sample_data else None
+                    filename_pattern = detector._generate_filename_pattern(filename) if filename else None
+
+                    cursor.execute("""
+                        UPDATE platform_column_mappings SET
+                            column_letter = ?,
+                            header_pattern = ?,
+                            tracking_code_pattern = ?,
+                            file_name_pattern = ?,
+                            usage_count = usage_count + 1,
+                            last_used_at = CURRENT_TIMESTAMP,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    """, (column_letter, header_pattern, tracking_pattern, filename_pattern, existing_id))
+
+                    conn.commit()
+
+                    # Reload detector configurations
+                    detector.platforms = detector._load_platform_configs()
+
+                    logger.info(f"Updated platform preference: {existing_name} (ID:{existing_id}) -> column {column_letter}")
+                    return jsonify({
+                        'success': True,
+                        'action': 'updated',
+                        'message': f'Platform {existing_name} updated to use column {column_letter}',
+                        'previous_column': existing_column
+                    }), 200
+                else:
+                    # Create new platform
+                    success = detector.save_platform_preference(
+                        platform_name, column_letter, headers, sample_data, filename
+                    )
+
+                    if success:
+                        logger.info(f"Saved new platform preference: {platform_name} -> column {column_letter}")
+                        return jsonify({
+                            'success': True,
+                            'action': 'created',
+                            'message': f'Platform preference saved for {platform_name}'
+                        }), 200
+                    else:
+                        return jsonify({'success': False, 'error': 'Failed to save platform preference'}), 500
+        else:
+            # Original behavior - just save
+            success = detector.save_platform_preference(
+                platform_name, column_letter, headers, sample_data, filename
+            )
+
+            if success:
+                logger.info(f"Saved platform preference: {platform_name} -> column {column_letter}")
+                return jsonify({
+                    'success': True,
+                    'action': 'created',
+                    'message': f'Platform preference saved for {platform_name}'
+                }), 200
+            else:
+                return jsonify({'success': False, 'error': 'Failed to save platform preference'}), 500
+
+    except Exception as e:
+        logger.error(f"Error saving platform preference: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@query_bp.route('/get-platform-preferences', methods=['GET'])
+def get_platform_preferences():
+    """Get all saved platform preferences"""
+    try:
+        from ..utils.platform_detector import PlatformDetector
+
+        detector = PlatformDetector()
+        platforms = detector.platforms
+
+        # Format response for frontend
+        preferences = []
+        for platform in platforms:
+            preferences.append({
+                'platform_name': platform['platform_name'],
+                'column_letter': platform['column_letter'],
+                'usage_count': platform.get('usage_count', 0),
+                'last_used_at': platform.get('last_used_at'),
+                'confidence_threshold': platform.get('confidence_threshold', 50.0)
+            })
+
+        return jsonify({
+            'preferences': preferences,
+            'total_count': len(preferences)
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting platform preferences: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@query_bp.route('/get-platform-suggestions', methods=['POST'])
+def get_platform_suggestions():
+    """Get platform suggestions based on headers only (quick lookup)"""
+    try:
+        from ..utils.platform_detector import PlatformDetector
+
+        data = request.get_json()
+        headers = data.get('headers', [])
+
+        if not headers:
+            return jsonify({'suggestions': []}), 200
+
+        detector = PlatformDetector()
+        suggestions = detector.get_platform_suggestions(headers)
+
+        return jsonify({
+            'suggestions': suggestions,
+            'total_count': len(suggestions)
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting platform suggestions: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@query_bp.route('/update-platform-usage', methods=['POST'])
+def update_platform_usage():
+    """Update usage statistics for successful platform detection"""
+    try:
+        from ..utils.platform_detector import PlatformDetector
+
+        data = request.get_json()
+        platform_name = data.get('platform_name')
+        column_letter = data.get('column_letter')
+
+        if not platform_name or not column_letter:
+            return jsonify({'error': 'Platform name and column letter are required'}), 400
+
+        detector = PlatformDetector()
+        success = detector.update_usage_stats(platform_name, column_letter)
+
+        if success:
+            return jsonify({'success': True}), 200
+        else:
+            return jsonify({'success': False, 'error': 'Platform not found'}), 404
+
+    except Exception as e:
+        logger.error(f"Error updating platform usage: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @query_bp.route('/browse-location', methods=['POST'])
 def browse_location():
     """Open file explorer at output directory"""
