@@ -109,7 +109,7 @@ export default function TracePage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { currentColors } = useColorTheme();
-  const { toggleSidebar } = useContext(SidebarContext);
+  const { toggleSidebar, setToggleSidebar } = useContext(SidebarContext);
   const { setCurrentRoute } = useRoute();
   
   // Color mode values - ALL at top level to prevent hooks order violation
@@ -131,10 +131,14 @@ export default function TracePage() {
   const menuBg = useColorModeValue('white', 'navy.800');
   const menuItemHoverBg = useColorModeValue('gray.100', 'whiteAlpha.100');
 
-  // Set active route to Trace when component mounts
+  // Set active route to Trace and collapse sidebar when component mounts
   useEffect(() => {
     setCurrentRoute('/trace');
-  }, [setCurrentRoute]);
+    // Collapse sidebar when entering trace page
+    if (setToggleSidebar) {
+      setToggleSidebar(true); // true means collapsed in this context
+    }
+  }, [setCurrentRoute, setToggleSidebar]);
 
   // State to track manual vs automatic time changes
   const [isManualTimeChange, setIsManualTimeChange] = useState<boolean>(false);
