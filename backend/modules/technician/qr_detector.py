@@ -756,6 +756,73 @@ def preprocess_video_qr(video_path: str, roi_config: dict, fps: int = 5, progres
             logger.error(f"[QR-PREPROCESS] Error in preprocess_video_qr: {str(e)}\n{traceback.format_exc()}")
             return {"success": False, "error": f"Preprocessing error: {str(e)}"}
 
+def detect_qr_from_image(image_content: str) -> dict:
+    """
+    Detect QR codes from base64 image using WeChat QRCode model
+
+    Args:
+        image_content (str): Base64 encoded image string
+
+    Returns:
+        dict: {
+            'success': bool,
+            'qr_detections': [str] - Array of detected QR code texts,
+            'qr_count': int,
+            'error': str (if success=False)
+        }
+    """
+    try:
+        import base64
+        import numpy as np
+
+        # Check model files exist
+        for model_file in [DETECT_PROTO, DETECT_MODEL, SR_PROTO, SR_MODEL]:
+            if not os.path.exists(model_file):
+                return {"success": False, "error": f"Model file not found: {model_file}"}
+
+        # Initialize WeChat QR detector
+        try:
+            qr_detector = cv2.wechat_qrcode_WeChatQRCode(DETECT_PROTO, DETECT_MODEL, SR_PROTO, SR_MODEL)  # type: ignore
+        except Exception as e:
+            return {"success": False, "error": f"Failed to initialize QR detector: {str(e)}"}
+
+        # Decode base64 to image
+        try:
+            image_data = base64.b64decode(image_content)
+            nparr = np.frombuffer(image_data, np.uint8)
+            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+            if image is None:
+                return {"success": False, "error": "Failed to decode image from base64"}
+
+        except Exception as e:
+            return {"success": False, "error": f"Failed to process image data: {str(e)}"}
+
+        # Detect QR codes
+        try:
+            texts, points = qr_detector.detectAndDecode(image)
+
+            qr_detections = []
+            if texts and len(texts) > 0:
+                for text in texts:
+                    if text and text.strip():  # Only add non-empty texts
+                        qr_detections.append(text.strip())
+
+            logger.info(f"[QR-IMAGE] Detected {len(qr_detections)} QR codes from image")
+
+            return {
+                'success': True,
+                'qr_detections': qr_detections,
+                'qr_count': len(qr_detections)
+            }
+
+        except Exception as e:
+            return {"success": False, "error": f"QR detection failed: {str(e)}"}
+
+    except Exception as e:
+        logger.error(f"[QR-IMAGE] Error in detect_qr_from_image: {str(e)}\n{traceback.format_exc()}")
+        return {"success": False, "error": f"Image processing error: {str(e)}"}
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) != 4:

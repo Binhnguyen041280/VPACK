@@ -159,6 +159,29 @@ export function createFileUploadInput(onFileSelected: (file: File) => void): voi
 }
 
 /**
+ * Create image upload input element
+ */
+export function createImageUploadInput(onImageSelected: (file: File) => void): void {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.style.display = 'none';
+
+  input.onchange = (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (file) {
+      onImageSelected(file);
+    }
+    // Clean up
+    input.remove();
+  };
+
+  // Add to DOM temporarily and trigger click
+  document.body.appendChild(input);
+  input.click();
+}
+
+/**
  * Convert file to base64 string
  */
 export function fileToBase64(file: File): Promise<string> {

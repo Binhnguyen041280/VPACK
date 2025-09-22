@@ -39,6 +39,7 @@ import {
 } from '@/utils/dateTimeHelpers';
 import {
   createFileUploadInput,
+  createImageUploadInput,
   fileToBase64,
   getFileType,
   formatHeadersAsText,
@@ -516,8 +517,6 @@ export default function TracePage() {
   };
 
   const getTraceResponse = async (input: string): Promise<{ type: 'text' | 'events', content: string, eventData?: { searchInput: string, events: EventData[] } }> => {
-    const lowerInput = input.toLowerCase();
-
     // Check if user is selecting a column for file processing (only active/incomplete ones)
     const fileProcessingMessage = messages.find(msg =>
       msg.fileProcessingData &&
@@ -618,46 +617,8 @@ export default function TracePage() {
       }
     }
 
-    // Check if input looks like tracking codes
-    if (/^[A-Z0-9\-,\s]+$/.test(input.trim()) && input.length > 2) {
-      return await handleTrackingCodes(input);
-    }
-
-    if (lowerInput.includes('video') || lowerInput.includes('upload')) {
-      return {
-        type: 'text',
-        content: `📹 Video Processing Available:\n\n• Drag and drop your video files\n• Supported formats: MP4, AVI, MOV\n• Real-time processing status\n• Automatic quality detection\n\nReady to process your videos!`
-      };
-    }
-
-    if (lowerInput.includes('monitor') || lowerInput.includes('tracking')) {
-      return {
-        type: 'text',
-        content: `📊 System Monitoring:\n\n• Real-time packaging events\n• Production line status\n• Quality metrics dashboard\n• Alert notifications\n\nMonitoring is active and running smoothly.`
-      };
-    }
-
-    if (lowerInput.includes('report') || lowerInput.includes('analytics')) {
-      return {
-        type: 'text',
-        content: `📈 Trace Reports:\n\n• Daily production summaries\n• Quality analysis reports\n• Performance metrics\n• Export to PDF/Excel\n\nGenerate your custom reports here.`
-      };
-    }
-
-    if (lowerInput.includes('time') || lowerInput.includes('date')) {
-      const displayFrom = fromDateTime ? new Date(fromDateTime).toLocaleString() : 'Not set';
-      const displayTo = toDateTime ? new Date(toDateTime).toLocaleString() : 'Not set';
-
-      return {
-        type: 'text',
-        content: `🕐 Time Range Settings:\n\nCurrent configuration:\n• From: ${displayFrom}\n• To: ${displayTo}\n• Default: Last ${defaultDays} days\n• Cameras: ${selectedCameras.length > 0 ? selectedCameras.join(', ') : 'All cameras'}\n\nUse the header controls to adjust your time range and camera selection.`
-      };
-    }
-
-    return {
-      type: 'text',
-      content: `✨ V.PACK Trace System:\n\nI can help you with:\n• Video processing and analysis\n• Event query with tracking codes\n• Time range and camera filtering\n• Performance reports and analytics\n\nTry entering tracking codes like: TC01, TC02\nOr ask about "time settings", "video upload", etc.`
-    };
+    // All other input is treated as tracking codes - let backend validate
+    return await handleTrackingCodes(input);
   };
 
   const handleFileUpload = () => {
@@ -742,7 +703,90 @@ export default function TracePage() {
   };
 
   const handleImageUpload = () => {
-    console.log('Image upload clicked');
+    createImageUploadInput(async (file: File) => {
+      setLoading(true);
+
+      try {
+        // Convert image to base64
+        const imageContent = await fileToBase64(file);
+
+        // Add user message for image upload
+        const userMessage: Message = {
+          id: Date.now().toString(),
+          content: `📷 Đã tải ảnh: ${file.name}`,
+          type: 'user',
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, userMessage]);
+
+        // Call QR detection API
+        const response = await fetch('http://localhost:8080/api/qr-detection/detect-qr-image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            image_content: imageContent,
+            image_name: file.name
+          })
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.qr_detections && result.qr_detections.length > 0) {
+          // QR codes found - Auto query
+          const qrCodes = result.qr_detections;
+          const qrCodeText = qrCodes.join(', ');
+
+          // Add bot message for found QR codes
+          const qrFoundMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `✅ Tìm thấy ${result.qr_count} mã QR: \`${qrCodeText}\``,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, qrFoundMessage]);
+
+          // Auto query with first QR code
+          const queryInput = qrCodes[0];
+          const botResponse = await getTraceResponse(queryInput);
+
+          // Add query results
+          if (botResponse.content.trim() || botResponse.eventData) {
+            const queryResultMessage: Message = {
+              id: (Date.now() + 2).toString(),
+              content: botResponse.content,
+              type: 'bot',
+              timestamp: new Date(),
+              eventData: botResponse.eventData
+            };
+            setMessages(prev => [...prev, queryResultMessage]);
+          }
+
+        } else {
+          // No QR codes found
+          const noQrMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ Không tìm thấy mã QR trên ảnh "${file.name}"`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, noQrMessage]);
+        }
+
+      } catch (error) {
+        console.error('Error processing image:', error);
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: `❌ Lỗi xử lý ảnh: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          type: 'bot',
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, errorMessage]);
+      } finally {
+        setLoading(false);
+      }
+    });
   };
 
   const handleVideoUpload = () => {

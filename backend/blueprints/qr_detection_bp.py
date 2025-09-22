@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from modules.technician.qr_detector import select_qr_roi, detect_qr_at_time, preprocess_video_qr
+from modules.technician.qr_detector import select_qr_roi, detect_qr_at_time, preprocess_video_qr, detect_qr_from_image
 import subprocess
 import os
 import json
@@ -928,6 +928,67 @@ def get_cached_trigger():
             "trigger_text": None
         }), 500
 
+@qr_detection_bp.route('/detect-qr-image', methods=['POST'])
+def detect_qr_from_uploaded_image():
+    """
+    Detect QR codes from uploaded image using WeChat QRCode model
+
+    Request JSON:
+    {
+        "image_content": "base64_string",
+        "image_name": "filename.jpg" (optional)
+    }
+
+    Response JSON:
+    {
+        "success": bool,
+        "qr_detections": [str] - Array of detected QR code texts,
+        "qr_count": int,
+        "image_name": str (if provided),
+        "error": str (if success=False)
+    }
+    """
+    try:
+        # Get request data
+        data = request.get_json()
+
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "No JSON data provided"
+            }), 400
+
+        image_content = data.get('image_content')
+        image_name = data.get('image_name', 'unknown.jpg')
+
+        if not image_content:
+            return jsonify({
+                "success": False,
+                "error": "image_content is required"
+            }), 400
+
+        logger.info(f"[QR-IMAGE] Processing image: {image_name}")
+
+        # Call the QR detection function
+        result = detect_qr_from_image(image_content)
+
+        # Add image name to response
+        if result.get('success'):
+            result['image_name'] = image_name
+            logger.info(f"[QR-IMAGE] Success: {result.get('qr_count', 0)} QR codes detected in {image_name}")
+        else:
+            logger.warning(f"[QR-IMAGE] Failed: {result.get('error', 'Unknown error')} for {image_name}")
+
+        return jsonify(result), 200 if result.get('success') else 400
+
+    except Exception as e:
+        error_msg = f"Image QR detection endpoint error: {str(e)}"
+        logger.error(f"[QR-IMAGE] {error_msg}")
+        return jsonify({
+            "success": False,
+            "error": error_msg
+        }), 500
+
 @qr_detection_bp.route('/health', methods=['GET'])
 def qr_health_check():
     """Health check endpoint for QR detection"""
@@ -945,6 +1006,7 @@ def qr_health_check():
                 "GET /preprocess-status/<cache_key> - Check preprocessing progress",
                 "POST /get-cached-qr - Get QR detections from cache by timestamp",
                 "POST /get-cached-trigger - Get QR trigger detections (search for 'TimeGo')",
+                "POST /detect-qr-image - Detect QR codes from uploaded image",
                 "GET /test - Test QR detection with sample video",
                 "GET /health - Health check"
             ],
