@@ -69,7 +69,7 @@ interface Message {
     fileContent: string;
     fileName: string;
     isExcel: boolean;
-    stage?: 'headers' | 'column_selected' | 'platform_named' | 'parsed' | 'results' | 'error';
+    stage?: 'headers' | 'column_selected' | 'platform_named' | 'parsed' | 'results' | 'error' | 'completed';
     waitingForInput?: 'column' | 'platform' | 'none';
     headers?: string[];
     selectedColumn?: string;
@@ -305,7 +305,7 @@ export default function TracePage() {
   };
 
   // Handle platform selection and data processing
-  const handlePlatformSelection = async (platformName: string, fileData: any) => {
+  const handlePlatformSelection = async (platformName: string, fileData: any): Promise<{ type: 'text' | 'events', content: string, eventData?: { searchInput: string, events: EventData[] } }> => {
     try {
       setLoading(true);
 
@@ -313,12 +313,15 @@ export default function TracePage() {
       const columnIndex = getColumnIndex(fileData.selectedColumn);
       const columnName = fileData.headers[columnIndex];
 
+      // Normalize platform name to proper case (first letter uppercase, rest lowercase)
+      const normalizedPlatformName = platformName.charAt(0).toUpperCase() + platformName.slice(1).toLowerCase();
+
       // 1. Check if platform already exists and save/update mapping
       const saveResponse = await fetch('http://localhost:8080/save-platform-preference', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          platform_name: platformName,
+          platform_name: normalizedPlatformName,
           column_letter: fileData.selectedColumn,
           headers: fileData.headers || [],
           filename: fileData.fileName,
@@ -347,25 +350,26 @@ export default function TracePage() {
       const parseData = await parseResponse.json();
       const trackingCodes = parseData.tracking_codes || [];
 
-      // Update the file processing message with platform
+      // Update the file processing message with platform and mark as completed
       setMessages(prev => prev.map(msg =>
         msg.fileProcessingData ? {
           ...msg,
           fileProcessingData: {
             ...msg.fileProcessingData,
-            platformName: platformName
+            platformName: normalizedPlatformName,
+            stage: 'completed'
           }
         } : msg
       ));
 
       // Format the response with column data listing
       let content = isUpdate
-        ? `🔄 Platform "${platformName}" updated to use column ${fileData.selectedColumn}\n\n`
-        : `✅ Platform "${platformName}" saved for column ${fileData.selectedColumn}\n\n`;
+        ? `🔄 Platform "${normalizedPlatformName}" updated to use column ${fileData.selectedColumn}\n\n`
+        : `✅ Platform "${normalizedPlatformName}" saved for column ${fileData.selectedColumn}\n\n`;
       content += `📋 Column data (${trackingCodes.length} items):\n\n`;
 
       // Show first 10 items with numbering
-      trackingCodes.slice(0, 10).forEach((code, index) => {
+      trackingCodes.slice(0, 10).forEach((code: string, index: number) => {
         content += `${index + 1}. ${code}\n`;
       });
 
@@ -373,9 +377,44 @@ export default function TracePage() {
         content += `... and ${trackingCodes.length - 10} more items`;
       }
 
+      content += `\n\n🔍 Searching for events...`;
+
+      // Add the listing message first
+      const listingMessage: Message = {
+        id: Date.now().toString(),
+        content: content,
+        type: 'bot',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, listingMessage]);
+
+      // Auto-query events using the extracted tracking codes
+      const trackingCodesString = trackingCodes.join(', ');
+      const queryResult = await handleTrackingCodes(trackingCodesString);
+
+      // Add the query result message
+      if (queryResult.eventData) {
+        const queryMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: queryResult.content,
+          type: 'bot',
+          timestamp: new Date(),
+          eventData: queryResult.eventData
+        };
+        setMessages(prev => [...prev, queryMessage]);
+      } else if (queryResult.content.trim()) {
+        const queryMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: queryResult.content,
+          type: 'bot',
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, queryMessage]);
+      }
+
       return {
         type: 'text',
-        content: content
+        content: '' // Return empty content since we've already added messages
       };
 
     } catch (error) {
@@ -391,6 +430,9 @@ export default function TracePage() {
 
   // Process file with auto-detected platform (Scenario 2)
   const processFileWithPlatform = async (file: File, platformName: string) => {
+    // Normalize platform name to proper case (first letter uppercase, rest lowercase)
+    const normalizedPlatformName = platformName.charAt(0).toUpperCase() + platformName.slice(1).toLowerCase();
+
     try {
       // Get file type
       const { isExcel } = getFileType(file.name);
@@ -424,7 +466,7 @@ export default function TracePage() {
         const platformData = await platformResponse.json();
 
         const existingPlatform = platformData.platforms?.find(
-          (p: any) => p.name.toLowerCase() === platformName.toLowerCase()
+          (p: any) => p.name.toLowerCase() === normalizedPlatformName.toLowerCase()
         );
 
         if (existingPlatform) {
@@ -444,22 +486,24 @@ export default function TracePage() {
       };
 
       // Process the file with the detected platform
-      const processResult = await handlePlatformSelection(platformName, fileData);
+      const processResult = await handlePlatformSelection(normalizedPlatformName, fileData);
 
-      // Add the result message
-      const botMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: processResult.content,
-        type: 'bot',
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, botMessage]);
+      // Only add result message if there's content (handlePlatformSelection might have already added messages)
+      if (processResult.content && processResult.content.trim()) {
+        const botMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: processResult.content,
+          type: 'bot',
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, botMessage]);
+      }
 
     } catch (error) {
       console.error('Error in processFileWithPlatform:', error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: `❌ Error processing file with ${platformName}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        content: `❌ Error processing file with ${normalizedPlatformName}: ${error instanceof Error ? error.message : 'Unknown error'}`,
         type: 'bot',
         timestamp: new Date()
       };
@@ -470,8 +514,12 @@ export default function TracePage() {
   const getTraceResponse = async (input: string): Promise<{ type: 'text' | 'events', content: string, eventData?: { searchInput: string, events: EventData[] } }> => {
     const lowerInput = input.toLowerCase();
 
-    // Check if user is selecting a column for file processing
-    const fileProcessingMessage = messages.find(msg => msg.fileProcessingData);
+    // Check if user is selecting a column for file processing (only active/incomplete ones)
+    const fileProcessingMessage = messages.find(msg =>
+      msg.fileProcessingData &&
+      msg.fileProcessingData.stage !== 'completed' &&
+      (!msg.fileProcessingData.platformName) // Not yet completed
+    );
     if (fileProcessingMessage && fileProcessingMessage.fileProcessingData) {
       const fileData = fileProcessingMessage.fileProcessingData;
 
@@ -649,7 +697,7 @@ export default function TracePage() {
 
           const fileMessage: Message = {
             id: Date.now().toString(),
-            content: formatHeadersAsText(headers),
+            content: formatHeadersAsText(headers, file.name),
             type: 'bot',
             timestamp: new Date(),
             fileProcessingData: {

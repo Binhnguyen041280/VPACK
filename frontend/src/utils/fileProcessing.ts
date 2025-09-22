@@ -249,12 +249,16 @@ export function getColumnIndex(colName: string): number {
 /**
  * Format headers for text display (3 columns per row) - display only
  */
-export function formatHeadersAsText(headers: string[]): string {
+export function formatHeadersAsText(headers: string[], fileName?: string): string {
   if (!headers || headers.length === 0) {
     return "No headers found in file.";
   }
 
-  let text = "📋 File Headers: (Type column letter to select tracking codes)\n\n";
+  let text = "📋 File Headers: (Type column letter to select tracking codes)\n";
+  if (fileName) {
+    text += `📄 File: ${fileName}\n`;
+  }
+  text += "\n";
 
   for (let i = 0; i < headers.length; i += 3) {
     const row = headers.slice(i, i + 3);
