@@ -117,3 +117,5 @@ mysql-bin.*
 # Logs
 *.log
 logs/
+# Service directory
+service/
