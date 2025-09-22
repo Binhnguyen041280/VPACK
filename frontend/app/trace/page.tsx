@@ -42,7 +42,9 @@ import {
   fileToBase64,
   getFileType,
   formatHeadersAsText,
-  getColumnIndex
+  getColumnIndex,
+  formatPlatformsAsText,
+  detectPlatformFromText
 } from '@/utils/fileProcessing';
 
 interface EventData {
@@ -67,6 +69,8 @@ interface Message {
     fileContent: string;
     fileName: string;
     isExcel: boolean;
+    stage?: 'headers' | 'column_selected' | 'platform_named' | 'parsed' | 'results' | 'error';
+    waitingForInput?: 'column' | 'platform' | 'none';
     headers?: string[];
     selectedColumn?: string;
     platformName?: string;
@@ -385,6 +389,84 @@ export default function TracePage() {
     }
   };
 
+  // Process file with auto-detected platform (Scenario 2)
+  const processFileWithPlatform = async (file: File, platformName: string) => {
+    try {
+      // Get file type
+      const { isExcel } = getFileType(file.name);
+
+      // Convert file to base64
+      const fileContent = await fileToBase64(file);
+
+      // Get file headers using correct endpoint
+      const response = await fetch('http://localhost:8080/get-csv-headers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          file_content: fileContent,
+          is_excel: isExcel
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to get headers: ${response.status}`);
+      }
+
+      const fileResult = await response.json();
+      const headers = fileResult.headers || [];
+
+      // Try to get platform's preferred column from database
+      let selectedColumn = 'A'; // Default column
+      try {
+        const platformResponse = await fetch('http://localhost:8080/get-platform-list');
+        const platformData = await platformResponse.json();
+
+        const existingPlatform = platformData.platforms?.find(
+          (p: any) => p.name.toLowerCase() === platformName.toLowerCase()
+        );
+
+        if (existingPlatform) {
+          selectedColumn = existingPlatform.column;
+        }
+      } catch (error) {
+        console.error('Error fetching platform data:', error);
+      }
+
+      // Prepare file data for processing
+      const fileData = {
+        fileContent,
+        fileName: file.name,
+        isExcel,
+        headers,
+        selectedColumn
+      };
+
+      // Process the file with the detected platform
+      const processResult = await handlePlatformSelection(platformName, fileData);
+
+      // Add the result message
+      const botMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: processResult.content,
+        type: 'bot',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, botMessage]);
+
+    } catch (error) {
+      console.error('Error in processFileWithPlatform:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: `❌ Error processing file with ${platformName}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'bot',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    }
+  };
+
   const getTraceResponse = async (input: string): Promise<{ type: 'text' | 'events', content: string, eventData?: { searchInput: string, events: EventData[] } }> => {
     const lowerInput = input.toLowerCase();
 
@@ -412,10 +494,25 @@ export default function TracePage() {
             } : msg
           ));
 
-          return {
-            type: 'text',
-            content: `✅ Column ${columnLetter} selected: "${headers[columnIndex]}"\n\n💡 Enter platform name (e.g., Shopee, TikTok, Lazada, Amazon, eBay)`
-          };
+          // Fetch available platforms and show selection UI
+          try {
+            const response = await fetch('http://localhost:8080/get-platform-list');
+            const data = await response.json();
+            const platforms = data.platforms || [];
+
+            const platformsText = formatPlatformsAsText(platforms);
+
+            return {
+              type: 'text',
+              content: `✅ Column ${columnLetter} selected: "${headers[columnIndex]}"\n\n${platformsText}`
+            };
+          } catch (error) {
+            // Fallback to text input if API fails
+            return {
+              type: 'text',
+              content: `✅ Column ${columnLetter} selected: "${headers[columnIndex]}"\n\n💡 Enter platform name (e.g., Shopee, TikTok, Lazada, Amazon, eBay)`
+            };
+          }
         } else {
           return {
             type: 'text',
@@ -424,9 +521,48 @@ export default function TracePage() {
         }
       }
 
-      // If column selected but no platform yet, check for platform name
-      if (fileData.selectedColumn && !fileData.platformName && input.trim().length >= 2) {
-        return await handlePlatformSelection(input.trim(), fileData);
+      // If column selected but no platform yet, check for platform selection (letter or name)
+      if (fileData.selectedColumn && !fileData.platformName) {
+        const trimmedInput = input.trim();
+
+        // Check if input is a single letter (platform selection)
+        if (/^[a-z]$/i.test(trimmedInput)) {
+          try {
+            const response = await fetch('http://localhost:8080/get-platform-list');
+            const data = await response.json();
+            const platforms = data.platforms || [];
+
+            const platformIndex = trimmedInput.toUpperCase().charCodeAt(0) - 65; // A=0, B=1, etc.
+
+            // Check if selecting existing platform
+            if (platformIndex < platforms.length) {
+              const selectedPlatform = platforms[platformIndex];
+              return await handlePlatformSelection(selectedPlatform.name, fileData);
+            }
+            // Check if selecting "Create New Platform" option
+            else if (platformIndex === platforms.length) {
+              return {
+                type: 'text',
+                content: `🆕 Creating new platform. Please enter platform name (e.g., Shopee, TikTok, Lazada):`
+              };
+            }
+            else {
+              return {
+                type: 'text',
+                content: `❌ Invalid selection ${trimmedInput.toUpperCase()}. Please select from available options shown above.`
+              };
+            }
+          } catch (error) {
+            return {
+              type: 'text',
+              content: `❌ Error loading platforms. Please try again or enter platform name directly.`
+            };
+          }
+        }
+        // If not a letter, treat as platform name input (for new platform creation)
+        else if (trimmedInput.length >= 2) {
+          return await handlePlatformSelection(trimmedInput, fileData);
+        }
       }
     }
 
@@ -477,44 +613,66 @@ export default function TracePage() {
       try {
         setLoading(true);
 
+        // Check if user typed platform text (Scenario 2)
+        if (inputCode.trim()) {
+          const detectedPlatform = detectPlatformFromText(inputCode);
+          if (detectedPlatform) {
+            // Scenario 2: Auto-process with detected platform
+            await processFileWithPlatform(file, detectedPlatform);
+            setInputCode(''); // Clear input
+            return;
+          }
+        }
+
+        // Scenario 3: Show platform selection menu
         // Get file type
         const { isExcel } = getFileType(file.name);
 
         // Convert file to base64
         const fileContent = await fileToBase64(file);
 
-        // Load file headers immediately
-        const headersResponse = await fetch('http://localhost:8080/get-csv-headers', {
+        // Send file to backend for processing
+        const response = await fetch('http://localhost:8080/get-csv-headers', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+          },
           body: JSON.stringify({
             file_content: fileContent,
             is_excel: isExcel
           })
         });
 
-        if (!headersResponse.ok) {
-          throw new Error(`Failed to load headers: ${headersResponse.status}`);
+        if (response.ok) {
+          const result = await response.json();
+          const headers = result.headers || [];
+
+          const fileMessage: Message = {
+            id: Date.now().toString(),
+            content: formatHeadersAsText(headers),
+            type: 'bot',
+            timestamp: new Date(),
+            fileProcessingData: {
+              fileContent,
+              fileName: file.name,
+              isExcel,
+              stage: 'headers',
+              waitingForInput: 'column',
+              headers: headers
+            }
+          };
+          setMessages(prev => [...prev, fileMessage]);
+        } else {
+          const result = await response.json();
+          const errorMessage: Message = {
+            id: Date.now().toString(),
+            content: `❌ Failed to process file: ${result.error || 'Unknown error'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          return;
         }
-
-        const headersData = await headersResponse.json();
-        const headers = headersData.headers || [];
-
-        // Create file processing message with headers text
-        const fileMessage: Message = {
-          id: Date.now().toString(),
-          content: `📄 ${file.name}\n\n${formatHeadersAsText(headers)}`,
-          type: 'bot',
-          timestamp: new Date(),
-          fileProcessingData: {
-            fileContent,
-            fileName: file.name,
-            isExcel,
-            headers
-          }
-        };
-
-        setMessages(prev => [...prev, fileMessage]);
 
       } catch (error) {
         console.error('Error processing file:', error);

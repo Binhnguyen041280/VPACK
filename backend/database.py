@@ -233,34 +233,21 @@ def update_database():
 
             # ==================== PLATFORM MANAGEMENT TABLES ====================
 
-            # 6. Platform Column Mappings Table
+            # 6. Platform Column Mappings Table (Simplified for intent-based approach)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS platform_column_mappings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    platform_name TEXT NOT NULL,
+                    platform_name TEXT NOT NULL UNIQUE,
                     column_letter TEXT NOT NULL,
 
-                    -- Detection patterns
-                    header_pattern TEXT,              -- JSON: ["Order ID", "Tracking", "Status"]
-                    tracking_code_pattern TEXT,       -- Regex: "^SPX[A-Z]{2}\\d{9}$"
-                    file_name_pattern TEXT,          -- Regex: "shopee.*order.*\\.xlsx?"
-
-                    -- Learning metrics
-                    usage_count INTEGER DEFAULT 0,
-                    last_used_at TIMESTAMP,
-                    confidence_threshold REAL DEFAULT 50.0,
-
-                    -- Metadata
+                    -- Simple metadata only
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    is_active BOOLEAN DEFAULT 1,
-
-                    -- Constraints
-                    UNIQUE(platform_name, column_letter)
+                    is_active BOOLEAN DEFAULT 1
                 )
             """)
 
-            # Platform mappings table is ready - no default data seeding
+            # No default data seeding - user will create platforms from their own data
             logger.info("Platform column mappings table ready for user-defined configurations")
 
             # ==================== VIDEO PROCESSING TABLES ====================
@@ -656,10 +643,9 @@ def update_database():
             # Core table indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_te_event_id ON events(te, event_id)")
 
-            # Platform management indexes
+            # Platform management indexes (simplified)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_platform_mappings_name ON platform_column_mappings(platform_name)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_platform_mappings_active ON platform_column_mappings(is_active, usage_count DESC)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_platform_mappings_usage ON platform_column_mappings(usage_count DESC, last_used_at DESC)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_platform_mappings_active ON platform_column_mappings(is_active)")
             
             # ==================== TIMEZONE INDEXES ====================
             

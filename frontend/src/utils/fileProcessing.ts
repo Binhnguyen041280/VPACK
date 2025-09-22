@@ -11,16 +11,17 @@ export interface FileProcessingMessage {
     fileContent: string;
     fileName: string;
     isExcel: boolean;
-    stage: 'headers' | 'column_selected' | 'platform_named' | 'parsed' | 'results' | 'error';
+    stage: 'platform_selection' | 'headers' | 'column_selected' | 'platform_named' | 'parsed' | 'results' | 'error';
     selectedColumn?: string;
     platformName?: string;
-    waitingForInput?: 'column' | 'platform' | 'none';
+    availablePlatforms?: Array<{name: string; column: string}>;
+    waitingForInput?: 'platform_select' | 'column' | 'platform' | 'none';
     trackingCodes?: string[];
   };
 }
 
 export interface FileProcessingCommand {
-  type: 'column_select' | 'platform_name' | 'restart' | 'help' | 'invalid';
+  type: 'platform_select' | 'column_select' | 'platform_name' | 'restart' | 'help' | 'invalid';
   value?: string;
 }
 
@@ -295,7 +296,8 @@ export function formatTrackingCodesPreview(codes: string[], selectedColumn: stri
   if (platformName) {
     text += `\n\n🏷️ **Platform:** ${platformName}\n🔍 **Auto-querying database...** Please wait for results.`;
   } else {
-    text += "\n\n💡 What platform is this file from? Type platform name (e.g., \"Shopee\", \"TikTok\")";
+    // Get platforms from database and show UI like header columns
+    text += "\n\n💡 **Select platform for this file:**";
   }
 
   return text;
@@ -322,3 +324,81 @@ export function formatProcessingResults(
 
   return text;
 }
+
+/**
+ * Simple text-based platform detection (replaces complex auto-detection)
+ * @param text - User input text to analyze
+ * @returns Platform name if detected, null otherwise
+ */
+export function detectPlatformFromText(text: string): string | null {
+  if (!text || typeof text !== 'string') {
+    return null;
+  }
+
+  const platforms = ['shopee', 'tiktok', 'lazada', 'amazon'];
+  const lowerText = text.toLowerCase();
+
+  for (const platform of platforms) {
+    if (lowerText.includes(platform)) {
+      // Return with proper capitalization
+      return platform.charAt(0).toUpperCase() + platform.slice(1);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Get available platforms from backend API
+ * @returns Promise with array of platform objects
+ */
+export async function getAvailablePlatforms(): Promise<Array<{name: string; column: string}>> {
+  try {
+    const response = await fetch('http://localhost:8080/get-platform-list');
+    if (!response.ok) {
+      throw new Error(`Failed to fetch platforms: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.platforms || [];
+  } catch (error) {
+    console.error('Error fetching platforms:', error);
+    // Return empty array if no platforms found - user will create from scratch
+    return [];
+  }
+}
+
+/**
+ * Format platforms as text similar to header columns display
+ * @param platforms - Array of platform objects
+ * @returns Formatted text string for display
+ */
+export function formatPlatformsAsText(platforms: Array<{name: string; column: string}>): string {
+  if (!platforms || platforms.length === 0) {
+    return "📋 No saved platforms found. (Type 'A' to create new platform)\n\n🔹A: Create New Platform";
+  }
+
+  let text = "📋 Saved Platforms: (Type letter to select platform)\n\n";
+
+  // Add existing platforms
+  for (let i = 0; i < platforms.length; i += 3) {
+    const row = platforms.slice(i, i + 3);
+
+    // Format each platform with fixed width for alignment
+    const formattedPlatforms = row.map((platform, index) => {
+      const platformLetter = String.fromCharCode(65 + i + index); // A, B, C...
+      // Create platform display with exact spacing - 30 characters apart
+      const fullPlatform = `🔹${platformLetter}: ${platform.name} (Col ${platform.column})`;
+      return fullPlatform.padEnd(30, ' ');
+    });
+
+    // Join row and add to text
+    text += formattedPlatforms.join('') + '\n';
+  }
+
+  // Add "Create New Platform" option
+  const newPlatformLetter = String.fromCharCode(65 + platforms.length);
+  text += `\n🔹${newPlatformLetter}: Create New Platform`;
+
+  return text;
+}
+
