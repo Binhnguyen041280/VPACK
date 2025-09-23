@@ -29,7 +29,7 @@ class SecurityConfig:
         self.cipher_suite = Fernet(self.encryption_key.encode() if isinstance(self.encryption_key, str) else self.encryption_key)
         
         # V_TRACK BACKGROUND SERVICE: Long-running authentication for "set it and forget it" model
-        # User behavior: Setup once → Run forever like DVR/NVR, no daily interaction
+        # User behavior: Setup once → Process videos automatically, no daily interaction
         
         # Primary session duration (JWT token) - Background service mode
         self.session_duration = timedelta(days=90)  # 3 months for background service

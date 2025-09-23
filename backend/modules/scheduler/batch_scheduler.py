@@ -1,8 +1,8 @@
-"""Batch Scheduler Module for V_Track Video Processing System.
+"""Batch Scheduler Module for V_Track Video Post-Processing System.
 
-This module provides the core scheduling and resource management functionality for the V_Track
-video processing system. It manages batch processing of video files with dynamic resource
-optimization and system monitoring capabilities.
+This module provides automated batch processing of existing video files from local storage
+and Google Drive. It manages video analysis workflows with dynamic resource optimization
+and system monitoring capabilities for computer vision tasks.
 
 Classes:
     SystemMonitor: Monitors system resources and calculates optimal batch sizes

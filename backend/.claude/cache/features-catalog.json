@@ -1,6 +1,6 @@
 {
   "project": "V_Track",
-  "description": "Computer Vision Processing & NVR Camera Integration Desktop Application",
+  "description": "Automated Video Post-Processing & Computer Vision Analysis Desktop Application",
   "generated": "2025-09-17",
   "features": {
     "authentication": {
@@ -21,14 +21,14 @@
       "name": "Payment & Billing System",
       "category": "e-commerce",
       "confidence": "high",
-      "keywords": ["payment", "zalopay", "billing", "subscription", "plan"],
+      "keywords": ["payment", "payos", "billing", "subscription", "plan"],
       "files": [
         "modules/payments/payment_routes.py",
         "../frontend/src/components/account/PaymentModal.tsx",
         "../frontend/src/components/account/PricingPackagesGrid.tsx"
       ],
       "routes": ["/payment", "/payment/redirect", "/plan"],
-      "description": "ZaloPay integration, subscription management, pricing packages"
+      "description": "PayOS integration, subscription management, pricing packages"
     },
     "computer_vision": {
       "name": "Computer Vision Processing",
@@ -71,18 +71,18 @@
       ],
       "description": "Step-by-step system configuration: brandname, location/time, video sources, packing areas, timing settings"
     },
-    "camera_nvr": {
-      "name": "Camera & NVR Integration",
-      "category": "hardware",
+    "video_sources": {
+      "name": "Video File Sources",
+      "category": "storage",
       "confidence": "high",
-      "keywords": ["camera", "nvr", "video", "stream", "recording"],
+      "keywords": ["video", "files", "batch", "processing", "analysis"],
       "files": [
         "modules/config/routes/camera_routes.py",
         "modules/config/routes/source_routes.py",
         "wsdl/"
       ],
       "routes": ["/?config=camera", "/api/config/camera", "/api/config/source"],
-      "description": "NVR camera integration, video stream management, recording configuration"
+      "description": "Video file input from local storage and Google Drive for batch processing"
     },
     "cloud_storage": {
       "name": "Cloud Storage Sync",

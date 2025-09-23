@@ -67,7 +67,7 @@ def save_config():
                     
                     print(f"Found active source: {source_name} ({source_type})")
                     
-                    # Apply proper path mapping (NO NVR)
+                    # Apply proper path mapping
                     correct_working_path = get_working_path_for_source(source_type, source_name, source_path)
                     
                     if video_root != correct_working_path:

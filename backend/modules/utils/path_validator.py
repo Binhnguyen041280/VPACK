@@ -32,7 +32,6 @@ class PathValidator:
         self.logger = logging.getLogger(__name__)
         
         # Default storage directories
-        self.nvr_downloads_dir = self.base_path / "nvr_downloads"
         self.cloud_sync_dir = self.base_path / "cloud_sync"
         self.output_clips_dir = self.base_path / "output_clips"
         
@@ -43,7 +42,7 @@ class PathValidator:
         Validate and prepare working path for a video source
         
         Args:
-            source_type: Type of source ('nvr', 'local', 'cloud')
+            source_type: Type of source ('local', 'cloud')
             source_name: Unique name for the source
             
         Returns:
@@ -53,9 +52,7 @@ class PathValidator:
             self.logger.info(f"🔍 Validating source path: {source_type}/{source_name}")
             
             # Determine working directory based on source type
-            if source_type == 'nvr':
-                working_path = self.nvr_downloads_dir / source_name
-            elif source_type == 'cloud':
+            if source_type == 'cloud':
                 working_path = self.cloud_sync_dir / source_name
             elif source_type == 'local':
                 # Local sources use their own paths, no validation needed
@@ -492,7 +489,6 @@ class PathValidator:
         """
         directories = {
             'base_path': str(self.base_path),
-            'nvr_downloads': str(self.nvr_downloads_dir),
             'cloud_sync': str(self.cloud_sync_dir),
             'output_clips': str(self.output_clips_dir)
         }

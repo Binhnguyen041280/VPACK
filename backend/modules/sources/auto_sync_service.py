@@ -18,11 +18,7 @@ class AutoSyncService:
     def _get_downloader_for_source(self, source_type: str):
         """Only create downloader when needed"""
         if source_type not in self.downloaders:
-            if source_type == 'nvr':
-                # from modules.sources.nvr_downloader import NVRDownloader  # DISABLED: Import causes issues
-                # self.downloaders[source_type] = NVRDownloader()  # DISABLED: Not using NVR downloader
-                self.downloaders[source_type] = None  # Placeholder
-            elif source_type == 'cloud':
+            if source_type == 'cloud':
                 from modules.sources.cloud_manager import CloudManager
                 self.downloaders[source_type] = CloudManager()
             elif source_type == 'local':

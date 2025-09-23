@@ -1,8 +1,8 @@
-"""Program Runner Module for V_Track Video Processing System.
+"""Program Runner Module for V_Track Video Post-Processing System.
 
-This module manages the execution of video processing threads and coordinates
-the video processing pipeline. It handles frame sampling, event detection,
-and the coordination between different processing stages.
+This module manages the execution of video analysis threads for batch processing
+existing video files. It coordinates computer vision analysis pipeline including
+frame sampling, AI detection, and result processing stages.
 
 Key Components:
     - Frame Sampler Threads: Process video frames for detection

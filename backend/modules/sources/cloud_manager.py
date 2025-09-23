@@ -105,8 +105,8 @@ class CloudManager:
             # Step 2: Discover root folders
             root_folders = self.discover_root_folders()
             
-            # Step 3: Analyze folder structure for camera folders
-            folder_analysis = self._analyze_folder_structure(root_folders)
+            # Step 3: Basic folder structure info
+            folder_analysis = {'total_folders': len(root_folders)}
             
             logger.info(f"✅ Connection successful: {len(root_folders)} root folders discovered")
             
@@ -308,16 +308,12 @@ class CloudManager:
                         'type': 'folder'
                     }
                     
-                    # Check if this looks like a camera folder
-                    if self._is_camera_folder(item['name']):
-                        folder_info['is_camera_folder'] = True
-                        camera_folders.append(folder_info)
-                    else:
-                        folder_info['is_camera_folder'] = False
+                    # All folders are treated equally
+                    folder_info['is_camera_folder'] = False
                     
                     subfolders.append(folder_info)
             
-            logger.info(f"📁 Found {len(subfolders)} subfolders, {len(camera_folders)} camera folders")
+            logger.info(f"📁 Found {len(subfolders)} subfolders")
             
             return {
                 'success': True,
@@ -337,88 +333,6 @@ class CloudManager:
                 'error': str(e)
             }
     
-    def _is_camera_folder(self, folder_name: str) -> bool:
-        """
-        Determine if a folder name indicates it contains camera videos
-        
-        Args:
-            folder_name (str): Folder name to analyze
-            
-        Returns:
-            bool: True if likely a camera folder
-        """
-        camera_keywords = [
-            'cam', 'camera', 'channel', 'ch', 'zone', 'area',
-            'front', 'back', 'door', 'entrance', 'parking',
-            'office', 'lobby', 'security', 'surveillance',
-            'nvr', 'dvr', 'cctv', 'ip_cam', 'ipcam'
-        ]
-        
-        folder_lower = folder_name.lower()
-        
-        # Check for camera keywords
-        for keyword in camera_keywords:
-            if keyword in folder_lower:
-                return True
-        
-        # Check for camera patterns (e.g., "Camera_01", "CH01", "Zone1")
-        import re
-        camera_patterns = [
-            r'camera[_\s]*\d+',
-            r'cam[_\s]*\d+',
-            r'ch[_\s]*\d+',
-            r'channel[_\s]*\d+',
-            r'zone[_\s]*\d+',
-            r'area[_\s]*\d+'
-        ]
-        
-        for pattern in camera_patterns:
-            if re.search(pattern, folder_lower):
-                return True
-        
-        return False
-    
-    def _analyze_folder_structure(self, root_folders: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Analyze folder structure to provide insights for UI
-        
-        Args:
-            root_folders (list): List of root folders
-            
-        Returns:
-            dict: Folder structure analysis
-        """
-        analysis = {
-            'total_folders': len(root_folders),
-            'camera_folders_at_root': 0,
-            'security_related_folders': 0,
-            'recommended_folders': [],
-            'structure_type': 'unknown'
-        }
-        
-        security_keywords = ['security', 'surveillance', 'camera', 'nvr', 'dvr', 'cctv']
-        
-        for folder in root_folders:
-            folder_name_lower = folder['name'].lower()
-            
-            # Check if root folder is camera folder
-            if self._is_camera_folder(folder['name']):
-                analysis['camera_folders_at_root'] += 1
-            
-            # Check if security-related
-            if any(keyword in folder_name_lower for keyword in security_keywords):
-                analysis['security_related_folders'] += 1
-                analysis['recommended_folders'].append(folder)
-        
-        # Determine structure type
-        if analysis['camera_folders_at_root'] > 0:
-            analysis['structure_type'] = 'flat_cameras'
-        elif analysis['security_related_folders'] > 0:
-            analysis['structure_type'] = 'nested_security'
-        else:
-            analysis['structure_type'] = 'general'
-        
-        return analysis
     
     def get_authentication_status(self) -> Dict[str, Any]:
         """

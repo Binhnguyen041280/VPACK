@@ -1,8 +1,8 @@
 # scripts/setup_environment.sh
 #!/bin/bash
-# Setup script for V_track ZaloPay integration
+# Setup script for V_track PayOS integration
 
-echo "🚀 Setting up V_track with ZaloPay Integration..."
+echo "🚀 Setting up V_track with PayOS Integration..."
 
 # Create necessary directories
 echo "📁 Creating directories..."
@@ -48,10 +48,10 @@ echo "✅ Setup complete!"
 echo ""
 echo "🔧 Next steps:"
 echo "1. Update environment/.env.development with your credentials"
-echo "2. Register ZaloPay merchant account"
+echo "2. Register PayOS merchant account"
 echo "3. Configure SMTP email settings"
 echo "4. Run: python backend/app.py"
 echo ""
 echo "📚 Documentation:"
-echo "- ZaloPay: https://docs.zalopay.vn/"
-echo "- V_track API: http://localhost:5000/health"
+echo "- PayOS: https://payos.vn/docs/"
+echo "- V_track API: http://localhost:8080/health"

@@ -69,7 +69,7 @@ def save_video_sources():
             # Get source ID for database operations
             source_id = path_manager.get_source_id_by_name(name)
             
-            # Calculate correct working path and update processing_config (NO NVR)
+            # Calculate correct working path and update processing_config
             working_path = get_working_path_for_source(source_type, name, path)
             
             # FIXED: Consolidate ALL database operations in single context
@@ -183,7 +183,7 @@ def test_source_connection():
                 "source_type": "unknown"
             }), 400
         
-        # Handle different source types (NO NVR)
+        # Handle different source types
         if source_type == 'local':
             # Existing local path validation
             source_config = {

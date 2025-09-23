@@ -143,7 +143,7 @@ class PathManager:
     
     
     def _validate_camera_source(self, path, config):
-        """Validate camera/NVR source"""
+        """Validate camera source"""
         if config.get('type') == 'directory':
             return self._validate_local_path(path)
         elif config.get('type') == 'api':

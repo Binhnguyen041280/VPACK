@@ -7,19 +7,19 @@ from modules.db_utils import get_db_connection
 from modules.config.config_manager import ConfigManager
 
 """
-🎯 V_TRACK BACKGROUND SERVICE AUTHENTICATION STRATEGY
+🎯 V_TRACK AUTOMATED VIDEO PROCESSING AUTHENTICATION STRATEGY
 
-V_track is designed as a "set it and forget it" background monitoring service,
-similar to traditional DVR/NVR systems. Users expect:
+V_track is designed as an automated video post-processing service that batch
+processes existing video files from local storage and Google Drive. Users expect:
 
-1. Setup once → Run forever
-2. No daily authentication prompts  
-3. Continuous auto-sync without interruption
-4. Zero maintenance authentication
+1. Setup once → Process videos automatically
+2. No daily authentication prompts for cloud sync
+3. Continuous batch processing without interruption
+4. Zero maintenance authentication for file access
 
 SESSION DURATION STRATEGY:
 - JWT Session: 90 days (3 months)
-- Refresh Token: 365 days (1 year)  
+- Refresh Token: 365 days (1 year)
 - Auto-refresh: When 7 days remaining
 - Grace Period: 7 days if refresh fails
 
@@ -27,7 +27,7 @@ This ensures maximum user convenience while maintaining reasonable security.
 User only needs to re-authenticate every 3 months, or ideally never if
 auto-refresh works correctly.
 
-BACKGROUND SERVICE PHILOSOPHY:
+AUTOMATED PROCESSING PHILOSOPHY:
 - Silent operation (no popups/interruptions)
 - Aggressive auto-refresh to prevent expiry
 - Graceful degradation if authentication fails

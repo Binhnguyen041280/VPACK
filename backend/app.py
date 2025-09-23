@@ -1,6 +1,6 @@
 import os
 import sys
-from flask import Flask, render_template, jsonify, redirect
+from flask import Flask, jsonify, redirect
 from flask_cors import CORS
 from dotenv import load_dotenv
 import logging
@@ -186,33 +186,8 @@ def initialize_license_system():
     return True
 
 # ==================== WEBAPP TEMPLATE CONFIGURATION ====================
-# Configure Flask template and static paths for webapp structure
+# Backend API only - webapp handled by React frontend
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-webapp_templates = os.path.join(BASE_DIR, 'webapp', 'templates')
-webapp_static = os.path.join(BASE_DIR, 'webapp', 'static')
-
-# Update Flask app configuration
-app.template_folder = webapp_templates
-app.static_folder = webapp_static
-
-# Create directories if they don't exist
-os.makedirs(webapp_templates, exist_ok=True)
-os.makedirs(webapp_static, exist_ok=True)
-os.makedirs(os.path.join(webapp_static, 'js'), exist_ok=True)
-os.makedirs(os.path.join(webapp_static, 'css'), exist_ok=True)
-
-# Log configuration
-logger.info(f"📁 Template folder configured: {webapp_templates}")
-logger.info(f"📁 Static folder configured: {webapp_static}")
-
-# Verify paths and warn if empty
-if not os.path.exists(webapp_templates) or not os.listdir(webapp_templates):
-    logger.warning(f"⚠️ Template folder empty: {webapp_templates}")
-    logger.warning("💡 Run: cp -r templates/* webapp/templates/ to copy templates")
-
-if not os.path.exists(webapp_static) or not any(os.listdir(os.path.join(webapp_static, subdir)) for subdir in ['js', 'css'] if os.path.exists(os.path.join(webapp_static, subdir))):
-    logger.warning(f"⚠️ Static folder empty: {webapp_static}")
-    logger.warning("💡 Run: cp -r static/* webapp/static/ to copy static files")
 
 from flask_session import Session
 import secrets
@@ -298,39 +273,9 @@ if PAYMENT_INTEGRATION_AVAILABLE:
         logger.error(f"❌ Payment integration failed: {e}")
         PAYMENT_INTEGRATION_AVAILABLE = False
 
-# ==================== MAIN ROUTES ====================
-@app.route('/')
-def index():
-    """Main route with first-run detection"""
-    if ACCOUNT_SYSTEM_AVAILABLE:
-        user_status = check_user_status()
-        if not user_status['has_user']:
-            return redirect('/register')
-        elif not user_status['has_license']:
-            return redirect('/payment')
-    return render_template('index.html')
-
-@app.route('/register')
-def register_page():
-    """Registration page for first-time users"""
-    return render_template('register.html')
-
-@app.route('/payment')
-def payment_page():
-    """Payment and license management page"""
-    if not PAYMENT_INTEGRATION_AVAILABLE:
-        return render_template('payment_unavailable.html'), 503
-    return render_template('payment.html')
-
-@app.route('/settings')
-def settings_page():
-    """Settings page"""
-    return render_template('settings.html')
-
-@app.route('/analytics')
-def analytics_page():
-    """Analytics dashboard page"""
-    return render_template('analytics.html')
+# ==================== API BACKEND ONLY ====================
+# Legacy webapp routes removed - frontend handled by React app on port 3000
+# Backend serves API endpoints only
 
 # Quick API endpoint for latest user (development)
 @app.route('/api/user/latest', methods=['GET', 'OPTIONS'])
@@ -530,7 +475,7 @@ def health_check():
             'timestamp': datetime.now().isoformat(),
             'modules': {
                 'computer_vision': 'enabled',
-                'nvr_processing': 'enabled',
+                'batch_processing': 'enabled',
                 'cloud_sync': 'enabled',
                 'payment_system': 'enabled' if PAYMENT_INTEGRATION_AVAILABLE else 'disabled',
                 'license_management': 'enabled' if PAYMENT_INTEGRATION_AVAILABLE else 'disabled'
@@ -590,7 +535,7 @@ def system_info():
         'status': 'running',
         'features': [
             'Computer Vision Processing',
-            'NVR Camera Integration',
+            'Video File Batch Processing',
             'Cloud Storage Sync',
             'Payment Processing' if PAYMENT_INTEGRATION_AVAILABLE else 'Payment Processing (Disabled)',
             'License Management' if PAYMENT_INTEGRATION_AVAILABLE else 'License Management (Disabled)'
@@ -868,7 +813,7 @@ if __name__ == "__main__":
     print(f"📡 Server: http://0.0.0.0:{port}")
     print("🔧 Core Features:")
     print("   ✅ Computer Vision Processing")
-    print("   ✅ NVR Camera Integration")
+    print("   ✅ Video File Batch Processing")
     print("   ✅ Cloud Storage Sync")
     
     if PAYMENT_INTEGRATION_AVAILABLE:
@@ -906,10 +851,9 @@ if __name__ == "__main__":
     if PAYMENT_INTEGRATION_AVAILABLE:
         print(f"   💰 Pricing API: http://0.0.0.0:{port}/api/payment/packages")
     
-    # Display webapp configuration
-    print(f"\n📁 Webapp Configuration:")
-    print(f"   📂 Templates: {webapp_templates}")
-    print(f"   📂 Static: {webapp_static}")
+    # API Backend only - React frontend on port 3000
+    print(f"\n🔗 Frontend: React app running on http://localhost:3000")
+    print(f"🔗 Backend API: Flask running on http://localhost:8080")
     
     print(f"\n⚡ Shutdown: Ctrl+C (immediate response)")
     
