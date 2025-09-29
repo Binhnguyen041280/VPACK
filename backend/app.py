@@ -1,6 +1,6 @@
 import os
 import sys
-from flask import Flask, jsonify, redirect
+from flask import Flask, jsonify, redirect, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 import logging
@@ -569,6 +569,101 @@ def get_license_status():
             })
     
     return jsonify(license_status)
+
+@app.route('/api/camera-configurations', methods=['GET', 'OPTIONS'])
+def get_camera_configurations():
+    """Get camera configurations from database"""
+    try:
+        from flask_cors import cross_origin
+
+        if request.method == 'OPTIONS':
+            return jsonify({'success': True}), 200
+
+        cameras = []
+
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+
+            # Get camera configurations from active sources only
+            cursor.execute("""
+                SELECT cc.camera_name, cc.folder_path, cc.is_selected,
+                       cc.stream_url, cc.resolution, cc.codec,
+                       vs.source_type, vs.name as source_name
+                FROM camera_configurations cc
+                JOIN video_sources vs ON cc.source_id = vs.id
+                WHERE vs.active = 1 AND cc.is_selected = 1
+                ORDER BY cc.camera_name
+            """)
+
+            results = cursor.fetchall()
+
+            for row in results:
+                camera_name, folder_path, is_selected, stream_url, resolution, codec, source_type, source_name = row
+
+                cameras.append({
+                    'name': camera_name,
+                    'path': camera_name,  # Just use camera name instead of full folder path
+                    'stream_url': stream_url,
+                    'resolution': resolution,
+                    'codec': codec,
+                    'source_type': source_type,
+                    'source_name': source_name,
+                    'is_selected': bool(is_selected)
+                })
+
+        return jsonify({
+            'success': True,
+            'cameras': cameras,
+            'count': len(cameras)
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting camera configurations: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'cameras': []
+        }), 500
+
+@app.route('/api/processing-status', methods=['GET', 'OPTIONS'])
+def get_processing_status():
+    """Get current file processing status and progress"""
+    try:
+        if request.method == 'OPTIONS':
+            return jsonify({'success': True}), 200
+
+        # Mock processing status for now
+        # In production, this would read from actual processing state
+        processing_status = {
+            'is_processing': True,
+            'current_file': 'DonggoiN_80cm25.mov',
+            'processed_files': 47,
+            'total_files': 100,
+            'progress_percentage': 47.0,
+            'processing_program': 'First Run',
+            'estimated_time_remaining': '15 minutes',
+            'current_camera': 'Cloud_Cam1',
+            'started_at': '2025-09-29T08:00:00Z'
+        }
+
+        return jsonify({
+            'success': True,
+            'processing_status': processing_status
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting processing status: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'processing_status': {
+                'is_processing': False,
+                'current_file': None,
+                'processed_files': 0,
+                'total_files': 0,
+                'progress_percentage': 0.0
+            }
+        }), 500
 
 if PAYMENT_INTEGRATION_AVAILABLE:
     @app.route('/api/test-cloud', methods=['GET'])
