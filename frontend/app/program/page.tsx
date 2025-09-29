@@ -25,6 +25,9 @@ import { MdPlayArrow, MdStop, MdFolder, MdSettings, MdCheck, MdRefresh } from 'r
 import { useColorTheme } from '@/contexts/ColorThemeContext';
 import { useRoute } from '@/contexts/RouteContext';
 import Card from '@/components/card/Card';
+import programService, { Camera } from '@/services/programService';
+import { useProgramProgress } from '@/hooks/useProgramProgress';
+import { createToastError } from '@/utils/errorHandler';
 
 interface ProgramStatus {
   current_running: string;
@@ -41,10 +44,7 @@ interface ProgramCard {
   disabled: boolean;
 }
 
-interface Camera {
-  name: string;
-  path: string;
-}
+// Camera interface moved to programService.ts
 
 const programCards: ProgramCard[] = [
   {
@@ -100,69 +100,61 @@ export default function Program() {
   const [selectedCamera, setSelectedCamera] = useState<string | null>(null);
   const [loadingCameras, setLoadingCameras] = useState(false);
 
+  // Progress monitoring hook
+  const {
+    progressData,
+    isLoading: isProgressLoading,
+    error: progressError,
+    startPolling,
+    stopPolling,
+    isPolling
+  } = useProgramProgress({
+    interval: 3000, // Poll every 3 seconds
+    onError: (error) => {
+      toast({
+        title: 'Progress Monitoring Error',
+        description: error,
+        status: 'warning',
+        duration: 4000,
+      });
+    }
+  });
+
   // Function to fetch cameras from backend
   const fetchCameras = async () => {
     try {
       setLoadingCameras(true);
 
-      // Call the new camera configurations endpoint
-      const response = await fetch('http://localhost:8080/api/camera-configurations', {
-        credentials: 'include',
+      const cameras = await programService.getCameras();
+      setCameras(cameras);
+
+      toast({
+        title: 'Cameras Loaded',
+        description: `Found ${cameras.length} cameras`,
+        status: 'success',
+        duration: 2000,
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          const cameraList: Camera[] = data.cameras.map((camera: any) => ({
-            name: camera.name,
-            path: camera.path
-          }));
-
-          setCameras(cameraList);
-
-          toast({
-            title: 'Cameras Loaded',
-            description: `Found ${cameraList.length} cameras`,
-            status: 'success',
-            duration: 2000,
-          });
-        } else {
-          throw new Error(data.error || 'Failed to load cameras');
-        }
-      } else {
-        throw new Error(`HTTP ${response.status}: Failed to fetch cameras`);
-      }
     } catch (error) {
       console.error('Error fetching cameras:', error);
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to load cameras',
-        status: 'error',
-        duration: 3000,
-      });
+      const toastError = createToastError(error, 'Camera configuration');
+      toast(toastError);
 
-      // Fallback to empty cameras list
       setCameras([]);
     } finally {
       setLoadingCameras(false);
     }
   };
 
-  // Mock function to simulate backend status fetch
+  // Function to fetch program status from backend
   const fetchProgramStatus = async () => {
     try {
       setIsLoading(true);
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Mock response
-      const mockData = {
-        current_running: isRunning ? 'First Run' : null,
-        custom_path: customPath || null,
-        days: days
-      };
+      const status = await programService.getProgramStatus();
+      setProgramStatus(status);
 
-      setProgramStatus(mockData);
+      // Update UI state based on backend status
+      setIsRunning(!!status.current_running);
 
       toast({
         title: 'Status Updated',
@@ -171,31 +163,32 @@ export default function Program() {
         duration: 2000,
       });
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to fetch program status',
-        status: 'error',
-        duration: 3000,
-      });
+      console.error('Error fetching program status:', error);
+      const toastError = createToastError(error, 'Program status');
+      toast(toastError);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Mock function to simulate starting program
+  // Function to start program via backend API
   const startProgram = async (programId: string) => {
     try {
       setActionLoading(true);
 
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await programService.startProgram({
+        programType: programId as 'first' | 'default' | 'custom',
+        action: 'run',
+        days: programId === 'first' ? (typeof days === 'string' ? parseInt(days) || 7 : days) : undefined,
+        customPath: programId === 'custom' ? customPath : undefined
+      });
 
-      // Mock success response
+      // Update state based on backend response
       setIsRunning(true);
       setProgramStatus({
-        current_running: programCards.find(p => p.id === programId)?.englishName || 'Unknown',
-        custom_path: programId === 'custom' ? customPath : null,
-        days: programId === 'first' ? (typeof days === 'string' ? parseInt(days) || 7 : days) : null
+        current_running: response.current_running,
+        custom_path: response.custom_path,
+        days: response.days
       });
 
       toast({
@@ -206,31 +199,30 @@ export default function Program() {
       });
 
       setSelectedProgram(null);
+
+      // Start progress monitoring
+      startPolling();
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to start program',
-        status: 'error',
-        duration: 5000,
-      });
+      console.error('Error starting program:', error);
+      const toastError = createToastError(error, 'Starting program');
+      toast(toastError);
     } finally {
       setActionLoading(false);
     }
   };
 
-  // Mock function to simulate stopping program
+  // Function to stop program via backend API
   const stopProgram = async () => {
     try {
       setActionLoading(true);
 
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await programService.stopProgram();
 
       setIsRunning(false);
       setProgramStatus({
-        current_running: null,
-        custom_path: null,
-        days: null
+        current_running: response.current_running,
+        custom_path: response.custom_path,
+        days: response.days
       });
 
       toast({
@@ -241,13 +233,13 @@ export default function Program() {
       });
 
       setSelectedProgram(null);
+
+      // Stop progress monitoring
+      stopPolling();
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to stop program',
-        status: 'error',
-        duration: 5000,
-      });
+      console.error('Error stopping program:', error);
+      const toastError = createToastError(error, 'Stopping program');
+      toast(toastError);
     } finally {
       setActionLoading(false);
     }
@@ -336,6 +328,57 @@ export default function Program() {
                     <Text fontSize="sm" color={textColor} opacity={0.7} mt={2}>
                       Path: {programStatus.custom_path}
                     </Text>
+                  )}
+
+                  {/* Real-time Progress Display */}
+                  {isPolling && progressData && (
+                    <Box mt={4} p={3} bg={borderColor} borderRadius="md">
+                      <HStack justify="space-between" mb={2}>
+                        <Text fontSize="sm" fontWeight="600" color={textColor}>
+                          Processing Progress
+                        </Text>
+                        {isProgressLoading && (
+                          <Spinner size="sm" color={currentColors.brand500} />
+                        )}
+                      </HStack>
+
+                      {progressData.files && progressData.files.length > 0 ? (
+                        <VStack spacing={1} align="stretch">
+                          {progressData.files.slice(0, 3).map((file, index) => (
+                            <Flex key={index} justify="space-between" align="center">
+                              <Text fontSize="xs" color={textColor} opacity={0.8} isTruncated maxW="60%">
+                                {file.file.split('/').pop() || file.file}
+                              </Text>
+                              <Badge
+                                size="sm"
+                                colorScheme={
+                                  file.status === 'xong' ? 'green' :
+                                  file.status === 'đang frame sampler ...' ? 'blue' :
+                                  file.status === 'lỗi' ? 'red' : 'gray'
+                                }
+                              >
+                                {file.status}
+                              </Badge>
+                            </Flex>
+                          ))}
+                          {progressData.files.length > 3 && (
+                            <Text fontSize="xs" color={textColor} opacity={0.6} textAlign="center">
+                              +{progressData.files.length - 3} more files...
+                            </Text>
+                          )}
+                        </VStack>
+                      ) : (
+                        <Text fontSize="xs" color={textColor} opacity={0.6}>
+                          No files in processing queue
+                        </Text>
+                      )}
+
+                      {progressError && (
+                        <Text fontSize="xs" color="red.500" mt={2}>
+                          {progressError}
+                        </Text>
+                      )}
+                    </Box>
                   )}
                 </Box>
               )}
