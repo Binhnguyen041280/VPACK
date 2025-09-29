@@ -24,7 +24,7 @@ const routes: IRoute[] = [
   },
   {
     name: 'Program',
-    disabled: true,
+    disabled: false,
     path: '/program',
     icon: <Icon as={MdCode} width="20px" height="20px" color="inherit" />,
     collapse: false,
