@@ -204,7 +204,26 @@ class ProgramService {
         throw new Error(data.error || `HTTP ${response.status}: Failed to get cameras`);
       }
 
-      return data.cameras || [];
+      const cameras = data.cameras || [];
+
+      // Handle both array of strings and array of objects
+      if (Array.isArray(cameras)) {
+        return cameras.map((camera: any) => {
+          if (typeof camera === 'string') {
+            // Backend returns array of strings
+            return {
+              name: camera,
+              path: camera, // Use name as path fallback
+              source_type: 'local'
+            };
+          } else {
+            // Backend returns array of objects
+            return camera;
+          }
+        });
+      }
+
+      return [];
     } catch (error) {
       console.error('Error getting cameras:', error);
       throw error;

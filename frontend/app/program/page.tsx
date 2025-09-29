@@ -345,7 +345,7 @@ export default function Program() {
                       {progressData.files && progressData.files.length > 0 ? (
                         <VStack spacing={1} align="stretch">
                           {progressData.files.slice(0, 3).map((file, index) => (
-                            <Flex key={index} justify="space-between" align="center">
+                            <Flex key={`${file.file}-${index}`} justify="space-between" align="center">
                               <Text fontSize="xs" color={textColor} opacity={0.8} isTruncated maxW="60%">
                                 {file.file.split('/').pop() || file.file}
                               </Text>
