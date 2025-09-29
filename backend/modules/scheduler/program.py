@@ -14,9 +14,9 @@ API Endpoints:
     GET /get-camera-folders: Get available camera folders
 
 Processing Modes:
-    - First Run (Lần đầu): Initial processing for specified number of days
-    - Default (Mặc định): Continuous processing mode with periodic scanning
-    - Custom (Chỉ định): Process specific file or directory path
+    - First Run: Initial processing for specified number of days
+    - Default: Continuous processing mode with periodic scanning
+    - Custom: Process specific file or directory path
 
 Global State:
     running_state: Dictionary tracking current execution state including:
@@ -91,7 +91,7 @@ def init_default_program():
         
         if first_run_completed and not scheduler.running:
             logger.info(f"Chuyển sang chế độ chạy mặc định (quét lặp) at {datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')).strftime('%Y-%m-%d %H:%M:%S %Z')}")
-            running_state["current_running"] = "Mặc định"
+            running_state["current_running"] = "Default"
             scheduler.start()
             
     except Exception as e:
@@ -104,12 +104,12 @@ def program():
     """Execute different video processing programs based on the request.
     
     This endpoint handles three types of processing programs:
-    1. First Run (Lần đầu): Initial processing for a specified number of days
-    2. Default (Mặc định): Continuous processing mode
-    3. Custom (Chỉ định): Process a specific file or directory
+    1. First Run: Initial processing for a specified number of days
+    2. Default: Continuous processing mode
+    3. Custom: Process a specific file or directory
     
     Request Body:
-        card (str): Program type - 'Lần đầu', 'Mặc định', or 'Chỉ định'
+        card (str): Program type - 'First Run', 'Default', or 'Custom'
         action (str): Action to perform - 'run' or 'stop'
         custom_path (str, optional): File/directory path for custom processing
         days (int, optional): Number of days for first run processing
@@ -150,7 +150,7 @@ def program():
         return jsonify({"error": "Missing required parameters: card and action"}), 400
 
     # Validate First Run execution - prevent duplicate runs
-    if card == "Lần đầu" and action == "run":
+    if card == "First Run" and action == "run":
         try:
             # Check if first run has already been completed to prevent duplicates
             with db_rwlock:
@@ -161,7 +161,7 @@ def program():
                     first_run_completed = result[0] == 'true' if result else False
             if first_run_completed:
                 logger.warning("First run already completed")
-                return jsonify({"error": "Lần đầu đã chạy trước đó, không thể chạy lại"}), 400
+                return jsonify({"error": "First Run already completed, cannot run again"}), 400
         except Exception as e:
             logger.error(f"Failed to check first run status: {str(e)}")
             return jsonify({"error": f"Failed to check first run status: {str(e)}"}), 500
@@ -171,15 +171,15 @@ def program():
         logger.info(f"Action run for card: {card}, scheduler_running={scheduler.running}")
         
         # Pause scheduler if switching to custom processing mode
-        if scheduler.running and card == "Chỉ định":
+        if scheduler.running and card == "Custom":
             scheduler.pause()  # Pause ongoing batch processing
             running_state["current_running"] = None
             running_state["files"] = []
         # FIRST RUN PROCESSING: Initial scan for specified number of days
-        if card == "Lần đầu":
+        if card == "First Run":
             if not days:
-                logger.error("Days required for Lần đầu")
-                return jsonify({"error": "Days required for Lần đầu"}), 400
+                logger.error("Days required for First Run")
+                return jsonify({"error": "Days required for First Run"}), 400
             
             # Update state for first run processing with timezone context
             running_state["days"] = days
@@ -200,10 +200,10 @@ def program():
                 logger.error(f"Failed to run first scan at {error_time.strftime('%Y-%m-%d %H:%M:%S %Z')}: {str(e)}")
                 return jsonify({"error": f"Failed to run first scan: {str(e)}"}), 500
         # CUSTOM PROCESSING: Process specific file or directory
-        elif card == "Chỉ định":
+        elif card == "Custom":
             if not custom_path:
-                logger.error("Custom path required for Chỉ định")
-                return jsonify({"error": "Custom path required cho Chỉ định"}), 400
+                logger.error("Custom path required for Custom")
+                return jsonify({"error": "Custom path required for Custom"}), 400
             
             # Validate custom path exists
             abs_path = os.path.abspath(custom_path)
@@ -238,7 +238,7 @@ def program():
                     frame_sampler_event.set()
                     start_frame_sampler_thread()
                     start_event_detector_thread()
-                    logger.info(f"[Chỉ định] Processing started: {result[0]}")
+                    logger.info(f"[Custom] Processing started: {result[0]}")
                     import time
                     while True:
                         with db_rwlock:
@@ -249,7 +249,20 @@ def program():
                         if status_result and status_result[0] == 'xong':
                             break
                         time.sleep(2)
-                    logger.info(f"[Chỉ định] Processing completed: {result[0]}")
+                    logger.info(f"[Custom] Processing completed: {result[0]}")
+
+                    # Show "Completed" status briefly before transitioning to default
+                    running_state["current_running"] = "Completed"
+                    running_state["custom_path"] = None
+                    running_state["days"] = None
+
+                    # Wait a moment to show completed status
+                    import time
+                    time.sleep(3)  # Show "Completed" for 3 seconds
+
+                    # Then transition to default mode
+                    running_state["current_running"] = "Default"
+
                     scheduler.resume()
                     try:
                         if not scheduler.running:
@@ -258,14 +271,14 @@ def program():
                         run_file_scan(scan_action="default")
                         frame_sampler_event.set()
                         event_detector_event.set()
-                        logger.info(f"Completed Chỉ định, transitioning to default: scheduler_running={scheduler.running}, running_state={running_state}")
+                        logger.info(f"Completed Custom, transitioning to default: scheduler_running={scheduler.running}, running_state={running_state}")
                     except Exception as e:
                         logger.error(f"Error triggering default scan: {str(e)}")
                 else:
-                    logger.error(f"[Chỉ định] No pending file found at: {abs_path}")
+                    logger.error(f"[Custom] No pending file found at: {abs_path}")
                     return jsonify({"error": "Không tìm thấy file pending để xử lý"}), 404
             except Exception as e:
-                logger.error(f"[Chỉ định] Error: {str(e)}")
+                logger.error(f"[Custom] Error: {str(e)}")
                 scheduler.resume()
                 return jsonify({"error": f"Xử lý chỉ định thất bại: {str(e)}"}), 500
         else:
@@ -274,10 +287,10 @@ def program():
 
         running_state["current_running"] = card
         if not scheduler.running:
-            running_state["current_running"] = "Mặc định"
+            running_state["current_running"] = "Default"
             scheduler.start()
 
-        if card == "Lần đầu":
+        if card == "First Run":
             try:
                 completion_time = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh'))
                 completion_utc = datetime.now(timezone.utc)
@@ -294,7 +307,7 @@ def program():
                         )
                         
                 logger.info(
-                    f"Chuyển sang chế độ chạy mặc định (quét lặp) sau khi hoàn thành Lần đầu at "
+                    f"Transitioning to default mode (continuous scan) after First Run completion at "
                     f"{completion_time.strftime('%Y-%m-%d %H:%M:%S %Z')}"
                 )
                 
@@ -361,8 +374,8 @@ def confirm_run():
         logger.error("Missing required parameter: card")
         return jsonify({"error": "Missing required parameter: card"}), 400
 
-    scan_action = "first" if card == "Lần đầu" else "default" if card == "Mặc định" else "custom"
-    days = running_state.get("days") if card == "Lần đầu" else None
+    scan_action = "first" if card == "First Run" else "default" if card == "Default" else "custom"
+    days = running_state.get("days") if card == "First Run" else None
     custom_path = running_state.get("custom_path", '')
     try:
         run_file_scan(scan_action=scan_action, days=days, custom_path=custom_path)
@@ -486,5 +499,5 @@ def get_camera_folders():
 if __name__ == "__main__":
     logger.info("Main program started")
     if not scheduler.running:
-        running_state["current_running"] = "Mặc định"
+        running_state["current_running"] = "Default"
         scheduler.start()

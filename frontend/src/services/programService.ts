@@ -68,9 +68,9 @@ class ProgramService {
    */
   private mapProgramType(programType: string): string {
     const mapping: Record<string, string> = {
-      'first': 'Lần đầu',
-      'default': 'Mặc định',
-      'custom': 'Chỉ định'
+      'first': 'First Run',
+      'default': 'Default',
+      'custom': 'Custom'
     };
     return mapping[programType] || programType;
   }

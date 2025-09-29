@@ -85,9 +85,9 @@ Main Thread
 - `GET /get-camera-folders`: Get camera directories
 
 **Processing Modes**:
-- **First Run (Lần đầu)**: Initial processing for specified days
-- **Default (Mặc định)**: Continuous background processing
-- **Custom (Chỉ định)**: Process specific file/directory
+- **First Run**: Initial processing for specified days
+- **Default**: Continuous background processing
+- **Custom**: Process specific file/directory
 
 ### 3. `program_runner.py`
 **Purpose**: Manages video processing threads and pipeline coordination

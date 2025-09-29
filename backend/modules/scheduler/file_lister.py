@@ -111,9 +111,11 @@ def get_file_creation_time(file_path: str, camera_name: Optional[str] = None) ->
             user_timezone = ZoneInfo('Asia/Ho_Chi_Minh')
             return datetime.fromtimestamp(os.path.getctime(file_path), tz=user_timezone)
         
-        # Use enhanced video timezone detection
-        timezone_aware_time = get_timezone_aware_creation_time(file_path, camera_name)
-        
+        # Use simple filesystem time with user timezone (fallback approach)
+        user_timezone = ZoneInfo('Asia/Ho_Chi_Minh')
+        file_stat_time = os.path.getctime(file_path)
+        timezone_aware_time = datetime.fromtimestamp(file_stat_time, tz=user_timezone)
+
         logger.debug(f"Extracted timezone-aware creation time for {file_path}: {timezone_aware_time}")
         return timezone_aware_time
         
@@ -394,7 +396,8 @@ def save_files_to_db(conn: Any, video_files: List[str], file_ctimes: List[float]
 
 def list_files(video_root, scan_action, custom_path, days, db_path, default_scan_days=None, camera_ctime_map=None, is_initial_scan=False):
     try:
-        with db_rwlock.gen_wlock():
+        # First, get configuration from database
+        with db_rwlock.gen_rlock():
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
 
@@ -422,7 +425,7 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
                 # Retrieve working hours configuration with timezone context
                 cursor.execute("SELECT working_days, from_time, to_time, timezone FROM general_info WHERE id = 1")
                 general_info = cursor.fetchone()
-                
+
                 if general_info:
                     try:
                         working_days_raw = general_info[0].encode('utf-8').decode('utf-8') if general_info[0] else ''
@@ -430,15 +433,15 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
                     except json.JSONDecodeError as e:
                         logger.error(f"JSON không hợp lệ trong working_days: {general_info[0]}, lỗi: {e}")
                         working_days = []
-                    
+
                     # Parse working hours times
                     from_time = datetime.strptime(general_info[1], '%H:%M').time() if general_info[1] else None
                     to_time = datetime.strptime(general_info[2], '%H:%M').time() if general_info[2] else None
-                    
+
                     # Get timezone configuration for logging context
                     configured_timezone = general_info[3] if len(general_info) > 3 and general_info[3] else None
                     user_timezone_name = "Asia/Ho_Chi_Minh"
-                    
+
                     # Log working hours configuration with timezone context
                     if from_time and to_time:
                         logger.info(
@@ -453,51 +456,63 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
                 else:
                     working_days, from_time, to_time = [], None, None
                     user_timezone_name = "Asia/Ho_Chi_Minh"
-                
+
                 logger.info(
                     f"Scanning configuration - Working days: {working_days}, "
                     f"Working hours: {from_time}-{to_time}, "
                     f"Timezone: {user_timezone_name}"
                 )
 
-            video_files = []
-            file_ctimes = []
+        # Now perform file scanning outside database connection
+        video_files = []
+        file_ctimes = []
 
-            if scan_action == "custom" and custom_path:
-                if not os.path.exists(custom_path):
-                    raise Exception(f"Đường dẫn không tồn tại: {custom_path}")
-                if os.path.isfile(custom_path) and custom_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv')):
-                    file_name = os.path.basename(custom_path)
-                    file_ctime = get_file_creation_time(custom_path, camera_name)
-                    video_files.append(file_name)
-                    file_ctimes.append(file_ctime.timestamp())
-                    logger.info(f"Tìm thấy tệp: {custom_path}")
-                else:
-                    video_files, file_ctimes = scan_files(
-                        custom_path, video_root, None, None, False, None,
-                        working_days, from_time, to_time, selected_cameras, strict_date_match=False
-                    )
-            elif scan_action == "first" and days:
-                time_threshold = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')) - timedelta(days=days)
+        if scan_action == "custom" and custom_path:
+            if not os.path.exists(custom_path):
+                raise Exception(f"Đường dẫn không tồn tại: {custom_path}")
+            if os.path.isfile(custom_path) and custom_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv')):
+                file_name = os.path.basename(custom_path)
+                # Extract camera name from custom path for timezone detection
+                custom_dir = os.path.dirname(custom_path)
+                camera_name = os.path.basename(custom_dir) if custom_dir else None
+                file_ctime = get_file_creation_time(custom_path, camera_name)
+                video_files.append(file_name)
+                file_ctimes.append(file_ctime.timestamp())
+                logger.info(f"Tìm thấy tệp: {custom_path}")
+            else:
                 video_files, file_ctimes = scan_files(
-                    video_root, video_root, time_threshold, None, False, None,
+                    custom_path, video_root, None, None, False, None,
                     working_days, from_time, to_time, selected_cameras, strict_date_match=False
                 )
-                cursor.execute('''
-                    INSERT OR REPLACE INTO program_status (id, key, value)
-                    VALUES ((SELECT id FROM program_status WHERE key = 'first_run_completed'), 'first_run_completed', 'true')
-                ''')
-                conn.commit()
-            else:  # default
-                scan_days = default_scan_days if default_scan_days is not None else SchedulerConfig.DEFAULT_SCAN_DAYS
-                time_threshold = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')) - timedelta(days=scan_days) if is_initial_scan else datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')) - timedelta(days=1)
-                restrict_to_current_date = not is_initial_scan
-                video_files, file_ctimes = scan_files(
-                    video_root, video_root, time_threshold, max_ctime, restrict_to_current_date, camera_ctime_map,
-                    working_days, from_time, to_time, selected_cameras, strict_date_match=True
-                )
+        elif scan_action == "first" and days:
+            time_threshold = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')) - timedelta(days=days)
+            video_files, file_ctimes = scan_files(
+                video_root, video_root, time_threshold, None, False, None,
+                working_days, from_time, to_time, selected_cameras, strict_date_match=False
+            )
+        else:  # default
+            scan_days = default_scan_days if default_scan_days is not None else SchedulerConfig.DEFAULT_SCAN_DAYS
+            time_threshold = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')) - timedelta(days=scan_days) if is_initial_scan else datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')) - timedelta(days=1)
+            restrict_to_current_date = not is_initial_scan
+            video_files, file_ctimes = scan_files(
+                video_root, video_root, time_threshold, max_ctime, restrict_to_current_date, camera_ctime_map,
+                working_days, from_time, to_time, selected_cameras, strict_date_match=True
+            )
 
+        # Finally, save files to database with a fresh connection
+        with db_rwlock.gen_wlock():
+            with safe_db_connection() as conn:
                 save_files_to_db(conn, video_files, file_ctimes, scan_action, days, custom_path, video_root)
+
+                # Handle first run completion flag
+                if scan_action == "first" and days:
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO program_status (id, key, value)
+                        VALUES ((SELECT id FROM program_status WHERE key = 'first_run_completed'), 'first_run_completed', 'true')
+                    ''')
+                    conn.commit()
+
         logger.info(f"Tìm thấy {len(video_files)} tệp video")
         return video_files, file_ctimes
     except Exception as e:
