@@ -144,7 +144,7 @@ def run_frame_sampler() -> None:
                         cursor = conn.cursor()
                         cursor.execute("SELECT status, is_processed FROM file_list WHERE file_path = ?", (video_file,))
                         result = cursor.fetchone()
-                    if result and (result[0] == "đang frame sampler ..." or result[1] == 1):
+                    if result and (result[0] in ["Processing", "Done"] or result[1] == 1):
                         logger.info(f"Skipping video {video_file}: already being processed or completed")
                         continue
 
@@ -222,7 +222,7 @@ def run_frame_sampler() -> None:
                         with db_rwlock.gen_wlock():
                             with safe_db_connection() as conn:
                                 cursor = conn.cursor()
-                                cursor.execute("UPDATE file_list SET status = ?, is_processed = 1 WHERE file_path = ?", ("xong", video_file))
+                                cursor.execute("UPDATE file_list SET status = ?, is_processed = 1 WHERE file_path = ?", ("Done", video_file))
                         continue  # Skip frame sampling for inactive videos
                     # STEP 3: Select appropriate FrameSampler based on trigger configuration
                     if trigger != [0, 0, 0, 0]:
@@ -238,8 +238,8 @@ def run_frame_sampler() -> None:
                     with db_rwlock.gen_wlock():
                         with safe_db_connection() as conn:
                             cursor = conn.cursor()
-                            cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("đang frame sampler ...", video_file))
-                        logger.debug(f"Updated status for {video_file} to 'đang frame sampler ...'")
+                            cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("Processing", video_file))
+                        logger.debug(f"Updated status for {video_file} to 'Processing'")
                     
                     # STEP 5: Process video blocks identified by IdleMonitor
                     log_file = None
@@ -265,11 +265,11 @@ def run_frame_sampler() -> None:
                         with safe_db_connection() as conn:
                             cursor = conn.cursor()
                             if log_file:
-                                cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("xong", video_file))
+                                cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("Done", video_file))
                                 event_detector_event.set()  # Signal event detector that logs are ready
                                 logger.info(f"Video {video_file} processed successfully, log file: {log_file}")
                             else:
-                                cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
+                                cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("Error", video_file))
                                 logger.error(f"Failed to process video {video_file}")
                     
                     # STEP 7: Wait for event detector to process the generated logs
