@@ -363,13 +363,16 @@ def save_files_to_db(conn: Any, video_files: List[str], file_ctimes: List[float]
         
         # Set priority (custom processing gets higher priority)
         priority = 1 if scan_action == "custom" else 0
-        
+
         # Extract camera name from directory structure
-        if scan_action != "custom":
+        # Always use relative path from video_root for consistent camera detection
+        try:
             relative_path = os.path.relpath(absolute_path, video_root)
-        else:
-            relative_path = os.path.dirname(absolute_path)
-        camera_name = relative_path.split(os.sep)[0] if relative_path != "." else os.path.basename(video_root)
+            # First level directory is camera name (e.g., Cloud_Cam1, Cam2N)
+            camera_name = relative_path.split(os.sep)[0] if relative_path != "." else os.path.basename(video_root)
+        except ValueError:
+            # If relpath fails (different drives on Windows), fallback to basename
+            camera_name = os.path.basename(os.path.dirname(absolute_path))
         
         # Prepare database record
         insert_data.append((

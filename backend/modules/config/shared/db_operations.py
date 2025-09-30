@@ -102,25 +102,33 @@ def execute_with_change_detection(
 def sync_processing_config(video_source_data: Dict[str, Any]) -> bool:
     """
     Sync video source data to processing_config table for backward compatibility.
-    
+    Maps source connection info to actual working directory using get_working_path_for_source().
+
     Args:
         video_source_data: Video source configuration data
-        
+
     Returns:
         True if sync successful, False otherwise
     """
     try:
         with safe_connection_wrapper() as conn:
             cursor = conn.cursor()
-            
+
             # Ensure camera_paths column exists
             try:
                 cursor.execute("ALTER TABLE processing_config ADD COLUMN camera_paths TEXT DEFAULT '{}'")
             except sqlite3.OperationalError:
                 pass  # Column already exists
-            
+
             # Extract data for processing_config
-            input_path = video_source_data.get('path', '')
+            source_type = video_source_data.get('source_type', 'local')
+            source_name = video_source_data.get('name', '')
+            source_path = video_source_data.get('path', '')
+
+            # Map source to actual working directory
+            from modules.config.utils import get_working_path_for_source
+            input_path = get_working_path_for_source(source_type, source_name, source_path)
+
             selected_cameras = video_source_data.get('config', {}).get('selected_cameras', [])
             camera_paths = video_source_data.get('config', {}).get('camera_paths', {})
             

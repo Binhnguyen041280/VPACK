@@ -119,6 +119,16 @@ class VideoSourceRepository:
                 self.logger.info(f"   Name: {source_data.get('name')}")
                 self.logger.info(f"   Path: {source_data.get('path')}")
 
+                # STEP 5: Sync to processing_config for file_lister integration
+                try:
+                    from modules.config.shared.db_operations import sync_processing_config
+                    if sync_processing_config(source_data):
+                        self.logger.info("✅ Synced to processing_config for file_lister")
+                    else:
+                        self.logger.warning("⚠️ Failed to sync processing_config")
+                except Exception as e:
+                    self.logger.error(f"❌ Error syncing processing_config: {e}")
+
                 return target_source_id
 
         except Exception as e:
