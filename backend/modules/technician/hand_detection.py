@@ -8,7 +8,7 @@ import glob
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-# Định nghĩa BASE_DIR
+# Define BASE_DIR
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 # Cấu hình logging (sử dụng cách cũ - không import modules.config.logging_config)
@@ -29,81 +29,81 @@ except AttributeError as e:
     logging.error(f"MediaPipe import error: {e}")
     raise ImportError("MediaPipe modules not found. Please reinstall MediaPipe.")
 
-# Đặt bước nhảy frame
+# Set frame step
 FRAME_STEP = 5
 
-# Đường dẫn lưu ảnh
+# Path for saving images
 CAMERA_ROI_DIR = os.path.join(BASE_DIR, "resources", "output_clips", "CameraROI")
 
 def ensure_directory_exists(directory):
-    """Đảm bảo thư mục tồn tại, nếu không thì tạo mới."""
+    """Ensure directory exists, create if not."""
     try:
         if not os.path.exists(directory):
             os.makedirs(directory)
-            logging.debug(f"Đã tạo thư mục: {directory}")
-        # Kiểm tra quyền truy cập
+            logging.debug(f"Created directory: {directory}")
+        # Check access permissions
         if not os.access(directory, os.W_OK):
-            logging.error(f"Không có quyền ghi vào thư mục {directory}")
-            raise PermissionError(f"Không có quyền ghi vào thư mục {directory}")
+            logging.error(f"No write permission for directory {directory}")
+            raise PermissionError(f"No write permission for directory {directory}")
     except Exception as e:
-        logging.error(f"Lỗi khi tạo thư mục {directory}: {str(e)}")
+        logging.error(f"Error creating directory {directory}: {str(e)}")
         raise
 
 def select_roi(video_path: str, camera_id: str, step: str = "packing") -> Dict[str, Any]:
     """
-    Mở video và cho phép người dùng vẽ ROI bằng OpenCV, lưu kết quả vào CameraROI, sau đó phát hiện tay.
+    Open video and allow user to draw ROI using OpenCV, save results to CameraROI, then detect hands.
     Args:
-        video_path (str): Đường dẫn đến file video.
-        camera_id (str): ID của camera.
-        step (str): Giai đoạn hiện tại (packing, trigger).
+        video_path (str): Path to video file.
+        camera_id (str): Camera ID.
+        step (str): Current stage (packing, trigger).
     Returns:
-        dict: {'success': bool, 'roi': {'x': int, 'y': int, 'w': int, 'h': int}, 'roi_frame': str, 'hand_detected': bool} hoặc {'success': false, 'error': str}
+        dict: {'success': bool, 'roi': {'x': int, 'y': int, 'w': int, 'h': int}, 'roi_frame': str, 'hand_detected': bool} or {'success': false, 'error': str}
     """
     try:
-        logging.debug(f"Bắt đầu select_roi với video_path: {video_path}, camera_id: {camera_id}, step: {step}")
+        logging.debug(f"Starting select_roi with video_path: {video_path}, camera_id: {camera_id}, step: {step}")
         
-        # Đảm bảo thư mục CameraROI tồn tại
+        # Ensure CameraROI directory exists
         ensure_directory_exists(CAMERA_ROI_DIR)
 
-        # Mở video
-        logging.debug("Đang mở video...")
+        # Open video
+        logging.debug("Opening video...")
         cap = cv2.VideoCapture(video_path)
         try:
             if not cap.isOpened():
-                logging.error("Không thể mở video.")
-                return {"success": False, "error": "Không thể mở video."}
-            
-            # Đọc frame đầu tiên
-            logging.debug("Đang đọc frame đầu tiên...")
+                logging.error("Cannot open video.")
+                return {"success": False, "error": "Cannot open video."}
+
+            # Read first frame
+            logging.debug("Reading first frame...")
             ret, frame = cap.read()
             if not ret:
-                logging.error("Không thể đọc frame từ video.")
-                return {"success": False, "error": "Không thể đọc frame từ video."}
-            
-            # Lưu frame gốc nếu ở bước packing
+                logging.error("Cannot read frame from video.")
+                return {"success": False, "error": "Cannot read frame from video."}
+
+            # Save original frame if in packing step
             if step == "packing":
                 original_frame_path = os.path.join(CAMERA_ROI_DIR, f"camera_{camera_id}_original.jpg")
                 ret = cv2.imwrite(original_frame_path, frame)
                 if not ret:
-                    logging.error(f"Không thể lưu ảnh gốc tại: {original_frame_path}")
-                    return {"success": False, "error": f"Không thể lưu ảnh gốc tại {original_frame_path}"}
-                logging.debug(f"Đã lưu frame gốc vào: {original_frame_path}")
+                    logging.error(f"Cannot save original image at: {original_frame_path}")
+                    return {"success": False, "error": f"Cannot save original image at {original_frame_path}"}
+                logging.debug(f"Saved original frame to: {original_frame_path}")
             
             while True:
-                # Hiển thị giao diện chọn ROI
-                logging.debug("Gọi cv2.selectROI...")
+                # Display ROI selection interface
+                logging.debug("Calling cv2.selectROI...")
                 current_frame = frame.copy()
-                roi = cv2.selectROI(f"Click va keo chuot de chon -Vung {step.capitalize()}-", current_frame, showCrosshair=True, fromCenter=False)
-                logging.debug(f"ROI trả về: {roi}")
+                roi = cv2.selectROI(f"Click and drag mouse to select -{step.capitalize()} Area-", current_frame, showCrosshair=True, fromCenter=False)
+                logging.debug(f"ROI returned: {roi}")
                 cv2.destroyAllWindows()
-                
-                # Kiểm tra nếu ROI hợp lệ
+
+                # Check if ROI is valid
                 x, y, w, h = map(int, roi)
                 if w == 0 or h == 0:
-                    logging.debug("ROI không hợp lệ, hiển thị lại frame gốc để vẽ lại.")
-                    continue  # Hiển thị lại frame gốc, không lưu file
+                    logging.debug("ROI is invalid, redisplaying original frame to redraw.")
+                    continue  # Redisplay original frame, do not save file
                 
-                # ✅ GIỚI HẠN ROI TRONG KHUNG VIDEO - Clamp ROI to frame boundaries
+                # ✅ CLAMP ROI WITHIN VIDEO FRAME - Clamp ROI to frame boundaries
                 frame_height, frame_width = frame.shape[:2]
                 
                 # Clamp coordinates to frame boundaries
@@ -116,28 +116,28 @@ def select_roi(video_path: str, camera_id: str, step: str = "packing") -> Dict[s
                 
                 # Update ROI values if clamping occurred
                 if x != x_clamped or y != y_clamped or w != w_clamped or h != h_clamped:
-                    logging.info(f"ROI được điều chỉnh để nằm trong khung video:")
-                    logging.info(f"  Gốc: x={x}, y={y}, w={w}, h={h}")
-                    logging.info(f"  Điều chỉnh: x={x_clamped}, y={y_clamped}, w={w_clamped}, h={h_clamped}")
-                    logging.info(f"  Khung video: {frame_width}x{frame_height}")
+                    logging.info(f"ROI adjusted to fit within video frame:")
+                    logging.info(f"  Original: x={x}, y={y}, w={w}, h={h}")
+                    logging.info(f"  Adjusted: x={x_clamped}, y={y_clamped}, w={w_clamped}, h={h_clamped}")
+                    logging.info(f"  Video frame: {frame_width}x{frame_height}")
                     
                     # Update variables with clamped values
                     x, y, w, h = x_clamped, y_clamped, w_clamped, h_clamped
                 
-                # Vẽ ROI lên frame
+                # Draw ROI on frame
                 color = (0, 255, 0) if step == "packing" else (0, 255, 255)
                 cv2.rectangle(current_frame, (x, y), (x + w, y + h), color, 2)
-                # Thêm tiêu đề "Packing" nếu ở bước packing
+                # Add "Packing" label if in packing step
                 if step == "packing":
                     cv2.putText(current_frame, "Packing", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                 
-                # Hiển thị frame với ROI và tiêu đề
-                cv2.namedWindow("**** Da ve vung Packing ****", cv2.WINDOW_NORMAL)
-                cv2.imshow("**** Da ve vung Packing ****", current_frame)
+                # Display frame with ROI and title
+                cv2.namedWindow("**** Packing Area Drawn ****", cv2.WINDOW_NORMAL)
+                cv2.imshow("**** Packing Area Drawn ****", current_frame)
                 cv2.waitKey(500)
                 cv2.destroyAllWindows()
                 
-                # Lưu frame với ROI vào CameraROI
+                # Save frame with ROI to CameraROI
                 if step == "packing":
                     roi_frame_path = os.path.join(CAMERA_ROI_DIR, f"camera_{camera_id}_roi_packing.jpg")
                 else:  # step == "trigger"
@@ -145,64 +145,64 @@ def select_roi(video_path: str, camera_id: str, step: str = "packing") -> Dict[s
                 
                 ret = cv2.imwrite(roi_frame_path, current_frame)
                 if not ret:
-                    logging.error(f"Không thể lưu ảnh tại: {roi_frame_path}")
-                    return {"success": False, "error": f"Không thể lưu ảnh tại {roi_frame_path}"}
-                logging.debug(f"Đã lưu frame với ROI vào: {roi_frame_path}")
-                
-                # Kiểm tra file đã được lưu thành công
+                    logging.error(f"Cannot save image at: {roi_frame_path}")
+                    return {"success": False, "error": f"Cannot save image at {roi_frame_path}"}
+                logging.debug(f"Saved frame with ROI to: {roi_frame_path}")
+
+                # Check if file was saved successfully
                 if not os.path.exists(roi_frame_path):
-                    logging.error(f"File không tồn tại sau khi lưu: {roi_frame_path}")
-                    return {"success": False, "error": f"File không tồn tại sau khi lưu: {roi_frame_path}"}
+                    logging.error(f"File does not exist after saving: {roi_frame_path}")
+                    return {"success": False, "error": f"File does not exist after saving: {roi_frame_path}"}
                 
-                # Nếu là bước packing, gọi detect_hands để kiểm tra tay
+                # If packing step, call detect_hands to check for hands
                 hand_detected = False
                 if step == "packing":
                     detect_result = detect_hands(video_path, {"x": x, "y": y, "w": w, "h": h})
                     if not detect_result["success"]:
-                        logging.error(f"Lỗi khi phát hiện tay: {detect_result['error']}")
+                        logging.error(f"Error detecting hand: {detect_result['error']}")
                         return {"success": False, "error": detect_result["error"]}
                     hand_detected = detect_result["hand_detected"]
                 
-                # Lưu tọa độ ROI và trạng thái hand_detected vào /tmp/roi.json
+                # Save ROI coordinates and hand_detected status to /tmp/roi.json
                 result = {
                     "success": True,
                     "roi": {"x": x, "y": y, "w": w, "h": h},
                     "roi_frame": os.path.relpath(roi_frame_path, BASE_DIR),
                     "hand_detected": hand_detected
                 }
-                logging.debug(f"Lưu ROI vào /tmp/roi.json: {result}")
+                logging.debug(f"Saving ROI to /tmp/roi.json: {result}")
                 with open("/tmp/roi.json", "w") as f:
                     json.dump(result, f)
-                
-                logging.debug(f"ROI hợp lệ: x={x}, y={y}, w={w}, h={h}, hand_detected: {hand_detected}")
+
+                logging.debug(f"Valid ROI: x={x}, y={y}, w={w}, h={h}, hand_detected: {hand_detected}")
                 return result
             
         finally:
             cap.release()
-            logging.debug("Đã giải phóng tài nguyên video (cap.release).")
-        
+            logging.debug("Released video resources (cap.release).")
+
     except Exception as e:
-        logging.error(f"Lỗi trong select_roi: {str(e)}")
+        logging.error(f"Error in select_roi: {str(e)}")
         cv2.destroyAllWindows()
-        return {"success": False, "error": f"Lỗi hệ thống: {str(e)}"}
+        return {"success": False, "error": f"System error: {str(e)}"}
 
 def detect_hands(video_path: str, roi: Dict[str, int]) -> Dict[str, Any]:
     """
-    Hiển thị video với phát hiện tay trong vùng ROI, trả về trạng thái phát hiện tay.
+    Display video with hand detection in ROI area, return hand detection status.
     Args:
-        video_path (str): Đường dẫn đến file video.
-        roi (dict): Tọa độ ROI {'x': int, 'y': int, 'w': int, 'h': int}.
+        video_path (str): Path to video file.
+        roi (dict): ROI coordinates {'x': int, 'y': int, 'w': int, 'h': int}.
     Returns:
-        dict: {'success': bool, 'hand_detected': bool, 'error': str nếu có lỗi}
+        dict: {'success': bool, 'hand_detected': bool, 'error': str if error}
     """
     try:
         x, y, w, h = roi["x"], roi["y"], roi["w"], roi["h"]
         if w <= 0 or h <= 0:
-            logging.error("ROI không hợp lệ (chiều rộng hoặc chiều cao bằng 0).")
-            return {"success": False, "hand_detected": False, "error": "ROI không hợp lệ."}
+            logging.error("Invalid ROI (width or height is zero).")
+            return {"success": False, "hand_detected": False, "error": "Invalid ROI."}
 
-        # Mở video
-        logging.debug("Đang mở video để phát hiện tay...")
+        # Open video
+        logging.debug("Opening video for hand detection...")
         cap = cv2.VideoCapture(video_path)
         
         # Initialize MediaPipe Hands with explicit parameters
@@ -215,8 +215,8 @@ def detect_hands(video_path: str, roi: Dict[str, int]) -> Dict[str, Any]:
         
         try:
             if not cap.isOpened():
-                logging.error("Không thể mở video.")
-                return {"success": False, "hand_detected": False, "error": "Không thể mở video."}
+                logging.error("Cannot open video.")
+                return {"success": False, "hand_detected": False, "error": "Cannot open video."}
 
             frame_count = 0
             start_time = time.time()
@@ -227,29 +227,29 @@ def detect_hands(video_path: str, roi: Dict[str, int]) -> Dict[str, Any]:
                 if not ret:
                     break
 
-                # Cắt video theo ROI
+                # Crop video by ROI
                 roi_frame = frame[y:y+h, x:x+w]
 
-                # Chỉ xử lý mỗi FRAME_STEP frame
+                # Process only every FRAME_STEP frame
                 if frame_count % FRAME_STEP == 0:
-                    # Chuyển đổi BGR sang RGB
+                    # Convert BGR to RGB
                     rgb_frame = cv2.cvtColor(roi_frame, cv2.COLOR_BGR2RGB)
 
-                    # Phát hiện bàn tay
+                    # Detect hands
                     results = hands.process(rgb_frame)
 
-                    # Kiểm tra và xác nhận phát hiện tay
+                    # Check and confirm hand detection
                     if results.multi_hand_landmarks:
                         hand_detected = True
                         for hand_landmarks in results.multi_hand_landmarks:
-                            # Vẽ keypoints ngay khi phát hiện tay
+                            # Draw keypoints when hand is detected
                             mp_drawing.draw_landmarks(
                                 roi_frame, 
                                 hand_landmarks, 
                                 mp_hands.HAND_CONNECTIONS
                             )
 
-                # Hiển thị video
+                # Display video
                 elapsed_time = time.time() - start_time
                 cv2.putText(roi_frame, f"Time: {elapsed_time:.2f}s", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                 cv2.imshow("ROI Hand Detection", roi_frame)
@@ -259,86 +259,86 @@ def detect_hands(video_path: str, roi: Dict[str, int]) -> Dict[str, Any]:
 
                 frame_count += 1
 
-            logging.debug(f"Phát hiện tay: {hand_detected}")
+            logging.debug(f"Hand detected: {hand_detected}")
             return {"success": True, "hand_detected": hand_detected}
-        
+
         finally:
             hands.close()
             cap.release()
             cv2.destroyWindow("ROI Hand Detection")
-            logging.debug("Đã giải phóng tài nguyên video (cap.release) trong detect_hands.")
-    
+            logging.debug("Released video resources (cap.release) in detect_hands.")
+
     except Exception as e:
-        logging.error(f"Lỗi trong detect_hands: {str(e)}")
-        return {"success": False, "hand_detected": False, "error": f"Lỗi hệ thống: {str(e)}"}
+        logging.error(f"Error in detect_hands: {str(e)}")
+        return {"success": False, "hand_detected": False, "error": f"System error: {str(e)}"}
 
 def finalize_roi(video_path: str, camera_id: str, rois: list) -> Dict[str, Any]:
     """
-    Vẽ tất cả các vùng ROI (packing, MVD, trigger) lên frame và lưu vào thư mục CameraROI.
+    Draw all ROI areas (packing, MVD, trigger) on frame and save to CameraROI folder.
     Args:
-        video_path (str): Đường dẫn đến file video.
-        camera_id (str): ID của camera.
-        rois (list): Danh sách các vùng ROI [{'type': str, 'x': int, 'y': int, 'w': int, 'h': int}, ...].
+        video_path (str): Path to video file.
+        camera_id (str): Camera ID.
+        rois (list): List of ROI areas [{'type': str, 'x': int, 'y': int, 'w': int, 'h': int}, ...].
     Returns:
-        dict: {'success': bool, 'final_roi_frame': str, 'error': str nếu có lỗi}
+        dict: {'success': bool, 'final_roi_frame': str, 'error': str if error}
     """
     try:
-        # Đảm bảo thư mục CameraROI tồn tại
+        # Ensure CameraROI directory exists
         ensure_directory_exists(CAMERA_ROI_DIR)
 
-        # Mở video và lấy frame đầu tiên
-        logging.debug("Đang mở video để tạo ảnh tổng hợp...")
+        # Open video and get first frame
+        logging.debug("Opening video to create composite image...")
         cap = cv2.VideoCapture(video_path)
         try:
             if not cap.isOpened():
-                logging.error("Không thể mở video.")
-                return {"success": False, "error": "Không thể mở video."}
+                logging.error("Cannot open video.")
+                return {"success": False, "error": "Cannot open video."}
 
             ret, frame = cap.read()
             if not ret:
-                logging.error("Không thể đọc frame từ video.")
-                return {"success": False, "error": "Không thể đọc frame từ video."}
+                logging.error("Cannot read frame from video.")
+                return {"success": False, "error": "Cannot read frame from video."}
 
-            # Vẽ các vùng ROI với màu sắc khác nhau
+            # Draw ROI areas with different colors
             for roi in rois:
                 x, y, w, h = roi["x"], roi["y"], roi["w"], roi["h"]
                 roi_type = roi["type"]
 
-                # Định nghĩa màu sắc cho từng loại ROI
+                # Define color for each ROI type
                 if roi_type == "packing":
-                    color = (0, 255, 0)  # Xanh lá
+                    color = (0, 255, 0)  # Green
                 elif roi_type == "mvd":
-                    color = (0, 0, 255)  # Đỏ
+                    color = (0, 0, 255)  # Red
                 elif roi_type == "trigger":
-                    color = (0, 255, 255)  # Vàng
+                    color = (0, 255, 255)  # Yellow
                 else:
-                    color = (255, 255, 255)  # Trắng (mặc định)
+                    color = (255, 255, 255)  # White (default)
 
-                # Vẽ ROI lên frame
+                # Draw ROI on frame
                 cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
-                # Thêm nhãn cho vùng ROI
+                # Add label for ROI area
                 cv2.putText(frame, roi_type.upper(), (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
 
-            # Tạo tên file với timestamp và camera_id
+            # Create filename with timestamp and camera_id
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             final_roi_frame_path = os.path.join(CAMERA_ROI_DIR, f"camera_{camera_id}_roi_final_{timestamp}.jpg")
 
-            # Lưu ảnh tổng hợp
+            # Save composite image
             ret = cv2.imwrite(final_roi_frame_path, frame)
             if not ret:
-                logging.error(f"Không thể lưu ảnh tổng hợp tại: {final_roi_frame_path}")
-                return {"success": False, "error": f"Không thể lưu ảnh tổng hợp tại {final_roi_frame_path}"}
-            logging.debug(f"Đã lưu ảnh tổng hợp với tất cả ROI vào: {final_roi_frame_path}")
+                logging.error(f"Cannot save composite image at: {final_roi_frame_path}")
+                return {"success": False, "error": f"Cannot save composite image at {final_roi_frame_path}"}
+            logging.debug(f"Saved composite image with all ROIs to: {final_roi_frame_path}")
 
             return {"success": True, "final_roi_frame": os.path.relpath(final_roi_frame_path, BASE_DIR)}
         
         finally:
             cap.release()
-            logging.debug("Đã giải phóng tài nguyên video (cap.release) trong finalize_roi.")
-    
+            logging.debug("Released video resources (cap.release) in finalize_roi.")
+
     except Exception as e:
-        logging.error(f"Lỗi trong finalize_roi: {str(e)}")
-        return {"success": False, "error": f"Lỗi hệ thống: {str(e)}"}
+        logging.error(f"Error in finalize_roi: {str(e)}")
+        return {"success": False, "error": f"System error: {str(e)}"}
 
 def detect_hands_at_time(video_path: str, time_seconds: float, roi_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
@@ -809,6 +809,6 @@ if __name__ == "__main__":
             print(roi_result["error"])
             sys.exit(1)
     except Exception as e:
-        logging.error(f"Lỗi khi chạy script: {str(e)}")
-        print(f"Lỗi khi chạy script: {str(e)}")
+        logging.error(f"Error running script: {str(e)}")
+        print(f"Error running script: {str(e)}")
         sys.exit(1)

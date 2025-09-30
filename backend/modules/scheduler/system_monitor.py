@@ -34,11 +34,11 @@ class SystemMonitor:
         try:
             cpu_percent = psutil.cpu_percent(interval=1)
             
-            # Xử lý trường hợp psutil.cpu_percent() trả về list thay vì float
+            # Handle case where psutil.cpu_percent() returns list instead of float
             if isinstance(cpu_percent, list):
                 cpu_percent = sum(cpu_percent) / len(cpu_percent)
-            
-            # Đảm bảo luôn là float
+
+            # Ensure always float
             cpu_percent = float(cpu_percent)
             
             memory = psutil.virtual_memory()

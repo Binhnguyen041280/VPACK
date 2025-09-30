@@ -132,17 +132,23 @@ def program():
         for various failure scenarios (missing parameters, invalid paths, etc.)
     """
     logger.info(f"POST /program called, Current state before action: scheduler_running={scheduler.running}, running_state={running_state}")
-    
+
     # Extract and validate request parameters
     data = request.get_json()
     if data is None:
         logger.error("No JSON data provided in request")
         return jsonify({"error": "No JSON data provided in request"}), 400
-    
+
+    # DEBUG: Log full request body
+    logger.info(f"DEBUG: Request body received: {data}")
+
     card = data.get('card')    # Processing program type
     action = data.get('action')  # Action to perform ('run' or 'stop')
     custom_path = data.get('custom_path', '')  # Path for custom processing
     days = data.get('days')    # Number of days for first run
+
+    # DEBUG: Log extracted values
+    logger.info(f"DEBUG: Extracted - card={card}, action={action}, custom_path={custom_path}, days={days}")
 
     # Validate required parameters
     if not card or not action:
@@ -201,6 +207,7 @@ def program():
                 return jsonify({"error": f"Failed to run first scan: {str(e)}"}), 500
         # CUSTOM PROCESSING: Process specific file or directory
         elif card == "Custom":
+            logger.info(f"DEBUG: Entering Custom processing branch with card='{card}', custom_path='{custom_path}'")
             if not custom_path:
                 logger.error("Custom path required for Custom")
                 return jsonify({"error": "Custom path required for Custom"}), 400
@@ -219,7 +226,7 @@ def program():
                         result = cursor.fetchone()
                     if result:
                         logger.warning(f"File {abs_path} already processed with status {result[0]}")
-                        return jsonify({"error": "File đã được xử lý"}), 400
+                        return jsonify({"error": "File has already been processed"}), 400
             except Exception as e:
                 logger.error(f"Error checking file status: {str(e)}")
                 return jsonify({"error": f"Error checking file status: {str(e)}"}), 500
@@ -231,7 +238,7 @@ def program():
                 with db_rwlock:
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
-                        cursor.execute("SELECT file_path FROM file_list WHERE custom_path = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1", (abs_path,))
+                        cursor.execute("SELECT file_path FROM file_list WHERE custom_path = ? ORDER BY created_at DESC LIMIT 1", (abs_path,))
                         result = cursor.fetchone()
                 if result:
                     from .program_runner import start_frame_sampler_thread, start_event_detector_thread
@@ -246,7 +253,7 @@ def program():
                                 cursor = conn.cursor()
                                 cursor.execute("SELECT status FROM file_list WHERE file_path = ?", (result[0],))
                                 status_result = cursor.fetchone()
-                        if status_result and status_result[0] == 'xong':
+                        if status_result and status_result[0] == 'Done':
                             break
                         time.sleep(2)
                     logger.info(f"[Custom] Processing completed: {result[0]}")
@@ -276,19 +283,22 @@ def program():
                         logger.error(f"Error triggering default scan: {str(e)}")
                 else:
                     logger.error(f"[Custom] No pending file found at: {abs_path}")
-                    return jsonify({"error": "Không tìm thấy file pending để xử lý"}), 404
+                    return jsonify({"error": "No pending file found for processing"}), 404
             except Exception as e:
                 logger.error(f"[Custom] Error: {str(e)}")
                 scheduler.resume()
-                return jsonify({"error": f"Xử lý chỉ định thất bại: {str(e)}"}), 500
+                return jsonify({"error": f"Custom processing failed: {str(e)}"}), 500
         else:
             running_state["days"] = None
             running_state["custom_path"] = None
 
-        running_state["current_running"] = card
-        if not scheduler.running:
-            running_state["current_running"] = "Default"
-            scheduler.start()
+        # Only update running_state for non-Custom programs
+        # Custom program handles its own state transitions (Completed -> Default)
+        if card != "Custom":
+            running_state["current_running"] = card
+            if not scheduler.running:
+                running_state["current_running"] = "Default"
+                scheduler.start()
 
         if card == "First Run":
             try:

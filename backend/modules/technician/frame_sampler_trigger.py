@@ -121,10 +121,10 @@ class FrameSamplerTrigger:
         with db_rwlock.gen_rlock():
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT file_path FROM file_list WHERE is_processed = 0 AND status != 'xong' ORDER BY priority DESC, created_at ASC")
+                cursor.execute("SELECT file_path FROM file_list WHERE is_processed = 0 AND status != 'completed' ORDER BY priority DESC, created_at ASC")
                 video_files = [row[0] for row in cursor.fetchall()]
         if not video_files:
-            logging.info("No video files found with is_processed = 0 and status != 'xong'.")
+            logging.info("No video files found with is_processed = 0 and status != 'completed'.")
         return video_files
 
     def process_frame(self, frame, frame_count):
@@ -237,12 +237,12 @@ class FrameSamplerTrigger:
                 with db_rwlock.gen_wlock():
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
-                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
+                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("error", video_file))
                 return None
             with db_rwlock.gen_wlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("đang frame sampler ...", video_file))
+                    cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("frame sampling...", video_file))
                     cursor.execute("SELECT camera_name FROM file_list WHERE file_path = ?", (video_file,))
                     result = cursor.fetchone()
                     camera_name = result[0] if result and result[0] else "CamTest"
@@ -252,7 +252,7 @@ class FrameSamplerTrigger:
                 with db_rwlock.gen_wlock():
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
-                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
+                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("error", video_file))
             start_time_obj = self._get_video_start_time(video_file, camera_name)
             roi, trigger = get_packing_area_func(camera_name)
             total_seconds = self.get_video_duration(video_file)
@@ -261,12 +261,12 @@ class FrameSamplerTrigger:
                 with db_rwlock.gen_wlock():
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
-                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
+                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("error", video_file))
                 return None
             logging.info(f"Video duration {video_file}: {total_seconds} seconds")
             video_name = os.path.splitext(os.path.basename(video_file))[0]
             segment_duration = 300
-            # Xác định các đoạn 300s chứa [start_time, end_time]
+            # Determine 300s segments containing [start_time, end_time]
             end_time = total_seconds if end_time is None else min(end_time, total_seconds)
             start_segment = math.floor(start_time / segment_duration) * segment_duration
             end_segment = math.ceil(end_time / segment_duration) * segment_duration
@@ -276,7 +276,7 @@ class FrameSamplerTrigger:
             os.makedirs(camera_log_dir, exist_ok=True)
             log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
             log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
-            # Bắt đầu từ khung hình tại start_time
+            # Start from frame at start_time
             start_frame = int(start_time * self.fps)
             end_frame = int(end_time * self.fps)
             video.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
@@ -285,7 +285,7 @@ class FrameSamplerTrigger:
             mvd_list = []
             last_state = None
             last_mvd = ""
-            jump_time_ratio = getattr(self, 'jump_time_ratio', 0.5)  # Lấy từ config hoặc mặc định 0.5
+            jump_time_ratio = getattr(self, 'jump_time_ratio', 0.5)  # Get from config or default 0.5
             while video.isOpened() and frame_count < end_frame:
                 ret, frame = video.read()
                 if not ret:
@@ -359,6 +359,6 @@ class FrameSamplerTrigger:
             with db_rwlock.gen_wlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("UPDATE file_list SET is_processed = 1, status = ? WHERE file_path = ?", ("xong", video_file))
+                    cursor.execute("UPDATE file_list SET is_processed = 1, status = ? WHERE file_path = ?", ("completed", video_file))
             logging.info(f"Completed processing video: {video_file}")
             return log_file

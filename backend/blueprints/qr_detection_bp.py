@@ -519,23 +519,23 @@ def select_qr_roi_endpoint():
         # Input validation
         if not video_path or not camera_id or not roi_frame_path:
             logger.error("[MVD-DIRECT] Missing required parameters")
-            return jsonify({"success": False, "error": "Thiếu videoPath, cameraId hoặc roiFramePath."}), 400
+            return jsonify({"success": False, "error": "Missing videoPath, cameraId or roiFramePath"}), 400
         
         logger.debug(f"[MVD-DIRECT] Checking video path exists: {video_path}")
         if not os.path.exists(video_path):
             logger.error(f"[MVD-DIRECT] Video path does not exist: {video_path}")
-            return jsonify({"success": False, "error": "Đường dẫn video không tồn tại."}), 404
-        
+            return jsonify({"success": False, "error": "Video path does not exist"}), 404
+
         logger.debug(f"[MVD-DIRECT] Checking ROI frame path exists: {roi_frame_path}")
         if not os.path.exists(roi_frame_path):
             logger.error(f"[MVD-DIRECT] ROI frame path does not exist: {roi_frame_path}")
-            return jsonify({"success": False, "error": "Đường dẫn ảnh tạm không tồn tại."}), 404
+            return jsonify({"success": False, "error": "Temporary image path does not exist"}), 404
         
         # Clean up previous results
         if os.path.exists("/tmp/qr_roi.json"):
             logger.debug("[MVD-DIRECT] Removing existing /tmp/qr_roi.json")
             os.remove("/tmp/qr_roi.json")
-            logger.info("[MVD-DIRECT] Đã xóa file /tmp/qr_roi.json để bắt đầu quy trình mới")
+            logger.info("[MVD-DIRECT] Deleted /tmp/qr_roi.json to start new process")
         
         logger.debug(f"[MVD-DIRECT] Calling select_qr_roi with video_path: {video_path}, camera_id: {camera_id}, roi_frame_path: {roi_frame_path}, step: {step}")
         result = select_qr_roi(video_path, camera_id, roi_frame_path, step)
@@ -547,7 +547,7 @@ def select_qr_roi_endpoint():
     
     except Exception as e:
         logger.error(f"[MVD-DIRECT] Exception in select_qr_roi_endpoint: {str(e)}", exc_info=True)
-        return jsonify({"success": False, "error": f"Lỗi hệ thống: {str(e)}"}), 500
+        return jsonify({"success": False, "error": f"System error: {str(e)}"}), 500
 
 @qr_detection_bp.route('/run-qr-detector', methods=['POST'])
 def run_qr_detector_endpoint():
@@ -564,19 +564,19 @@ def run_qr_detector_endpoint():
         # Input validation
         if not video_path:
             logger.error("[MVD-SUBPROCESS] Missing videoPath parameter")
-            return jsonify({"success": False, "error": "Thiếu videoPath."}), 400
+            return jsonify({"success": False, "error": "Missing videoPath"}), 400
         
         # Check video file exists
         if not os.path.exists(video_path):
             logger.error(f"[MVD-SUBPROCESS] Video file not found: {video_path}")
-            return jsonify({"success": False, "error": "Đường dẫn video không tồn tại."}), 404
-        
+            return jsonify({"success": False, "error": "Video path does not exist"}), 404
+
         # Construct ROI frame path - use same pattern as roi_bp.py
         absolute_roi_frame_path = os.path.join(CAMERA_ROI_DIR, f"camera_{camera_id}_roi_packing.jpg")
         
         if not os.path.exists(absolute_roi_frame_path):
             logger.error(f"[MVD-SUBPROCESS] ROI frame not found: {absolute_roi_frame_path}")
-            return jsonify({"success": False, "error": "Đường dẫn ảnh packing không tồn tại."}), 404
+            return jsonify({"success": False, "error": "Packing image path does not exist"}), 404
         
         logger.info(f"[MVD-SUBPROCESS] Running qr_detector.py with video_path: {video_path}, camera_id: {camera_id}, roi_frame_path: {absolute_roi_frame_path}")
         
@@ -592,7 +592,7 @@ def run_qr_detector_endpoint():
         script_path = os.path.join(BACKEND_DIR, "modules", "technician", "qr_detector.py")
         if not os.path.exists(script_path):
             logger.error(f"[MVD-SUBPROCESS] Script not found: {script_path}")
-            return jsonify({"success": False, "error": f"Script {script_path} không tồn tại."}), 404
+            return jsonify({"success": False, "error": f"Script {script_path} does not exist"}), 404
         
         try:
             # ✅ SIMPLE: Use same approach as hand_detection_bp.py (working)
@@ -610,10 +610,10 @@ def run_qr_detector_endpoint():
             
         except subprocess.TimeoutExpired:
             logger.error("[MVD-SUBPROCESS] Script execution timeout")
-            return jsonify({"success": False, "error": "Hết thời gian chờ khi chạy script (300s)."}), 500
+            return jsonify({"success": False, "error": "Script execution timeout (300s)"}), 500
         except FileNotFoundError as e:
             logger.error(f"[MVD-SUBPROCESS] Python executable not found: {e}")
-            return jsonify({"success": False, "error": "Không tìm thấy Python executable."}), 500
+            return jsonify({"success": False, "error": "Python executable not found"}), 500
         
         # Check execution result
         if result.returncode != 0:
@@ -626,7 +626,7 @@ def run_qr_detector_endpoint():
             logger.error(f"[MVD-SUBPROCESS] {error_msg}")
             return jsonify({
                 "success": False, 
-                "error": f"Lỗi khi chạy script (code {result.returncode})",
+                "error": f"Error running script (code {result.returncode})",
                 "details": result.stderr,
                 "stdout": result.stdout
             }), 500
@@ -637,7 +637,7 @@ def run_qr_detector_endpoint():
             logger.debug(f"[MVD-SUBPROCESS] Script stdout: {result.stdout}")
             return jsonify({
                 "success": False, 
-                "error": "Script chạy thành công nhưng không tạo file kết quả.",
+                "error": "Script succeeded but did not create result file",
                 "stdout": result.stdout
             }), 500
         
@@ -652,14 +652,14 @@ def run_qr_detector_endpoint():
             
         except json.JSONDecodeError as e:
             logger.error(f"[MVD-SUBPROCESS] Invalid JSON in result file: {e}")
-            return jsonify({"success": False, "error": "File kết quả có định dạng JSON không hợp lệ."}), 500
+            return jsonify({"success": False, "error": "Result file has invalid JSON format"}), 500
         except Exception as e:
             logger.error(f"[MVD-SUBPROCESS] Error reading result file: {e}")
-            return jsonify({"success": False, "error": f"Lỗi đọc file kết quả: {str(e)}"}), 500
-    
+            return jsonify({"success": False, "error": f"Error reading result file: {str(e)}"}), 500
+
     except Exception as e:
         logger.error(f"[MVD-SUBPROCESS] Unexpected error in run-qr-detector: {str(e)}", exc_info=True)
-        return jsonify({"success": False, "error": f"Lỗi hệ thống: {str(e)}"}), 500
+        return jsonify({"success": False, "error": f"System error: {str(e)}"}), 500
 
 @qr_detection_bp.route('/test', methods=['GET'])
 def test_qr_endpoint():

@@ -43,8 +43,8 @@ def classify_error_simple(error_text: str) -> str:
 # ==================== SIMPLE USER MESSAGES ====================
 
 SIMPLE_USER_MESSAGES = {
-    'network': 'Lỗi kết nối mạng',
-    'auth': 'Cần đăng nhập lại',
-    'quota': 'Vượt giới hạn tải',
-    'other': 'Lỗi không xác định'
+    'network': 'Network connection error',
+    'auth': 'Please log in again',
+    'quota': 'Download limit exceeded',
+    'other': 'Unknown error'
 }

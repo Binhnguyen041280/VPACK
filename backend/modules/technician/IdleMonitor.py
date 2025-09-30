@@ -9,11 +9,11 @@ from modules.config.logging_config import get_logger
 
 class IdleMonitor:
     def __init__(self, processing_config=None):
-        """Khởi tạo IdleMonitor với queue và processing_config."""
+        """Initialize IdleMonitor with queue and processing_config."""
         self.video_file = None
         self.logger = get_logger("app", {"video_id": None})
         self.logger.setLevel(logging.INFO)
-        self.work_block_queue = queue.Queue()  # Queue lưu work block
+        self.work_block_queue = queue.Queue()  # Queue to store work blocks
         # Initialize MediaPipe Hands (using pattern from hand_detection.py)
         try:
             self.mp_hands = mp.solutions.hands  # type: ignore
@@ -32,13 +32,13 @@ class IdleMonitor:
         self.MIN_WORK_BLOCK = 10  # seconds
         self.MIN_PACKING_TIME = processing_config.get('min_packing_time', 5) if processing_config else 5  # seconds
         self.CHUNK_SIZE = int(self.MIN_PACKING_TIME * 0.8) # seconds
-        self.video_id = str(uuid.uuid4())  # Định danh duy nhất cho video
+        self.video_id = str(uuid.uuid4())  # Unique identifier for video
 
     def process_video(self, video_file, camera_name, packing_area):
-        """Xử lý video, xác định work block, lưu vào queue, dùng packing_area từ program_runner."""
+        """Process video, identify work blocks, save to queue, using packing_area from program_runner."""
         self.video_file = video_file
         self.logger = get_logger("app", {"video_id": os.path.basename(self.video_file)})
-        # Đọc video
+        # Open video
         cap = cv2.VideoCapture(video_file)
         if not cap.isOpened():
             self.logger.error(f"Failed to open video: {video_file}")
@@ -49,7 +49,7 @@ class IdleMonitor:
         video_duration = int(total_frames / fps)
         self.logger.info(f"Processing video: {video_file}, Duration: {video_duration}s, Video ID: {self.video_id}")
 
-        # Kiểm tra packing_area
+        # Check packing_area
         roi = packing_area
         if not roi:
             self.logger.warning(f"No packing_area for {camera_name}, using full frame")
@@ -58,13 +58,13 @@ class IdleMonitor:
         hand_timeline = []
         event_id = 0
 
-        # Quét video theo chunk
+        # Scan video by chunks
         sec = 0
         while sec < video_duration:
             chunk_end = min(sec + self.CHUNK_SIZE, video_duration)
             chunk_has_hand = False
             check_time = sec
-            # Quét đều toàn chunk
+            # Scan entire chunk uniformly
             while check_time < chunk_end:
                 frame_id = int(check_time * fps)
                 cap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
@@ -72,7 +72,7 @@ class IdleMonitor:
                 if not ret:
                     break
 
-                # Áp dụng ROI nếu có
+                # Apply ROI if available
                 if roi:
                     x, y, w, h = roi
                     frame_height, frame_width = frame.shape[:2]
@@ -94,7 +94,7 @@ class IdleMonitor:
             #self.logger.info(f"[Chunk {sec:04d}-{chunk_end:04d}s] Hand: {chunk_has_hand}, Video ID: {self.video_id}")
             sec += self.CHUNK_SIZE
 
-        # Phát hiện idle block
+        # Detect idle blocks
         idle_gap_list = []
         idle_candidate_start = None
         for tick_time, hand_detected in enumerate(hand_timeline):
@@ -113,7 +113,7 @@ class IdleMonitor:
             if idle_duration * self.CHUNK_SIZE >= self.IDLE_GAP:
                 idle_gap_list.append({'start': idle_candidate_start * self.CHUNK_SIZE, 'end': len(hand_timeline) * self.CHUNK_SIZE})
 
-        # Phát hiện work block
+        # Detect work blocks
         work_blocks = []
         prev_end = 0
         for idle in idle_gap_list:
@@ -123,7 +123,7 @@ class IdleMonitor:
         if prev_end < len(hand_timeline) * self.CHUNK_SIZE:
             work_blocks.append({'start': prev_end, 'end': len(hand_timeline) * self.CHUNK_SIZE})
 
-        # Lưu work block vào queue
+        # Save work blocks to queue
         for idx, block in enumerate(work_blocks):
             duration = block['end'] - block['start']
             event_id += 1
@@ -145,5 +145,5 @@ class IdleMonitor:
         self.hands.close()
 
     def get_work_block_queue(self):
-        """Trả về queue chứa work block."""
+        """Return queue containing work blocks."""
         return self.work_block_queue

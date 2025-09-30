@@ -240,7 +240,7 @@ class BatchScheduler:
         self.pause_event.set()
 
     def get_pending_files(self):
-        """Lấy danh sách file chưa xử lý, giới hạn queue_limit."""
+        """Get list of unprocessed files, limited by queue_limit."""
         try:
             with db_rwlock.gen_rlock():
                 with safe_db_connection() as conn:
@@ -254,29 +254,29 @@ class BatchScheduler:
             return []
 
     def update_file_status(self, file_path, status):
-        """Cập nhật trạng thái file trong file_list."""
+        """Update file status in file_list."""
         try:
             with db_rwlock.gen_wlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
                     cursor.execute("UPDATE file_list SET status = ?, is_processed = ? WHERE file_path = ?",
-                                 (status, 1 if status in ['xong', 'lỗi', 'timeout'] else 0, file_path))
+                                 (status, 1 if status in ['completed', 'error', 'timeout'] else 0, file_path))
         except Exception as e:
             logger.error(f"Error updating file status for {file_path}: {e}")
 
     def check_timeout(self):
-        """Kiểm tra và cập nhật trạng thái timeout cho file quá 900s với timezone-aware timestamps."""
+        """Check and update timeout status for files over 900s with timezone-aware timestamps."""
         try:
             with db_rwlock.gen_wlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("SELECT file_path, created_at FROM file_list WHERE status = 'đang frame sampler ...'")
-                    
+                    cursor.execute("SELECT file_path, created_at FROM file_list WHERE status = 'frame sampling...'")
+
                     now_utc = datetime.now(timezone.utc)
-                    
+
                     for row in cursor.fetchall():
                         file_path, created_at_str = row
-                        
+
                         if not created_at_str:
                             # Fallback for missing timestamps
                             created_at_utc = datetime.min.replace(tzinfo=timezone.utc)
@@ -319,11 +319,11 @@ class BatchScheduler:
             logger.error(f"Error checking timeout: {e}")
 
     def scan_files(self):
-        """Quét file mới định kỳ (15 phút)."""
-        logger.info("Bắt đầu quét lặp")
+        """Scan for new files periodically (15 minutes)."""
+        logger.info("Starting periodic scan")
         while self.running:
             try:
-                logger.debug("Kiểm tra quét lặp, running=%s, paused=%s", self.running, not self.pause_event.is_set())
+                logger.debug("Checking periodic scan, running=%s, paused=%s", self.running, not self.pause_event.is_set())
                 self.pause_event.wait()
                 with db_rwlock.gen_rlock():
                     with safe_db_connection() as conn:
@@ -341,7 +341,7 @@ class BatchScheduler:
                 logger.error(f"Error in file scan: {e}")
 
     def run_batch(self):
-        """Chạy batch xử lý file, sử dụng run_frame_sampler."""
+        """Run batch file processing, using run_frame_sampler."""
         while self.running:
             try:
                 self.pause_event.wait()
@@ -373,14 +373,14 @@ class BatchScheduler:
                 logger.error(f"Error in batch processing: {e}")
 
     def start(self):
-        """Khởi động BatchScheduler."""
+        """Start BatchScheduler."""
         if not self.running:
-            # Log system info khi khởi động
+            # Log system info on startup
             self.sys_monitor.log_system_info()
-            
+
             self.running = True
-            # Sửa lỗi: truyền số ngày (int) thay vì list cho parameter days
-            initial_scan_days = 7  # Quét 7 ngày đầu
+            # Fixed: pass number of days (int) instead of list for days parameter
+            initial_scan_days = 7  # Scan first 7 days
             logger.info(f"Initial scan for {initial_scan_days} days")
             try:
                 run_file_scan("default", days=initial_scan_days)
@@ -395,31 +395,31 @@ class BatchScheduler:
             logger.info(f"BatchScheduler started, batch_size={self.batch_size}, scan_interval={self.scan_interval}")
 
     def stop(self):
-        """Dừng BatchScheduler một cách an toàn."""
+        """Stop BatchScheduler safely."""
         if not self.running:
-            return  # Đã dừng rồi
-            
+            return  # Already stopped
+
         logger.info("Stopping BatchScheduler...")
         self.running = False
-        
-        # Clear events để các thread có thể thoát
+
+        # Clear events so threads can exit
         frame_sampler_event.clear()
         event_detector_event.clear()
-        
-        # Đặt pause_event để các thread không bị block
+
+        # Set pause_event so threads don't block
         self.pause_event.set()
-        
-        # Dừng sampler threads với timeout ngắn
+
+        # Stop sampler threads with short timeout
         for i, thread in enumerate(self.sampler_threads):
             if thread and thread.is_alive():
                 try:
-                    thread.join(timeout=SchedulerConfig.THREAD_JOIN_TIMEOUT)  # Timeout ngắn
+                    thread.join(timeout=SchedulerConfig.THREAD_JOIN_TIMEOUT)  # Short timeout
                     if thread.is_alive():
                         logger.warning(f"Sampler thread {i} did not stop gracefully")
                 except Exception as e:
                     logger.warning(f"Error stopping sampler thread {i}: {e}")
-        
-        # Dừng detector thread
+
+        # Stop detector thread
         if self.detector_thread and self.detector_thread.is_alive():
             try:
                 self.detector_thread.join(timeout=SchedulerConfig.THREAD_JOIN_TIMEOUT)

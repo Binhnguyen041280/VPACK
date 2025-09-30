@@ -713,7 +713,7 @@ export default function TracePage() {
         // Add user message for image upload
         const userMessage: Message = {
           id: Date.now().toString(),
-          content: `📷 Đã tải ảnh: ${file.name}`,
+          content: `📷 Image uploaded: ${file.name}`,
           type: 'user',
           timestamp: new Date()
         };
@@ -741,7 +741,7 @@ export default function TracePage() {
           // Add bot message for found QR codes
           const qrFoundMessage: Message = {
             id: (Date.now() + 1).toString(),
-            content: `✅ Tìm thấy ${result.qr_count} mã QR: \`${qrCodeText}\``,
+            content: `✅ Found ${result.qr_count} QR codes: \`${qrCodeText}\``,
             type: 'bot',
             timestamp: new Date()
           };
@@ -767,7 +767,7 @@ export default function TracePage() {
           // No QR codes found
           const noQrMessage: Message = {
             id: (Date.now() + 1).toString(),
-            content: `❌ Không tìm thấy mã QR trên ảnh "${file.name}"`,
+            content: `❌ No QR code found on image "${file.name}"`,
             type: 'bot',
             timestamp: new Date()
           };
@@ -778,7 +778,7 @@ export default function TracePage() {
         console.error('Error processing image:', error);
         const errorMessage: Message = {
           id: (Date.now() + 1).toString(),
-          content: `❌ Lỗi xử lý ảnh: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          content: `❌ Image processing error: ${error instanceof Error ? error.message : 'Unknown error'}`,
           type: 'bot',
           timestamp: new Date()
         };

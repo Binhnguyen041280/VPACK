@@ -69,11 +69,11 @@ def get_db_path() -> str:
                 result = cursor.fetchone()
             return result[0] if result else DB_PATH
     except Exception as e:
-        logger.error(f"Lỗi khi lấy DB_PATH: {e}")
+        logger.error(f"Error getting DB_PATH: {e}")
         return DB_PATH
 
 DB_PATH = get_db_path()
-logger.info(f"Sử dụng DB_PATH: {DB_PATH}")
+logger.info(f"Using DB_PATH: {DB_PATH}")
 
 def get_file_creation_time(file_path: str, camera_name: Optional[str] = None) -> datetime:
     """Extract video creation time with intelligent timezone detection and TimezoneManager integration.
@@ -404,10 +404,10 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
                 if not os.path.exists(video_root):
                     try:
                         os.makedirs(video_root, exist_ok=True)
-                        logger.info(f"Đã tạo thư mục video root: {video_root}")
+                        logger.info(f"Created video root directory: {video_root}")
                     except Exception as e:
-                        logger.error(f"Không thể tạo thư mục video root: {video_root}, lỗi: {str(e)}")
-                        raise Exception(f"Không thể tạo thư mục video root: {str(e)}")
+                        logger.error(f"Cannot create video root directory: {video_root}, error: {str(e)}")
+                        raise Exception(f"Cannot create video root directory: {str(e)}")
 
                 cursor.execute('SELECT MAX(ctime) FROM file_list')
                 last_ctime = cursor.fetchone()[0]
@@ -420,7 +420,7 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
                     selected_cameras = json.loads(result[1]) if result[1] else []
                 else:
                     selected_cameras = []
-                logger.info(f"Sử dụng video_root: {video_root}, Camera được chọn: {selected_cameras}")
+                logger.info(f"Using video_root: {video_root}, Selected cameras: {selected_cameras}")
 
                 # Retrieve working hours configuration with timezone context
                 cursor.execute("SELECT working_days, from_time, to_time, timezone FROM general_info WHERE id = 1")
@@ -431,7 +431,7 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
                         working_days_raw = general_info[0].encode('utf-8').decode('utf-8') if general_info[0] else ''
                         working_days = json.loads(working_days_raw) if working_days_raw else []
                     except json.JSONDecodeError as e:
-                        logger.error(f"JSON không hợp lệ trong working_days: {general_info[0]}, lỗi: {e}")
+                        logger.error(f"Invalid JSON in working_days: {general_info[0]}, error: {e}")
                         working_days = []
 
                     # Parse working hours times
@@ -469,7 +469,7 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
 
         if scan_action == "custom" and custom_path:
             if not os.path.exists(custom_path):
-                raise Exception(f"Đường dẫn không tồn tại: {custom_path}")
+                raise Exception(f"Path does not exist: {custom_path}")
             if os.path.isfile(custom_path) and custom_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv')):
                 file_name = os.path.basename(custom_path)
                 # Extract camera name from custom path for timezone detection
@@ -478,7 +478,7 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
                 file_ctime = get_file_creation_time(custom_path, camera_name)
                 video_files.append(file_name)
                 file_ctimes.append(file_ctime.timestamp())
-                logger.info(f"Tìm thấy tệp: {custom_path}")
+                logger.info(f"Found file: {custom_path}")
             else:
                 video_files, file_ctimes = scan_files(
                     custom_path, video_root, None, None, False, None,
@@ -513,11 +513,11 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
                     ''')
                     conn.commit()
 
-        logger.info(f"Tìm thấy {len(video_files)} tệp video")
+        logger.info(f"Found {len(video_files)} video files")
         return video_files, file_ctimes
     except Exception as e:
-        logger.error(f"Lỗi trong list_files: {e}")
-        raise Exception(f"Lỗi trong list_files: {str(e)}")
+        logger.error(f"Error in list_files: {e}")
+        raise Exception(f"Error in list_files: {str(e)}")
 
 def cleanup_stale_jobs() -> None:
     """Clean up stale processing jobs that have been stuck in processing state.

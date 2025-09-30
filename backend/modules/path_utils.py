@@ -2,13 +2,13 @@ import os
 
 
 def find_project_root(file_path):
-    """Tìm thư mục gốc của dự án bắt đầu từ file_path."""
+    """Find the project root directory starting from file_path."""
     current_path = os.path.dirname(os.path.abspath(file_path))
     while current_path != os.path.dirname(current_path):
         if "backend" in os.listdir(current_path):
             return current_path
         current_path = os.path.dirname(current_path)
-    raise RuntimeError("Không tìm thấy thư mục gốc dự án.")
+    raise RuntimeError("Project root directory not found.")
 
 
 def get_paths():

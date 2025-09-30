@@ -86,17 +86,17 @@ def parse_csv():
             return jsonify({"error": "No file provided"}), 400
 
         if column_name not in df.columns:
-            return jsonify({"error": f"Cột '{column_name}' không tồn tại trong file."}), 400
+            return jsonify({"error": f"Column '{column_name}' does not exist in the file."}), 400
 
         values = df[column_name].dropna().astype(str).tolist()
         codes = []
         for val in values:
-            # Thử cắt chuỗi theo dấu phẩy trước
+            # Try splitting by comma first
             split_vals = val.split(',')
-            if len(split_vals) == 1:  # Nếu không cắt được, thử dấu chấm phẩy
+            if len(split_vals) == 1:  # If no comma split, try semicolon
                 split_vals = val.split(';')
             codes.extend(v.strip() for v in split_vals if v.strip())
-        codes = list(set(codes))  # Loại bỏ trùng lặp
+        codes = list(set(codes))  # Remove duplicates
 
         return jsonify({"tracking_codes": codes}), 200
 
@@ -152,18 +152,18 @@ def query_events():
         
         logger.info(f"Validated query: {from_timestamp} to {to_timestamp}, user_tz: {tz_result['timezone']}, cameras: {len(selected_cameras)}, codes: {len(tracking_codes)}")
 
-        with db_rwlock.gen_rlock():  # Thêm khóa đọc
+        with db_rwlock.gen_rlock():  # Add read lock
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
 
                 query = """
-                SELECT event_id, ts, te, duration, tracking_codes, video_file, packing_time_start, packing_time_end, 
+                SELECT event_id, ts, te, duration, tracking_codes, video_file, packing_time_start, packing_time_end,
                        timezone_info, camera_name, created_at_utc, updated_at_utc
                 FROM events
                 WHERE is_processed = 0
             """
                 params = []
-                # Chỉ thêm điều kiện thời gian nếu packing_time_start không null
+                # Only add time condition if packing_time_start is not null
                 if from_timestamp and to_timestamp:
                     query += " AND (packing_time_start IS NULL OR (packing_time_start >= ? AND packing_time_start <= ?))"
                     params.extend([from_timestamp, to_timestamp])

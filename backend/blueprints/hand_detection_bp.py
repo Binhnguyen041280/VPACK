@@ -69,11 +69,11 @@ def select_roi_endpoint():
         # Input validation
         if not video_path or not camera_id:
             logger.error("[DIRECT] Missing videoPath or cameraId")
-            return jsonify({"success": False, "error": "Thiếu videoPath hoặc cameraId."}), 400
+            return jsonify({"success": False, "error": "Missing videoPath or cameraId"}), 400
         
         if not os.path.exists(video_path):
             logger.error(f"[DIRECT] Video path does not exist: {video_path}")
-            return jsonify({"success": False, "error": "Đường dẫn video không tồn tại."}), 404
+            return jsonify({"success": False, "error": "Video path does not exist"}), 404
         
         # Clean up previous results
         if os.path.exists("/tmp/roi.json"):
@@ -114,8 +114,8 @@ def select_roi_endpoint():
             pass
             
         return jsonify({
-            "success": False, 
-            "error": f"Lỗi hệ thống: {str(e)}"
+            "success": False,
+            "error": f"System error: {str(e)}"
         }), 500
 
 @hand_detection_bp.route('/run-select-roi', methods=['POST'])
@@ -134,13 +134,13 @@ def run_select_roi_endpoint():
         # Input validation
         if not video_path:
             logger.error("[SUBPROCESS] Missing videoPath parameter")
-            return jsonify({"success": False, "error": "Thiếu videoPath."}), 400
+            return jsonify({"success": False, "error": "Missing videoPath"}), 400
         
         # Check video file exists
         if not os.path.exists(video_path):
             logger.error(f"[SUBPROCESS] Video file not found: {video_path}")
-            return jsonify({"success": False, "error": "Đường dẫn video không tồn tại."}), 404
-        
+            return jsonify({"success": False, "error": "Video path does not exist"}), 404
+
         logger.info(f"[SUBPROCESS] Running hand_detection.py with video_path: {video_path}, camera_id: {camera_id}, step: {step}")
         
         # Clean up previous results
@@ -160,7 +160,7 @@ def run_select_roi_endpoint():
         script_path = os.path.join(BACKEND_DIR, "modules", "technician", "hand_detection.py")
         if not os.path.exists(script_path):
             logger.error(f"[SUBPROCESS] Script not found: {script_path}")
-            return jsonify({"success": False, "error": f"Script {script_path} không tồn tại."}), 404
+            return jsonify({"success": False, "error": f"Script {script_path} does not exist"}), 404
         
         try:
             # ✅ SIMPLE: Use same approach as old working qr_detection_bp.py
@@ -178,10 +178,10 @@ def run_select_roi_endpoint():
             
         except subprocess.TimeoutExpired:
             logger.error("[SUBPROCESS] Script execution timeout")
-            return jsonify({"success": False, "error": "Hết thời gian chờ khi chạy script (300s)."}), 500
+            return jsonify({"success": False, "error": "Script execution timeout (300s)"}), 500
         except FileNotFoundError as e:
             logger.error(f"[SUBPROCESS] Python executable not found: {e}")
-            return jsonify({"success": False, "error": "Không tìm thấy Python executable."}), 500
+            return jsonify({"success": False, "error": "Python executable not found"}), 500
         
         # Check execution result
         if result.returncode != 0:
@@ -194,7 +194,7 @@ def run_select_roi_endpoint():
             logger.error(f"[SUBPROCESS] {error_msg}")
             return jsonify({
                 "success": False, 
-                "error": f"Lỗi khi chạy script (code {result.returncode})",
+                "error": f"Error running script (code {result.returncode})",
                 "details": result.stderr,
                 "stdout": result.stdout
             }), 500
@@ -205,7 +205,7 @@ def run_select_roi_endpoint():
             logger.debug(f"[SUBPROCESS] Script stdout: {result.stdout}")
             return jsonify({
                 "success": False, 
-                "error": "Script chạy thành công nhưng không tạo file kết quả.",
+                "error": "Script succeeded but did not create result file",
                 "stdout": result.stdout
             }), 500
         
@@ -220,14 +220,14 @@ def run_select_roi_endpoint():
             
         except json.JSONDecodeError as e:
             logger.error(f"[SUBPROCESS] Invalid JSON in result file: {e}")
-            return jsonify({"success": False, "error": "File kết quả có định dạng JSON không hợp lệ."}), 500
+            return jsonify({"success": False, "error": "Result file has invalid JSON format"}), 500
         except Exception as e:
             logger.error(f"[SUBPROCESS] Error reading result file: {e}")
-            return jsonify({"success": False, "error": f"Lỗi đọc file kết quả: {str(e)}"}), 500
-    
+            return jsonify({"success": False, "error": f"Error reading result file: {str(e)}"}), 500
+
     except Exception as e:
         logger.error(f"[SUBPROCESS] Unexpected error in run-select-roi: {str(e)}", exc_info=True)
-        return jsonify({"success": False, "error": f"Lỗi hệ thống: {str(e)}"}), 500
+        return jsonify({"success": False, "error": f"System error: {str(e)}"}), 500
 
 @hand_detection_bp.route('/health', methods=['GET'])
 def health_check():

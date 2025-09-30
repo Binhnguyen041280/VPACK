@@ -176,6 +176,13 @@ export default function Program() {
     try {
       setActionLoading(true);
 
+      // Immediately update UI to running state - hide program selection
+      setIsRunning(true);
+      setSelectedProgram(null);
+
+      // Start progress monitoring immediately
+      startPolling();
+
       const response = await programService.startProgram({
         programType: programId as 'first' | 'default' | 'custom',
         action: 'run',
@@ -184,11 +191,10 @@ export default function Program() {
       });
 
       // Update state based on backend response
-      setIsRunning(true);
       setProgramStatus({
-        current_running: response.current_running,
-        custom_path: response.custom_path,
-        days: response.days
+        current_running: response.current_running || null,
+        custom_path: response.custom_path || null,
+        days: response.days || null
       });
 
       toast({
@@ -197,15 +203,14 @@ export default function Program() {
         status: 'success',
         duration: 3000,
       });
-
-      setSelectedProgram(null);
-
-      // Start progress monitoring
-      startPolling();
     } catch (error) {
       console.error('Error starting program:', error);
       const toastError = createToastError(error, 'Starting program');
       toast(toastError);
+
+      // Revert to stopped state on error
+      setIsRunning(false);
+      stopPolling();
     } finally {
       setActionLoading(false);
     }
@@ -220,9 +225,9 @@ export default function Program() {
 
       setIsRunning(false);
       setProgramStatus({
-        current_running: response.current_running,
-        custom_path: response.custom_path,
-        days: response.days
+        current_running: response.current_running || null,
+        custom_path: response.custom_path || null,
+        days: response.days || null
       });
 
       toast({
@@ -331,7 +336,7 @@ export default function Program() {
                   )}
 
                   {/* Real-time Progress Display */}
-                  {isPolling && progressData && (
+                  {isPolling && (
                     <Box mt={4} p={3} bg={borderColor} borderRadius="md">
                       <HStack justify="space-between" mb={2}>
                         <Text fontSize="sm" fontWeight="600" color={textColor}>
@@ -342,7 +347,7 @@ export default function Program() {
                         )}
                       </HStack>
 
-                      {progressData.files && progressData.files.length > 0 ? (
+                      {progressData && progressData.files && progressData.files.length > 0 ? (
                         <VStack spacing={1} align="stretch">
                           {progressData.files.slice(0, 3).map((file, index) => (
                             <Flex key={`${file.file}-${index}`} justify="space-between" align="center">
@@ -352,9 +357,9 @@ export default function Program() {
                               <Badge
                                 size="sm"
                                 colorScheme={
-                                  file.status === 'xong' ? 'green' :
-                                  file.status === 'đang frame sampler ...' ? 'blue' :
-                                  file.status === 'lỗi' ? 'red' : 'gray'
+                                  file.status === 'completed' || file.status === 'xong' ? 'green' :
+                                  file.status === 'frame sampling...' || file.status === 'đang frame sampler ...' ? 'blue' :
+                                  file.status === 'error' || file.status === 'lỗi' ? 'red' : 'gray'
                                 }
                               >
                                 {file.status}
@@ -368,9 +373,12 @@ export default function Program() {
                           )}
                         </VStack>
                       ) : (
-                        <Text fontSize="xs" color={textColor} opacity={0.6}>
-                          No files in processing queue
-                        </Text>
+                        <Flex align="center" gap={2}>
+                          <Spinner size="xs" color={currentColors.brand500} />
+                          <Text fontSize="xs" color={textColor} opacity={0.6}>
+                            Initializing processing...
+                          </Text>
+                        </Flex>
                       )}
 
                       {progressError && (
@@ -402,61 +410,63 @@ export default function Program() {
           </Card>
         )}
 
-        {/* Program Cards */}
-        <Box>
-          <Text fontSize="lg" fontWeight="600" color={textColor} mb={4}>
-            Select Program
-          </Text>
+        {/* Program Cards - Only show when not running */}
+        {!isRunning && (
+          <Box>
+            <Text fontSize="lg" fontWeight="600" color={textColor} mb={4}>
+              Select Program
+            </Text>
 
-          <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
-            {programCards.map((program) => (
-              <Card
-                key={program.id}
-                bg={cardBg}
-                p={6}
-                cursor={program.disabled || isRunning ? 'not-allowed' : 'pointer'}
-                opacity={program.disabled || isRunning ? 0.5 : 1}
-                border="2px solid"
-                borderColor={selectedProgram === program.id ? currentColors.brand500 : borderColor}
-                _hover={!program.disabled && !isRunning ? {
-                  borderColor: currentColors.brand500,
-                  transform: 'translateY(-2px)',
-                  shadow: 'lg',
-                } : {}}
-                transition="all 0.2s"
-                onClick={() => {
-                  if (!program.disabled && !isRunning) {
-                    setSelectedProgram(program.id);
-                  }
-                }}
-              >
-                <VStack spacing={4} align="center" textAlign="center">
-                  <Icon
-                    as={program.icon}
-                    boxSize={8}
-                    color={selectedProgram === program.id ? currentColors.brand500 : textColor}
-                  />
+            <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
+              {programCards.map((program) => (
+                <Card
+                  key={program.id}
+                  bg={cardBg}
+                  p={6}
+                  cursor={program.disabled ? 'not-allowed' : 'pointer'}
+                  opacity={program.disabled ? 0.5 : 1}
+                  border="2px solid"
+                  borderColor={selectedProgram === program.id ? currentColors.brand500 : borderColor}
+                  _hover={!program.disabled ? {
+                    borderColor: currentColors.brand500,
+                    transform: 'translateY(-2px)',
+                    shadow: 'lg',
+                  } : {}}
+                  transition="all 0.2s"
+                  onClick={() => {
+                    if (!program.disabled) {
+                      setSelectedProgram(program.id);
+                    }
+                  }}
+                >
+                  <VStack spacing={4} align="center" textAlign="center">
+                    <Icon
+                      as={program.icon}
+                      boxSize={8}
+                      color={selectedProgram === program.id ? currentColors.brand500 : textColor}
+                    />
 
-                  <VStack spacing={1}>
-                    <Text fontSize="lg" fontWeight="600" color={textColor}>
-                      {program.englishName}
-                    </Text>
-                    <Text fontSize="sm" color={textColor} opacity={0.7}>
-                      {program.title}
-                    </Text>
-                    <Text fontSize="xs" color={textColor} opacity={0.5} textAlign="center">
-                      {program.description}
-                    </Text>
+                    <VStack spacing={1}>
+                      <Text fontSize="lg" fontWeight="600" color={textColor}>
+                        {program.englishName}
+                      </Text>
+                      <Text fontSize="sm" color={textColor} opacity={0.7}>
+                        {program.title}
+                      </Text>
+                      <Text fontSize="xs" color={textColor} opacity={0.5} textAlign="center">
+                        {program.description}
+                      </Text>
+                    </VStack>
+
+                    {selectedProgram === program.id && (
+                      <Icon as={MdCheck} color={currentColors.brand500} boxSize={5} />
+                    )}
                   </VStack>
-
-                  {selectedProgram === program.id && (
-                    <Icon as={MdCheck} color={currentColors.brand500} boxSize={5} />
-                  )}
-                </VStack>
-              </Card>
-            ))}
-          </SimpleGrid>
-        </Box>
+                </Card>
+              ))}
+            </SimpleGrid>
+          </Box>
+        )}
 
         {/* Custom Path Input */}
         {selectedProgram === 'custom' && (

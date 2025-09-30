@@ -268,8 +268,8 @@ class HandDetectionWeb:
         try:
             x, y, w, h = roi["x"], roi["y"], roi["w"], roi["h"]
             if w <= 0 or h <= 0:
-                logger.error("ROI không hợp lệ (chiều rộng hoặc chiều cao bằng 0).")
-                return {"success": False, "hand_detected": False, "error": "ROI không hợp lệ."}
+                logger.error("Invalid ROI (width or height is zero).")
+                return {"success": False, "hand_detected": False, "error": "Invalid ROI."}
 
             # Use provided canvas dimensions or default fallback
             if canvas_dims and 'width' in canvas_dims and 'height' in canvas_dims:
@@ -280,14 +280,14 @@ class HandDetectionWeb:
                 canvas_width, canvas_height = 960, 540  # Default fallback
                 logger.warning(f"No canvas dimensions provided, using default: {canvas_width}x{canvas_height}")
 
-            # Mở video - same as original
+            # Open video - same as original
             logger.debug(f"Opening video for hand detection: {video_path}")
             cap = cv2.VideoCapture(video_path)
-            
+
             try:
                 if not cap.isOpened():
-                    logger.error("Không thể mở video.")
-                    return {"success": False, "hand_detected": False, "error": "Không thể mở video."}
+                    logger.error("Cannot open video.")
+                    return {"success": False, "hand_detected": False, "error": "Cannot open video."}
 
                 frame_count = 0
                 start_time = time.time()
@@ -313,11 +313,11 @@ class HandDetectionWeb:
                     y_safe = max(0, min(y, frame_height - 1))
                     w_safe = max(1, min(w, frame_width - x_safe))
                     h_safe = max(1, min(h, frame_height - y_safe))
-                    
-                    # Cắt video theo ROI với bounds checking
+
+                    # Crop video by ROI with bounds checking
                     roi_frame = frame[y_safe:y_safe+h_safe, x_safe:x_safe+w_safe]
 
-                    # Chỉ xử lý mỗi FRAME_STEP frame - EXACT SAME LOGIC as hand_detection.py
+                    # Process only every FRAME_STEP frame - EXACT SAME LOGIC as hand_detection.py
                     if frame_count % FRAME_STEP == 0:
                         
                         # Debug logging for coordinate accuracy verification
@@ -368,7 +368,7 @@ class HandDetectionWeb:
     
         except Exception as e:
             logger.error(f"Error in detect_hands_streaming: {str(e)}")
-            return {"success": False, "hand_detected": False, "error": f"Lỗi hệ thống: {str(e)}"}
+            return {"success": False, "hand_detected": False, "error": f"System error: {str(e)}"}
     
     def close(self):
         """Clean up MediaPipe resources"""

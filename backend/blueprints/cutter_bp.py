@@ -46,7 +46,7 @@ def cut_and_update_events(selected_events, tracking_codes_filter, brand_name="Al
             cursor.execute("SELECT is_processed FROM events WHERE event_id = ?", (event_id,))
             is_processed = cursor.fetchone()[0]
             if is_processed:
-                print(f"Bỏ qua: Sự kiện {event_id} đã được xử lý trước đó")
+                print(f"Skipping: Event {event_id} was already processed")
                 continue
 
             has_ts = ts is not None
@@ -97,16 +97,16 @@ def cut_and_update_events(selected_events, tracking_codes_filter, brand_name="Al
                         video_length_a = get_video_duration(video_file)
                         video_length_b = get_video_duration(next_video_file)
                         if video_length_a is None or video_length_b is None:
-                            print(f"Lỗi: Không thể lấy độ dài video {video_file} hoặc {next_video_file}")
+                            print(f"Error: Cannot get duration of video {video_file} or {next_video_file}")
                             continue
 
                         output_file_a = generate_output_filename(event, tracking_codes_filter, output_dir, brand_name)
-                        print(f"Đang xử lý sự kiện {event_id}: output_file={output_file_a}, packing_time_start={event.get('packing_time_start')}, packing_time_end={event.get('packing_time_end')}")
+                        print(f"Processing event {event_id}: output_file={output_file_a}, packing_time_start={event.get('packing_time_start')}, packing_time_end={event.get('packing_time_end')}")
                         if cut_incomplete_event(event, video_buffer, video_length_a, output_file_a):
                             update_event_in_db(cursor, event_id, output_file_a)
 
                         output_file_b = generate_output_filename(next_event, tracking_codes_filter, output_dir, brand_name)
-                        print(f"Đang xử lý sự kiện {next_event_id}: output_file={output_file_b}, packing_time_start={next_event.get('packing_time_start')}, packing_time_end={next_event.get('packing_time_end')}")
+                        print(f"Processing event {next_event_id}: output_file={output_file_b}, packing_time_start={next_event.get('packing_time_start')}, packing_time_end={next_event.get('packing_time_end')}")
                         if cut_incomplete_event(next_event, video_buffer, video_length_b, output_file_b):
                             update_event_in_db(cursor, next_event_id, output_file_b)
 
@@ -132,11 +132,11 @@ def cut_and_update_events(selected_events, tracking_codes_filter, brand_name="Al
 
             video_length = get_video_duration(video_file)
             if video_length is None:
-                print(f"Lỗi: Không thể lấy độ dài video {video_file}")
+                print(f"Error: Cannot get video duration {video_file}")
                 continue
 
             output_file = generate_output_filename(event, tracking_codes_filter, output_dir, brand_name)
-            print(f"Đang xử lý sự kiện {event_id}: output_file={output_file}, packing_time_start={event.get('packing_time_start')}, packing_time_end={event.get('packing_time_end')}")
+            print(f"Processing event {event_id}: output_file={output_file}, packing_time_start={event.get('packing_time_start')}, packing_time_end={event.get('packing_time_end')}")
 
             if has_ts and has_te:
                 if cut_complete_event(event, video_buffer, video_length, output_file):
@@ -147,7 +147,7 @@ def cut_and_update_events(selected_events, tracking_codes_filter, brand_name="Al
                     update_event_in_db(cursor, event_id, output_file)
                     cut_files.append(output_file)
             else:
-                print(f"Bỏ qua: Sự kiện {event_id} không có ts hoặc te")
+                print(f"Skipping: Event {event_id} has no ts or te")
                 continue
 
             # Auto-commit handled by context manager

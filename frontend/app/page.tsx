@@ -57,7 +57,7 @@ const STEP_KEY_TO_NUMBER: { [key: string]: number } = {
   'timing': 5
 };
 
-export default function Chat(props: { apiKeyApp: string }) {
+function Chat(props: { apiKeyApp: string }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   
@@ -563,43 +563,43 @@ export default function Chat(props: { apiKeyApp: string }) {
     if (!inputCode.trim() && stepCompleted[configStep]) {
       switch (configStep) {
         case 'brandname':
-          userMessageContent = 'Tôi đồng ý với nội dung thiết lập Step 1';
+          userMessageContent = 'I agree with Step 1 setup content';
           break;
         case 'location_time':
-          userMessageContent = 'Tôi đồng ý với nội dung thiết lập Step 2';
+          userMessageContent = 'I agree with Step 2 setup content';
           break;
         case 'video_source':
-          userMessageContent = 'Tôi đồng ý với nội dung thiết lập Step 3';
+          userMessageContent = 'I agree with Step 3 setup content';
           break;
         case 'packing_area':
-          userMessageContent = 'Tôi đồng ý với nội dung thiết lập Step 4';
+          userMessageContent = 'I agree with Step 4 setup content';
           break;
         case 'timing':
-          userMessageContent = 'Tôi đồng ý với nội dung thiết lập Step 5';
+          userMessageContent = 'I agree with Step 5 setup content';
           break;
         default:
-          userMessageContent = 'Tôi đồng ý với thiết lập này';
+          userMessageContent = 'I agree with this setup';
       }
     } else if (!inputCode.trim() && !stepCompleted[configStep]) {
       // Empty submit on incomplete step - show confirmation message
       switch (configStep) {
         case 'brandname':
-          userMessageContent = 'Tôi xác nhận thiết lập mặc định';
+          userMessageContent = 'I confirm default setup';
           break;
         case 'location_time':
-          userMessageContent = 'Tôi xác nhận thiết lập Location & Time';
+          userMessageContent = 'I confirm Location & Time setup';
           break;
         case 'video_source':
-          userMessageContent = 'Tôi xác nhận thiết lập Video Source';
+          userMessageContent = 'I confirm Video Source setup';
           break;
         case 'packing_area':
-          userMessageContent = 'Tôi xác nhận thiết lập Packing Area';
+          userMessageContent = 'I confirm Packing Area setup';
           break;
         case 'timing':
-          userMessageContent = 'Tôi xác nhận thiết lập Timing & Storage';
+          userMessageContent = 'I confirm Timing & Storage setup';
           break;
         default:
-          userMessageContent = 'Tôi xác nhận thiết lập này';
+          userMessageContent = 'I confirm this setup';
       }
     }
     
@@ -2404,4 +2404,8 @@ export default function Chat(props: { apiKeyApp: string }) {
       )}
     </Flex>
   );
+}
+
+export default function HomePage() {
+  return <Chat apiKeyApp="" />;
 }

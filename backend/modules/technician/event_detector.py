@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 # Removed video_timezone_detector - using simple timezone operations
 
 
-# Định nghĩa BASE_DIR
+# Define BASE_DIR
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 event_detector_bp = Blueprint('event_detector', __name__)
@@ -36,7 +36,7 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
 
     # NOTE: Không cần try-except ở đây vì được handle ở caller level
 
-    # Kiểm tra trạng thái is_processed của file log
+    # Check is_processed status of log file
     cursor.execute("SELECT is_processed FROM processed_logs WHERE log_file = ?", (log_file_path,))
     result = cursor.fetchone()
     if result and result[0] == 1:
@@ -60,14 +60,14 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
         start_time_dt_utc = start_time_dt.astimezone(timezone.utc)
         logging.info(f"Parsed header - Start: {start_time}, End: {end_time}, Start_Time: {start_time_str} (UTC: {start_time_dt_utc}), Camera_Name: {camera_name}, Video_File: {video_path}")
 
-        # Kiểm tra nếu file log rỗng
+        # Check if log file is empty
         first_data_line = f.readline().strip()
         if not first_data_line:
             logging.info(f"Log file {log_file_path} is empty, skipping")
             cursor.execute("UPDATE processed_logs SET is_processed = 1, processed_at = ? WHERE log_file = ?", (datetime.now(timezone.utc), log_file_path))
             return
 
-        # Nếu có dữ liệu, quay lại và xử lý
+        # If data exists, go back and process
         f.seek(0)
         next(f)
         frame_sampler_data = []
@@ -80,13 +80,13 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
             except Exception as e:
                 logging.info(f"Error parsing line '{line.strip()}': {str(e)}")
 
-    # Lấy min_packing_time từ Processing_config
+    # Get min_packing_time from Processing_config
     cursor.execute("SELECT min_packing_time FROM Processing_config LIMIT 1")
     min_packing_time_row = cursor.fetchone()
     min_packing_time = min_packing_time_row[0] if min_packing_time_row else 5
     logging.info(f"Min packing time: {min_packing_time}")
 
-    # Lấy pending_event mới nhất theo ts
+    # Get latest pending_event by ts
     cursor.execute("SELECT event_id, ts, tracking_codes, video_file FROM events WHERE te IS NULL AND camera_name = ? ORDER BY event_id DESC LIMIT 1", (camera_name,))
     pending_event = cursor.fetchone()
     logging.info(f"Pending event: {pending_event}")
@@ -111,45 +111,45 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
                 # Tách tracking_codes thành các sự kiện liên tiếp
                 all_tracking_codes = list(set(pending_tracking_codes + current_tracking_codes))
                 num_codes = len(all_tracking_codes) if all_tracking_codes else 1
-                duration_per_event = max(round((total_duration or 0) / num_codes), min_packing_time)  # Làm tròn và đảm bảo >= min_packing_time
-                total_duration = duration_per_event * num_codes  # Cập nhật total_duration
+                duration_per_event = max(round((total_duration or 0) / num_codes), min_packing_time)  # Round and ensure >= min_packing_time
+                total_duration = duration_per_event * num_codes  # Update total_duration
                 te = ts + total_duration if ts is not None else te
-                logging.info(f"Điều chỉnh pending event: Ts={ts}, Te={te}, Duration mỗi sự kiện thành {duration_per_event}")
+                logging.info(f"Adjusted pending event: Ts={ts}, Te={te}, Duration per event set to {duration_per_event}")
                 
                 if pending_video_file == video_path:
                     current_ts = ts
                     for i, code in enumerate(all_tracking_codes):
                         current_te = current_ts + duration_per_event if current_ts is not None else te
                         if i == 0:
-                            # Cập nhật pending event cho mã đầu tiên
+                            # Update pending event for first code
                             segments.append((current_ts, current_te, duration_per_event, [code], video_path, event_id))
-                            logging.info(f"Cập nhật pending event liên tiếp {i+1}/{num_codes}: Ts={current_ts}, Te={current_te}, Duration={duration_per_event}, Tracking_code={code}")
+                            logging.info(f"Updated consecutive pending event {i+1}/{num_codes}: Ts={current_ts}, Te={current_te}, Duration={duration_per_event}, Tracking_code={code}")
                         else:
-                            # Thêm sự kiện mới cho các mã tiếp theo
+                            # Add new event for subsequent codes
                             segments.append((current_ts, current_te, duration_per_event, [code], video_path, None))
-                            logging.info(f"Thêm sự kiện liên tiếp mới {i+1}/{num_codes}: Ts={current_ts}, Te={current_te}, Duration={duration_per_event}, Tracking_code={code}")
+                            logging.info(f"Added new consecutive event {i+1}/{num_codes}: Ts={current_ts}, Te={current_te}, Duration={duration_per_event}, Tracking_code={code}")
                         current_ts = current_te
                 else:
                     current_ts = None
                     for i, code in enumerate(all_tracking_codes):
                         current_te = te - (num_codes - i - 1) * duration_per_event
                         segments.append((current_ts, current_te, duration_per_event, [code], video_path, None))
-                        logging.info(f"Thêm pending event liên tiếp {i+1}/{num_codes}: Ts={current_ts}, Te={current_te}, Duration={duration_per_event}, Tracking_code={code}")
+                        logging.info(f"Added consecutive pending event {i+1}/{num_codes}: Ts={current_ts}, Te={current_te}, Duration={duration_per_event}, Tracking_code={code}")
                         current_ts = current_te
                 
                 ts = None
                 has_pending = False
             elif current_state == "Off":
                 pending_tracking_codes.extend([code for code in current_tracking_codes if code and code not in pending_tracking_codes])
-                # Kiểm tra và xóa sự kiện dở dang nếu không có tracking_codes
+                # Check and delete pending event if no tracking_codes
                 if not pending_tracking_codes and not current_tracking_codes:
                     cursor.execute("DELETE FROM events WHERE te IS NULL AND event_id = (SELECT MAX(event_id) FROM events WHERE te IS NULL AND camera_name = ?)", (camera_name,))
-                    logging.info(f"Xóa sự kiện dở dang cuối cùng của camera {camera_name} do không có tracking_codes")
+                    logging.info(f"Deleted last pending event for camera {camera_name} due to no tracking_codes")
         elif not has_pending:
             if prev_state == "On" and current_state == "Off":
                 ts = current_second
                 pending_tracking_codes = current_tracking_codes[:]
-                logging.info(f"Phát hiện sự kiện Ts tại giây {current_second}")
+                logging.info(f"Detected event Ts at second {current_second}")
 
             elif prev_state == "Off" and current_state == "On" and ts is not None:
                 te = current_second
@@ -158,21 +158,21 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
                 # Tách tracking_codes thành các sự kiện liên tiếp
                 all_tracking_codes = list(set(pending_tracking_codes + current_tracking_codes))  # Loại bỏ trùng lặp
                 num_codes = len(all_tracking_codes) if all_tracking_codes else 1
-                duration_per_event = max(round((total_duration or 0) / num_codes), min_packing_time)  # Làm tròn và đảm bảo >= min_packing_time
-                total_duration = duration_per_event * num_codes  # Cập nhật total_duration
+                duration_per_event = max(round((total_duration or 0) / num_codes), min_packing_time)  # Round and ensure >= min_packing_time
+                total_duration = duration_per_event * num_codes  # Update total_duration
                 te = ts + total_duration if ts is not None else te
-                logging.info(f"Điều chỉnh sự kiện: Ts={ts}, Te={te}, Duration mỗi sự kiện thành {duration_per_event}")
+                logging.info(f"Adjusted event: Ts={ts}, Te={te}, Duration per event set to {duration_per_event}")
                 
                 if all_tracking_codes:
                     current_ts = ts
                     for i, code in enumerate(all_tracking_codes):
                         current_te = current_ts + duration_per_event if current_ts is not None else te
                         segments.append((current_ts, current_te, duration_per_event, [code], video_path, None))
-                        logging.info(f"Thêm sự kiện liên tiếp {i+1}/{num_codes}: Ts={current_ts}, Te={current_te}, Duration={duration_per_event}, Tracking_code={code}")
+                        logging.info(f"Added consecutive event {i+1}/{num_codes}: Ts={current_ts}, Te={current_te}, Duration={duration_per_event}, Tracking_code={code}")
                         current_ts = current_te
                 else:
                     segments.append((ts, te, duration_per_event, [], video_path, None))
-                    logging.info(f"Thêm sự kiện không có tracking_code: Ts={ts}, Te={te}, Duration={duration_per_event}")
+                    logging.info(f"Added event without tracking_code: Ts={ts}, Te={te}, Duration={duration_per_event}")
                 
                 ts = None
                 pending_tracking_codes = []
@@ -184,14 +184,14 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
 
     if ts is not None:
         segments.append((ts, None, None, pending_tracking_codes, video_path, None))
-        logging.info(f"Giây {frame_sampler_data[-1]['second']}: Ts={ts}, Te=Not finished")
+        logging.info(f"Second {frame_sampler_data[-1]['second']}: Ts={ts}, Te=Not finished")
 
     logging.info(f"All segments detected: {segments}")
 
     for segment in segments:
         ts, te, duration, tracking_codes, segment_video_path, segment_event_id = segment
         if te is not None and not tracking_codes:
-            logging.info(f"Bỏ qua sự kiện hoàn chỉnh do tracking_codes rỗng: ts={ts}, te={te}")
+            logging.info(f"Skipping completed event due to empty tracking_codes: ts={ts}, te={te}")
             continue
         # Calculate UTC timestamps for database storage
         packing_time_start = int((start_time_dt_utc.timestamp() + ts) * 1000) if ts is not None else None
