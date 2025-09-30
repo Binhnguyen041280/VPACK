@@ -51,8 +51,9 @@ DB_PATH = os.path.join(BASE_DIR, "database", "events.db")
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 DB_PATH = get_db_path()
-LOG_DIR = os.path.join(BASE_DIR, "../../resources/output_clips/LOG")
-os.makedirs(LOG_DIR, exist_ok=True)
+# Use var/logs for application logs
+from modules.path_utils import get_logs_dir
+LOG_DIR = get_logs_dir()
 
 logger = get_logger(__name__, {"module": "program_api"})
 logger.info("Program logging initialized")

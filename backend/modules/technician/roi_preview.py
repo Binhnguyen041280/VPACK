@@ -4,8 +4,9 @@ import os
 import logging
 
 def setup_logging():
-    log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resources", "output_clips", "LOG")
-    os.makedirs(log_dir, exist_ok=True)
+    # Use var/logs for application logs
+    from modules.path_utils import get_logs_dir
+    log_dir = get_logs_dir()
     log_file_path = os.path.join(log_dir, f"roi_preview_{os.getpid()}.log")
     logging.basicConfig(
         filename=log_file_path,

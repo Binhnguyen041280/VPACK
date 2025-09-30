@@ -10,12 +10,11 @@ import traceback
 from datetime import datetime
 from typing import Dict, Any, Optional
 
-# Ensure LOG directory exists
+# Use var/logs for application logs
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-LOG_DIR = os.path.join(BASE_DIR, "resources", "output_clips", "LOG")
-os.makedirs(LOG_DIR, exist_ok=True)
+from modules.path_utils import get_logs_dir
+LOG_DIR = get_logs_dir()
 
-# ✅ FIXED: Use direct logging.basicConfig instead of modules.config.logging_config
 log_file_path = os.path.join(LOG_DIR, f"qr_detector_{datetime.now().strftime('%Y-%m-%d')}.log")
 logging.basicConfig(
     filename=log_file_path,

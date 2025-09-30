@@ -435,21 +435,22 @@ class PyDriveCore:
         """Sync entire source - simple version"""
         try:
             logger.info(f"🚀 Starting sync for source {source_id}")
-            
+
             # Get source configuration
             source_config = self._get_source_config(source_id)
             if not source_config:
                 return {'success': False, 'message': f'Source {source_id} not found'}
-            
+
             # Get Drive client
             drive = self.get_drive_client(source_id)
             if not drive:
                 return {'success': False, 'message': 'Failed to get Drive client - check authentication'}
-            
-            # Get target directory
+
+            # Get cloud staging directory (auto-managed by application)
+            from modules.path_utils import get_cloud_staging_path
             source_name = source_config['name']
-            base_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'cloud_sync', source_name)
-            os.makedirs(base_path, exist_ok=True)
+            base_path = get_cloud_staging_path(source_name)
+            logger.info(f"📁 Using cloud staging path: {base_path}")
             
             # Get selected folders from config
             config_data = json.loads(source_config.get('config', '{}'))

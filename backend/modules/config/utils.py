@@ -29,18 +29,12 @@ def get_working_path_for_source(source_type: str, source_name: str, source_path:
         return working_path
         
     elif source_type == 'cloud':
-        # Cloud: source_path is cloud URL, working path is sync directory
-        BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
-        working_path = os.path.join(BASE_DIR, "cloud_sync", source_name)
+        # Cloud: source_path is cloud URL, working path is staging directory
+        from modules.path_utils import get_cloud_staging_path
+        working_path = get_cloud_staging_path(source_name)
         print(f"Cloud Path Mapping: {source_path} -> {working_path}")
-        
-        # Create directory if it doesn't exist
-        try:
-            os.makedirs(working_path, exist_ok=True)
-            print(f"Created/verified Cloud directory: {working_path}")
-        except Exception as e:
-            print(f"Failed to create Cloud directory {working_path}: {e}")
-            
+        print(f"✅ Using var/cache staging directory")
+
         return working_path
         
     else:

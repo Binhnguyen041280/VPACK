@@ -30,12 +30,14 @@ class PathValidator:
         
         self.base_path = Path(base_path)
         self.logger = logging.getLogger(__name__)
-        
-        # Default storage directories
-        self.cloud_sync_dir = self.base_path / "cloud_sync"
+
+        # Use var/cache for cloud staging (auto-managed)
+        from modules.path_utils import get_cloud_staging_path
+        self.cloud_sync_dir = Path(get_cloud_staging_path())
         self.output_clips_dir = self.base_path / "output_clips"
-        
+
         self.logger.info(f"PathValidator initialized with base_path: {self.base_path}")
+        self.logger.info(f"Cloud staging directory: {self.cloud_sync_dir}")
     
     def validate_source_path(self, source_type: str, source_name: str) -> Dict:
         """
@@ -53,7 +55,8 @@ class PathValidator:
             
             # Determine working directory based on source type
             if source_type == 'cloud':
-                working_path = self.cloud_sync_dir / source_name
+                from modules.path_utils import get_cloud_staging_path
+                working_path = Path(get_cloud_staging_path(source_name))
             elif source_type == 'local':
                 # Local sources use their own paths, no validation needed
                 return {

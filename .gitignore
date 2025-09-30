@@ -10,6 +10,9 @@ cloud_sync/
 docs/
 flask_session/
 
+# Application runtime data (auto-managed)
+var/
+
 # ===== BUILD & CACHE =====
 # Node.js
 node_modules/

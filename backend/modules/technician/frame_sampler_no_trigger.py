@@ -77,7 +77,9 @@ class FrameSamplerNoTrigger:
                 cursor.execute("SELECT output_path FROM processing_config WHERE id = 1")
                 result = cursor.fetchone()
                 self.output_path = result[0] if result else os.path.join(BASE_DIR, "output_clips")
-                self.log_dir = os.path.join(self.output_path, "LOG", "Frame")
+                # Use var/logs for frame processing logs (application-managed)
+                from modules.path_utils import get_logs_dir
+                self.log_dir = os.path.join(get_logs_dir(), "frame_processing")
                 os.makedirs(self.log_dir, exist_ok=True)
                 # Use zoneinfo for user timezone instead of hardcoded parsing
                 self.video_timezone = ZoneInfo("Asia/Ho_Chi_Minh")

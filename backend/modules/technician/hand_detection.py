@@ -11,9 +11,9 @@ from typing import Dict, Any, Optional
 # Define BASE_DIR
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-# Cấu hình logging (sử dụng cách cũ - không import modules.config.logging_config)
-log_dir = os.path.join(BASE_DIR, "resources", "output_clips", "LOG")
-os.makedirs(log_dir, exist_ok=True)
+# Use var/logs for application logs
+from modules.path_utils import get_logs_dir
+log_dir = get_logs_dir()
 log_file_path = os.path.join(log_dir, f"hand_detection_{datetime.now().strftime('%Y-%m-%d')}.log")
 logging.basicConfig(
     filename=log_file_path,
