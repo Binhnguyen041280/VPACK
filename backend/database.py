@@ -480,6 +480,31 @@ def update_database():
                 )
             """)
 
+            # Add new columns for recursive folder support
+            try:
+                cursor.execute("ALTER TABLE downloaded_files ADD COLUMN drive_file_id TEXT")
+                print("✅ Added drive_file_id column to downloaded_files")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+            try:
+                cursor.execute("ALTER TABLE downloaded_files ADD COLUMN relative_path TEXT")
+                print("✅ Added relative_path column to downloaded_files")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+            try:
+                cursor.execute("ALTER TABLE downloaded_files ADD COLUMN processing_timestamp TEXT")
+                print("✅ Added processing_timestamp column to downloaded_files")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+            try:
+                cursor.execute("ALTER TABLE downloaded_files ADD COLUMN processing_status TEXT")
+                print("✅ Added processing_status column to downloaded_files")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
             # 13. Last Downloaded File Table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS last_downloaded_file (
@@ -731,7 +756,12 @@ def update_database():
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_video_sources_active ON video_sources(active)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_video_sources_source_type ON video_sources(source_type)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_video_sources_created_at ON video_sources(created_at)")
-            
+
+            # Downloaded files indexes for recursive folders
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_downloaded_files_drive_id ON downloaded_files(drive_file_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_downloaded_files_relative_path ON downloaded_files(source_id, relative_path)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_downloaded_files_processed ON downloaded_files(is_processed, download_timestamp)")
+
             # Camera configurations indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_camera_configurations_source_id ON camera_configurations(source_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_camera_configurations_selected ON camera_configurations(is_selected)")

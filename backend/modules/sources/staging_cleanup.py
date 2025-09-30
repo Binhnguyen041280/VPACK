@@ -146,6 +146,78 @@ class StagingCleanup:
             # Conservative: don't delete if can't verify
             return False
 
+    def cleanup_processed_files(self, source_name: str = None, min_age_days: int = 7) -> Dict:
+        """
+        Remove processed files older than min_age_days from staging directory.
+        Only removes files marked as is_processed=1 in database.
+
+        Args:
+            source_name: Specific source to clean (None = all sources)
+            min_age_days: Minimum age in days before cleanup (default: 7)
+
+        Returns:
+            Dict with cleanup statistics
+        """
+        try:
+            from datetime import datetime, timedelta
+
+            cleanup_threshold = datetime.now() - timedelta(days=min_age_days)
+
+            # Get processed files ready for cleanup
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+
+                query = """
+                    SELECT id, local_file_path, original_filename, file_size_bytes
+                    FROM downloaded_files
+                    WHERE is_processed = 1
+                    AND download_timestamp < ?
+                """
+                params = [cleanup_threshold.isoformat()]
+
+                if source_name:
+                    query += " AND local_file_path LIKE ?"
+                    params.append(f"%{source_name}%")
+
+                cursor.execute(query, params)
+                files_to_cleanup = cursor.fetchall()
+
+            removed_count = 0
+            removed_size = 0
+            errors = []
+
+            for file_id, file_path, filename, file_size in files_to_cleanup:
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        removed_count += 1
+                        removed_size += file_size or 0
+                        logger.info(f"🗑️ Removed processed file: {filename}")
+
+                    # Remove from database
+                    with safe_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM downloaded_files WHERE id = ?", (file_id,))
+
+                except Exception as e:
+                    errors.append(f"{filename}: {str(e)}")
+                    logger.warning(f"⚠️ Failed to remove {filename}: {e}")
+
+            return {
+                'success': True,
+                'removed_count': removed_count,
+                'removed_size_mb': removed_size / (1024 * 1024),
+                'errors': errors,
+                'message': f'Cleaned up {removed_count} processed files ({removed_size / (1024 * 1024):.1f} MB)'
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Cleanup failed: {e}")
+            return {
+                'success': False,
+                'message': f'Cleanup error: {str(e)}'
+            }
+
     def cleanup_by_source(self, source_id: int) -> Dict:
         """
         Cleanup staging files for specific source

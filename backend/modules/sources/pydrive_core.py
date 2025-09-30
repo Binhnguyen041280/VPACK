@@ -284,27 +284,85 @@ class PyDriveCore:
     
     # ==================== FILE OPERATIONS ====================
     
-    def list_folder_files(self, drive, folder_id: str) -> List[Dict]:
-        """List video files in a Google Drive folder - simple version"""
+    def list_folder_files(self, drive, folder_id: str, recursive: bool = True,
+                          max_depth: int = 3, current_depth: int = 0,
+                          relative_path: str = "") -> List[Dict]:
+        """
+        List video files in a Google Drive folder with recursive scanning.
+
+        Args:
+            drive: PyDrive client
+            folder_id: Google Drive folder ID
+            recursive: Enable recursive folder scanning (default: True)
+            max_depth: Maximum depth for recursive scan (default: 3)
+            current_depth: Current recursion depth (internal use)
+            relative_path: Relative path from root folder (internal use)
+
+        Returns:
+            List of file info dicts with 'relative_path' and 'drive_file_id' keys
+        """
         try:
             video_mime_types = [
                 'video/mp4', 'video/avi', 'video/mov', 'video/mkv',
                 'video/flv', 'video/wmv', 'video/m4v', 'video/quicktime'
             ]
-            
+
+            all_files = []
+
+            # List video files in current folder
             mime_conditions = ' or '.join([f"mimeType='{mime}'" for mime in video_mime_types])
             query = f"'{folder_id}' in parents and ({mime_conditions}) and trashed=false"
-            
+
             files = drive.ListFile({
                 'q': query,
                 'maxResults': 100,
                 'supportsAllDrives': True,
                 'includeItemsFromAllDrives': True
             }).GetList()
-            
-            logger.info(f"📁 Found {len(files)} video files in folder {folder_id}")
-            return files
-            
+
+            # Add metadata to each file
+            for file in files:
+                file['relative_path'] = relative_path
+                file['drive_file_id'] = file['id']  # Ensure drive_file_id is set
+
+            all_files.extend(files)
+            logger.info(f"📁 Found {len(files)} video files in folder (depth {current_depth})")
+
+            # If recursive enabled and within depth limit, scan subfolders
+            if recursive and current_depth < max_depth:
+                folder_query = f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+
+                subfolders = drive.ListFile({
+                    'q': folder_query,
+                    'supportsAllDrives': True,
+                    'includeItemsFromAllDrives': True
+                }).GetList()
+
+                logger.info(f"📂 Found {len(subfolders)} subfolders (depth {current_depth})")
+
+                for subfolder in subfolders:
+                    subfolder_name = subfolder['title']
+                    subfolder_id = subfolder['id']
+
+                    # Build relative path
+                    new_relative_path = os.path.join(relative_path, subfolder_name) if relative_path else subfolder_name
+
+                    logger.info(f"🔍 Scanning subfolder: {new_relative_path}")
+
+                    # Recursive call
+                    subfolder_files = self.list_folder_files(
+                        drive=drive,
+                        folder_id=subfolder_id,
+                        recursive=True,
+                        max_depth=max_depth,
+                        current_depth=current_depth + 1,
+                        relative_path=new_relative_path
+                    )
+
+                    all_files.extend(subfolder_files)
+
+            return all_files
+
         except Exception as e:
             logger.error(f"❌ Error listing files: {e}")
             return []
@@ -327,33 +385,66 @@ class PyDriveCore:
             logger.error(f"❌ Download failed for {file_info.get('title')}: {e}")
             return False
     
-    def check_file_exists_locally(self, source_id: int, filename: str) -> bool:
-        """Check if file already downloaded"""
+    def check_file_exists_locally(self, source_id: int, drive_file_id: str, filename: str = None) -> bool:
+        """
+        Check if file already downloaded using unique drive_file_id.
+        Falls back to filename check if drive_file_id not available.
+
+        Args:
+            source_id: Video source ID
+            drive_file_id: Unique Google Drive file ID (preferred)
+            filename: Filename as fallback
+
+        Returns:
+            True if file exists, False otherwise
+        """
         try:
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT COUNT(*) FROM downloaded_files 
-                    WHERE source_id = ? AND (original_filename = ? OR local_file_path LIKE ?)
-                """, (source_id, filename, f'%{filename}'))
-                
-                count = cursor.fetchone()[0]
-                return count > 0
+
+                # Primary check: by drive_file_id (most reliable)
+                if drive_file_id:
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM downloaded_files
+                        WHERE source_id = ? AND drive_file_id = ?
+                    """, (source_id, drive_file_id))
+
+                    count = cursor.fetchone()[0]
+                    if count > 0:
+                        return True
+
+                # Fallback check: by filename (for backward compatibility)
+                if filename:
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM downloaded_files
+                        WHERE source_id = ? AND original_filename = ?
+                    """, (source_id, filename))
+
+                    count = cursor.fetchone()[0]
+                    return count > 0
+
+                return False
+
         except Exception as e:
             logger.error(f"❌ Error checking file existence: {e}")
             return False
     
     def track_downloaded_file(self, source_id: int, camera_name: str, file_info: Dict, local_path: str):
-        """Track downloaded file in database"""
+        """Track downloaded file in database with recursive folder support"""
         try:
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
-                
+
+                # Extract metadata from file_info
+                drive_file_id = file_info.get('drive_file_id') or file_info.get('id')
+                relative_path = file_info.get('relative_path', '')
+
                 cursor.execute("""
                     INSERT INTO downloaded_files (
                         source_id, camera_name, original_filename, local_file_path,
-                        file_size_bytes, download_timestamp, file_format
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        file_size_bytes, download_timestamp, file_format,
+                        drive_file_id, relative_path
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     source_id,
                     camera_name,
@@ -361,8 +452,13 @@ class PyDriveCore:
                     local_path,
                     int(file_info.get('fileSize', 0)),
                     datetime.now().isoformat(),
-                    os.path.splitext(file_info['title'])[1]
+                    os.path.splitext(file_info['title'])[1],
+                    drive_file_id,
+                    relative_path
                 ))
+
+                logger.debug(f"📝 Tracked: {file_info['title']} (path: {relative_path})")
+
         except Exception as e:
             logger.error(f"❌ Error tracking downloaded file: {e}")
     
@@ -385,37 +481,52 @@ class PyDriveCore:
             
             logger.info(f"📂 SYNC [{source_id}] Starting folder: {folder_name}")
             
-            # Get files in folder
-            files = self.list_folder_files(drive, folder_id)
+            # Get files with recursive scanning enabled
+            files = self.list_folder_files(drive, folder_id, recursive=True, max_depth=3)
+
+            logger.info(f"📦 Total files found (including subfolders): {len(files)}")
+
             if not files:
                 logger.info(f"📂 No video files in folder: {folder_name}")
                 return {'success': True, 'files_downloaded': 0, 'total_size': 0}
-            
+
             # Create folder path
             folder_path = os.path.join(base_path, self._sanitize_filename(folder_name))
             os.makedirs(folder_path, exist_ok=True)
-            
+
             # Download new files
             downloaded_count = 0
             total_size = 0
-            
+
             for file_info in files:
                 filename = file_info['title']
-                
-                # Skip if already downloaded
-                if self.check_file_exists_locally(source_id, filename):
+                drive_file_id = file_info.get('drive_file_id') or file_info.get('id')
+                relative_path = file_info.get('relative_path', '')
+
+                # Skip if already downloaded (check by drive_file_id)
+                if self.check_file_exists_locally(source_id, drive_file_id, filename):
                     logger.debug(f"⏭️ Skipping {filename} (already downloaded)")
                     continue
-                
+
+                # Build full path preserving folder structure
+                if relative_path:
+                    # Nested file: folder_path/relative_path/filename
+                    file_dir = os.path.join(folder_path, relative_path)
+                    os.makedirs(file_dir, exist_ok=True)
+                    file_path = os.path.join(file_dir, self._sanitize_filename(filename))
+                    logger.info(f"📥 Downloading to nested path: {relative_path}/{filename}")
+                else:
+                    # Root level file: folder_path/filename
+                    file_path = os.path.join(folder_path, self._sanitize_filename(filename))
+                    logger.info(f"📥 Downloading to root: {filename}")
+
                 # Download file
-                file_path = os.path.join(folder_path, self._sanitize_filename(filename))
-                
                 if self.download_single_file(drive, file_info, file_path):
                     file_size = int(file_info.get('fileSize', 0))
                     downloaded_count += 1
                     total_size += file_size
-                    
-                    # Track in database
+
+                    # Track in database with nested path info
                     self.track_downloaded_file(source_id, folder_name, file_info, file_path)
             
             logger.info(f"✅ SYNC [{source_id}] Folder completed: {downloaded_count} files, {total_size/1024/1024:.1f}MB")
@@ -480,7 +591,7 @@ class PyDriveCore:
                     failed_folders.append(folder_info.get('name', 'unknown') if isinstance(folder_info, dict) else str(folder_info))
             
             total_size_mb = total_size / (1024 * 1024) if total_size > 0 else 0
-            
+
             # Build result message
             if total_files > 0:
                 message = f'Downloaded {total_files} files ({total_size_mb:.1f} MB)'
@@ -488,9 +599,43 @@ class PyDriveCore:
                 message = f'Sync failed for folders: {", ".join(failed_folders)}'
             else:
                 message = 'No new files to download'
-            
+
+            # PHASE 3: Trigger processing pipeline for downloaded files
+            if total_files > 0:
+                try:
+                    logger.info(f"🔄 Triggering processing scan for {total_files} new files in {base_path}")
+
+                    # Import file_lister
+                    from modules.scheduler.file_lister import list_files
+
+                    # Get database path from config
+                    with safe_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT db_path FROM processing_config WHERE id = 1")
+                        result = cursor.fetchone()
+                        db_path = result[0] if result else None
+
+                    if db_path:
+                        # Trigger file_lister scan on cloud staging directory
+                        list_files(
+                            video_root=base_path,      # Cloud staging path
+                            scan_action='custom',      # Custom scan mode
+                            custom_path=base_path,     # Scan this specific path
+                            days=1,                    # Only recent files
+                            db_path=db_path,
+                            is_initial_scan=False
+                        )
+
+                        logger.info(f"✅ Processing scan completed - files added to queue")
+                    else:
+                        logger.warning("⚠️ No processing config found - files downloaded but not queued")
+
+                except Exception as e:
+                    logger.error(f"❌ Error triggering processing: {e}")
+                    logger.info("Files downloaded successfully but not added to processing queue")
+
             logger.info(f"🎯 SYNC [{source_id}] COMPLETED: {message}")
-            
+
             return {
                 'success': True if not failed_folders else False,
                 'message': message,
@@ -506,8 +651,47 @@ class PyDriveCore:
             traceback.print_exc()
             return {'success': False, 'message': str(e)}
     
+    def mark_file_processed(self, local_file_path: str, success: bool = True) -> bool:
+        """
+        Mark downloaded file as processed after video analysis completes.
+        Enables automatic cleanup of old processed files.
+
+        Args:
+            local_file_path: Full path to processed video file
+            success: Whether processing was successful
+
+        Returns:
+            True if marked successfully, False otherwise
+        """
+        try:
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+
+                cursor.execute("""
+                    UPDATE downloaded_files
+                    SET is_processed = 1,
+                        processing_timestamp = ?,
+                        processing_status = ?
+                    WHERE local_file_path = ?
+                """, (
+                    datetime.now().isoformat(),
+                    'success' if success else 'failed',
+                    local_file_path
+                ))
+
+                if cursor.rowcount > 0:
+                    logger.info(f"✅ Marked as processed: {os.path.basename(local_file_path)}")
+                    return True
+                else:
+                    logger.warning(f"⚠️ File not found in database: {local_file_path}")
+                    return False
+
+        except Exception as e:
+            logger.error(f"❌ Error marking file as processed: {e}")
+            return False
+
     # ==================== HELPER METHODS ====================
-    
+
     def _get_source_config(self, source_id: int) -> Optional[Dict]:
         """Get source configuration from database"""
         try:
