@@ -106,6 +106,9 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   const [driveFolders, setDriveFolders] = useState<any[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<any>(null);
   const [folderTreeLoading, setFolderTreeLoading] = useState(false);
+
+  // Gmail authentication state
+  const [gmailAuthenticated, setGmailAuthenticated] = useState(false);
   
   // NEW: Tree-based folder selection
   const [selectedTreeFolders, setSelectedTreeFolders] = useState<any[]>([]);
@@ -137,6 +140,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
     };
 
     setSetupStep();
+    checkGmailAuthStatus();
     checkDriveConnectionStatus();
     loadCurrentVideoSourceState();
   }, []);
@@ -437,41 +441,60 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
     }) as T;
   }
   
+  const checkGmailAuthStatus = async () => {
+    try {
+      const response = await fetch('http://localhost:8080/api/cloud/gmail-auth-status', {
+        method: 'GET',
+        credentials: 'include'
+      });
+
+      const data = await response.json();
+      console.log('🔍 Gmail auth status:', data);
+
+      if (data.success && data.authenticated) {
+        setGmailAuthenticated(true);
+        console.log('✅ Gmail authenticated');
+      } else {
+        setGmailAuthenticated(false);
+        console.log('❌ Gmail not authenticated');
+      }
+    } catch (error) {
+      console.log('Gmail auth check failed:', error);
+      setGmailAuthenticated(false);
+    }
+  };
+
   const checkDriveConnectionStatus = async () => {
     try {
       const response = await fetch('http://localhost:8080/api/cloud/drive-auth-status', {
         method: 'GET',
         credentials: 'include'
       });
-      
+
       const data = await response.json();
       console.log('🔍 Drive auth status:', data);
 
-      if (data.success && data.authenticated) {
-        // Check if we're in setup mode - if so, don't show as connected
-        if (data.setup_mode) {
-          console.log('🎯 Setup mode detected - keeping Drive as disconnected for manual auth');
-          console.log('🔴 DEBUG: setDriveConnected(false) from checkDriveConnectionStatus setup_mode');
-          setDriveConnected(false);
-          setDriveUserEmail('');
-          setDriveFolders([]);
-        } else {
-          console.log('✅ Drive connected - setting UI to connected state');
-          console.log('🔴 DEBUG: setDriveConnected(true) from checkDriveConnectionStatus');
-          setDriveConnected(true);
-          setDriveUserEmail(data.user_email || '');
-          // Note: loadInitialFolders() removed - only load after manual auth
-        }
+      // IMPORTANT: Always start as disconnected in video-source step
+      // User must click Connect button to authenticate Drive
+      // This prevents showing stale "connected" status from backend
+      if (data.setup_mode || !data.authenticated) {
+        console.log('🎯 Setup mode or not authenticated - showing as disconnected');
+        console.log('🔴 DEBUG: setDriveConnected(false) - require manual Connect');
+        setDriveConnected(false);
+        setDriveUserEmail('');
+        setDriveFolders([]);
       } else {
-        console.log('❌ Drive not connected - resetting UI state');
-        console.log('🔴 DEBUG: setDriveConnected(false) from checkDriveConnectionStatus else');
-        // Not authenticated or setup mode - reset connection state
+        // Even if backend says authenticated, verify with folder test
+        console.log('⚠️ Backend reports authenticated - but user must click Connect for this session');
         setDriveConnected(false);
         setDriveUserEmail('');
         setDriveFolders([]);
       }
     } catch (error) {
       console.log('Drive connection check failed:', error);
+      setDriveConnected(false);
+      setDriveUserEmail('');
+      setDriveFolders([]);
     }
   };
   
@@ -852,9 +875,13 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                           <Text fontSize="12px" color="green.500">
                             ✅ Connected as {driveUserEmail}
                           </Text>
+                        ) : gmailAuthenticated ? (
+                          <Text fontSize="12px" color="blue.500">
+                            Gmail ✅ Ready • Google Drive → Click Connect
+                          </Text>
                         ) : (
                           <Text fontSize="12px" color="orange.500">
-                            ⚠️ Not connected - Authentication required
+                            ⚠️ Gmail authentication required first
                           </Text>
                         )}
                       </VStack>
@@ -874,10 +901,11 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                             });
                             
                             const gmailData = await gmailResponse.json();
-                            
+
                             if (!gmailData.authenticated) {
                               // Need Gmail auth first
-                              alert('Gmail authentication is required first. Please complete user login before connecting Google Drive.');
+                              setDriveConnecting(false);
+                              alert('⚠️ Gmail authentication required\n\nPlease complete Gmail login in the welcome screen before connecting Google Drive.\n\nSteps:\n1. Return to Camera Config home\n2. Complete Gmail authentication\n3. Come back to this step to connect Google Drive');
                               return;
                             }
                             
@@ -905,7 +933,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                               );
                               
                               // Listen for OAuth completion
-                              const handleMessage = async (event) => {
+                              const handleMessage = async (event: MessageEvent) => {
                                 console.log('📬 Received message:', event.data);
                                 console.log('📬 Message keys:', Object.keys(event.data));
                                 console.log('📬 Has session_token:', 'session_token' in event.data);
@@ -1055,48 +1083,53 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                       )}
                     </HStack>
                     
-                    {/* Requirements Info or Manual Refresh */}
+                    {/* Connection Status Info */}
                     {!driveConnected ? (
-                      <Box bg={cardBg} p="8px" borderRadius="6px" border="1px solid" borderColor="yellow.400">
-                        <Text fontSize="11px" color="yellow.600">
-                          ℹ️ <strong>Requirement:</strong> Gmail authentication must be completed first before connecting Google Drive
-                        </Text>
-                      </Box>
+                      !gmailAuthenticated && (
+                        <Alert status="warning" borderRadius="8px" fontSize={adaptiveConfig.fontSize.small}>
+                          <AlertIcon />
+                          <AlertDescription>
+                            Gmail authentication must be completed first before connecting Google Drive
+                          </AlertDescription>
+                        </Alert>
+                      )
                     ) : (
-                      <HStack justify="space-between" align="center">
-                        <Text fontSize="11px" color="green.600">
-                          ✅ Google Drive connected successfully
-                        </Text>
-                        <Button 
-                          size="xs" 
+                      <Alert status="success" borderRadius="8px">
+                        <AlertIcon />
+                        <AlertDescription fontSize={adaptiveConfig.fontSize.small} flex="1">
+                          Google Drive connected successfully
+                        </AlertDescription>
+                        <Button
+                          size="xs"
                           variant="ghost"
                           onClick={() => checkDriveConnectionStatus()}
+                          ml={2}
                         >
                           🔄 Refresh
                         </Button>
-                      </HStack>
+                      </Alert>
                     )}
                     
                     {/* Debug: Manual check button when stuck in connecting state */}
                     {driveConnecting && (
-                      <Box bg={cardBg} p="8px" borderRadius="6px" border="1px solid" borderColor="orange.400">
-                        <HStack justify="space-between" align="center">
-                          <Text fontSize="11px" color="orange.600">
-                            Stuck connecting? Try manual check:
-                          </Text>
-                          <Button 
-                            size="xs" 
-                            colorScheme="orange"
-                            onClick={async () => {
-                              console.log('🔧 Manual connection check triggered');
-                              setDriveConnecting(false);
-                              await checkDriveConnectionStatus();
-                            }}
-                          >
-                            Check Status
-                          </Button>
-                        </HStack>
-                      </Box>
+                      <Alert status="info" borderRadius="8px">
+                        <AlertIcon />
+                        <AlertDescription fontSize={adaptiveConfig.fontSize.small} flex="1">
+                          Stuck connecting? Try manual check
+                        </AlertDescription>
+                        <Button
+                          size="xs"
+                          colorScheme="blue"
+                          onClick={async () => {
+                            console.log('🔧 Manual connection check triggered');
+                            setDriveConnecting(false);
+                            await checkDriveConnectionStatus();
+                          }}
+                          ml={2}
+                        >
+                          Check Status
+                        </Button>
+                      </Alert>
                     )}
                   </VStack>
                 </Box>
@@ -1111,6 +1144,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                   <GoogleDriveFolderTree
                     session_token={driveSessionTokenRef.current}
                     folders={driveFolders}
+                    isLoading={folderTreeLoading}
                     onFoldersSelected={handleTreeFolderSelection}
                     maxDepth={3}
                   />
@@ -1121,37 +1155,6 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
           </Box>
         )}
 
-        {/* Camera Settings */}
-        <Box>
-          <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
-            ⚙️ Camera Settings
-          </Text>
-          <SimpleGrid columns={2} spacing="12px" maxW="100%">
-            <Box bg={cardBg} p="16px" borderRadius="12px">
-              <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} mb="8px">
-                Resolution:
-              </Text>
-              <Select size="sm" borderColor={borderColor} defaultValue="1080p" onChange={(e) => onStepChange?.('video_source', { resolution: e.target.value })}>
-                <option value="4K">4K (3840x2160)</option>
-                <option value="1080p">1080p (1920x1080)</option>
-                <option value="720p">720p (1280x720)</option>
-                <option value="480p">480p (640x480)</option>
-              </Select>
-            </Box>
-            
-            <Box bg={cardBg} p="16px" borderRadius="12px">
-              <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor} mb="8px">
-                Frame Rate:
-              </Text>
-              <Select size="sm" borderColor={borderColor} defaultValue="30" onChange={(e) => onStepChange?.('video_source', { frameRate: e.target.value })}>
-                <option value="60">60 FPS</option>
-                <option value="30">30 FPS</option>
-                <option value="24">24 FPS</option>
-                <option value="15">15 FPS</option>
-              </Select>
-            </Box>
-          </SimpleGrid>
-        </Box>
 
 
       </VStack>

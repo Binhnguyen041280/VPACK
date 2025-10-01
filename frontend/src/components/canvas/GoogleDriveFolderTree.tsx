@@ -12,6 +12,7 @@ import {
   Spinner,
   Alert,
   AlertIcon,
+  AlertDescription,
   IconButton,
   Checkbox,
   useColorModeValue
@@ -52,6 +53,7 @@ interface SelectedFolder {
 interface GoogleDriveFolderTreeProps {
   session_token?: string; // Optional, not used - kept for compatibility
   folders?: DriveFolder[]; // NEW: Pre-loaded folders from parent component
+  isLoading?: boolean; // NEW: Loading state from parent
   onFoldersSelected: (folders: SelectedFolder[]) => void;
   maxDepth?: number;
   className?: string;
@@ -65,6 +67,7 @@ interface AuthStatus {
 const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
   session_token,
   folders = [], // NEW: Pre-loaded folders from parent
+  isLoading = false, // NEW: Loading state from parent
   onFoldersSelected,
   maxDepth = 3,
   className = ''
@@ -100,9 +103,9 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
           setAuthStatus({ authenticated: true, loading: false });
           setError(null);
         } else {
-          console.log('⚠️ No pre-loaded folders available - attempting to load from API');
-          // Keep loading state and try to load from API
-          loadRootFolders();
+          console.log('⏸️ No pre-loaded folders - waiting for user to click Connect button');
+          setAuthStatus({ authenticated: false, loading: false });
+          setError(null); // Don't show error - just wait for user action
         }
         setHasHadInitialLoad(true);
       } catch (error) {
@@ -197,6 +200,9 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication expired. Please click Connect to re-authenticate Google Drive.');
+        }
         throw new Error(`Failed to load root folders: ${response.status}`);
       }
 
@@ -267,6 +273,9 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication expired. Please click Connect to re-authenticate Google Drive.');
+        }
         throw new Error(`Failed to load subfolders: ${response.status}`);
       }
 
@@ -603,25 +612,34 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
 
   if (authStatus.loading) {
     return (
-      <Alert status="info" borderRadius="md">
-        <AlertIcon />
-        <HStack>
-          <Spinner size="sm" />
-          <Text>🔄 Loading folders...</Text>
-        </HStack>
+      <Alert status="info" borderRadius="8px">
+        <Spinner size="sm" mr={3} />
+        <AlertDescription fontSize="sm">
+          Loading folders...
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  // Show loading if parent is loading folders OR if we're loading subfolders
+  if (isLoading || (loadingFolders.has('root') && !authStatus.authenticated)) {
+    return (
+      <Alert status="info" borderRadius="8px">
+        <Spinner size="sm" mr={3} />
+        <AlertDescription fontSize="sm">
+          Loading folders from Google Drive...
+        </AlertDescription>
       </Alert>
     );
   }
 
   if (!authStatus.authenticated && !authStatus.loading) {
     return (
-      <Alert status="error" borderRadius="md">
+      <Alert status="warning" borderRadius="8px">
         <AlertIcon />
-        <Box>
-          <Text fontSize="sm" mt={1}>
-            {error || 'Please re-authenticate with Google Drive'}
-          </Text>
-        </Box>
+        <AlertDescription fontSize="sm">
+          {error || 'Click "Connect to Google Drive" button above to get started'}
+        </AlertDescription>
       </Alert>
     );
   }
@@ -633,19 +651,19 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
 
       {/* Error Display */}
       {error && (
-        <Alert status="error" borderRadius="md" mb={4}>
+        <Alert status="error" borderRadius="8px" mb={4}>
           <AlertIcon />
-          <Box>
-            <Text fontSize="sm">⚠️ {error}</Text>
-            <Button
-              mt={2}
-              size="xs"
-              colorScheme="red"
-              onClick={() => setError(null)}
-            >
-              Dismiss
-            </Button>
-          </Box>
+          <AlertDescription fontSize="sm" flex="1">
+            {error}
+          </AlertDescription>
+          <Button
+            size="xs"
+            colorScheme="red"
+            onClick={() => setError(null)}
+            ml={2}
+          >
+            Dismiss
+          </Button>
         </Alert>
       )}
 
