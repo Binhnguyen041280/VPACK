@@ -81,6 +81,7 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   const textColor = useColorModeValue('navy.700', 'white');
   const secondaryText = useColorModeValue('gray.600', 'gray.400');
   const cardBg = useColorModeValue('gray.50', 'navy.700');
+  const hoverBg = useColorModeValue('gray.50', 'navy.600');
   
   // State for camera data from Step 3
   const [availableCameras, setAvailableCameras] = useState<Camera[]>([]);
@@ -94,7 +95,7 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   
   // Single-camera workflow state
   const [configuringCameraId, setConfiguringCameraId] = useState<string | null>(null);
-  const [camerasDisabled, setCamerasDisabled] = useState(false);
+  const [configuredCameras, setConfiguredCameras] = useState<string[]>([]);
   
   // ROI configuration modal state
   const [showROIModal, setShowROIModal] = useState(false);
@@ -111,32 +112,41 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   const [traditionalValidating, setTraditionalValidating] = useState(false);
   const [qrValidation, setQrValidation] = useState<VideoValidationResponse | null>(null);
   const [qrValidating, setQrValidating] = useState(false);
-  
+
+  // Scroll refs for auto-scroll
+  const traditionalScrollRef = React.useRef<HTMLDivElement>(null);
+  const qrScrollRef = React.useRef<HTMLDivElement>(null);
+
+  // Auto-scroll when validation results appear
+  useEffect(() => {
+    if (traditionalValidation && traditionalScrollRef.current) {
+      traditionalScrollRef.current.scrollTop = traditionalScrollRef.current.scrollHeight;
+    }
+  }, [traditionalValidation]);
+
+  useEffect(() => {
+    if (qrValidation && qrScrollRef.current) {
+      qrScrollRef.current.scrollTop = qrScrollRef.current.scrollHeight;
+    }
+  }, [qrValidation]);
+
   // Helper function to check if a camera is currently being configured
   const isCameraConfiguring = (cameraId: string): boolean => {
     return configuringCameraId === cameraId;
   };
-  
-  // Helper function to check if a camera should be disabled
-  const isCameraDisabled = (cameraId: string): boolean => {
-    return camerasDisabled && configuringCameraId !== cameraId;
+
+  // Helper function to check if a camera is configured
+  const isCameraConfigured = (cameraId: string): boolean => {
+    return configuredCameras.includes(cameraId);
   };
-  
-  // Function to cancel camera configuration
-  const cancelCameraConfiguration = () => {
-    console.log('🚫 Cancelling camera configuration');
-    setConfiguringCameraId(null);
-    setCamerasDisabled(false);
-    setShowCameraPopup(false);
-    setSelectedCameraForConfig(null);
-    // Keep selected cameras as they were
-  };
-  
+
   // Function to complete camera configuration
   const completeCameraConfiguration = () => {
     console.log('✅ Completing camera configuration');
+    if (configuringCameraId && !configuredCameras.includes(configuringCameraId)) {
+      setConfiguredCameras(prev => [...prev, configuringCameraId]);
+    }
     setConfiguringCameraId(null);
-    setCamerasDisabled(false);
     setShowCameraPopup(false);
     setSelectedCameraForConfig(null);
   };
@@ -144,7 +154,74 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   // Helper function for placeholder path (Step 3 standard)
   const getPlaceholderPath = () => {
     // Return generic placeholder like Step 3
-    return "Copy and paste video folder path here...";
+    return "Select video file or paste path...";
+  };
+
+  // Create video upload input (copied from trace page createImageUploadInput pattern)
+  const createVideoUploadInput = (onVideoSelected: (file: File) => void): void => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'video/*';
+    input.style.display = 'none';
+
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        onVideoSelected(file);
+      }
+      input.remove();
+    };
+
+    document.body.appendChild(input);
+    input.click();
+  };
+
+  // Trigger file browser for Traditional
+  const handleTraditionalBrowseClick = () => {
+    createVideoUploadInput(async (file: File) => {
+      const formData = new FormData();
+      formData.append('video', file);
+
+      try {
+        const response = await fetch('http://localhost:8080/api/config/step4/roi/upload-video', {
+          method: 'POST',
+          body: formData
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.file_path) {
+          setTraditionalInputPath(result.file_path);
+          handleVideoPathChange(result.file_path, 'traditional');
+        }
+      } catch (error) {
+        console.error('Upload error:', error);
+      }
+    });
+  };
+
+  // Trigger file browser for QR
+  const handleQRBrowseClick = () => {
+    createVideoUploadInput(async (file: File) => {
+      const formData = new FormData();
+      formData.append('video', file);
+
+      try {
+        const response = await fetch('http://localhost:8080/api/config/step4/roi/upload-video', {
+          method: 'POST',
+          body: formData
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.file_path) {
+          setQrInputPath(result.file_path);
+          handleVideoPathChange(result.file_path, 'qr');
+        }
+      } catch (error) {
+        console.error('Upload error:', error);
+      }
+    });
   };
 
   // Debounced validation
@@ -333,17 +410,23 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   
   const handleROIConfigSave = (config: any) => {
     console.log('💾 ROI configuration saved:', config);
-    
-    // Update parent component with configuration first
+
+    // Mark camera as configured
+    if (configuringCameraId && !configuredCameras.includes(configuringCameraId)) {
+      setConfiguredCameras(prev => [...prev, configuringCameraId]);
+    }
+
+    // Update parent component with configuration
     onStepChange?.('packing_area', {
       selectedCameras,
       packingMethod: selectedPackingMethod,
       roiConfiguration: config,
       configuredCamera: configuringCameraId
     });
-    
-    // Complete the camera configuration workflow (reset states)
-   // completeCameraConfiguration();
+
+    // Close ROI modal
+    setShowROIModal(false);
+    setROIVideoPath('');
   };
   
   const handleROIConfigError = (error: string) => {
@@ -493,218 +576,81 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
               </VStack>
             )}
             
-            {/* Configuration Status Message */}
-            {configuringCameraId && (
-              <Box 
-                bg="orange.50" 
-                border="2px solid" 
-                borderColor="orange.300" 
-                borderRadius="12px" 
-                p="12px" 
-                mb="16px"
-              >
-                <Flex align="center" justify="space-between">
-                  <HStack spacing="8px">
-                    <Text fontSize="16px">🔧</Text>
-                    <Text fontSize={adaptiveConfig.fontSize.small} color="orange.700" fontWeight="500">
-                      Configuring {availableCameras.find(c => c.id === configuringCameraId)?.name} - Other cameras temporarily disabled
-                    </Text>
-                  </HStack>
-                  <Button 
-                    className="chatgpt-button-primary chatgpt-hover-lift"
-                    bg="var(--chatgpt-purple-primary)"
-                    color="var(--chatgpt-white)"
-                    size="sm" 
-                    fontSize="sm"
-                    fontFamily="var(--chatgpt-font-family)"
-                    fontWeight="var(--chatgpt-font-weight-medium)"
-                    onClick={cancelCameraConfiguration}
-                    _hover={{
-                      bg: 'var(--chatgpt-purple-light)',
-                      transform: 'translateY(-2px)',
-                      boxShadow: 'var(--chatgpt-shadow-lg)'
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </Flex>
-              </Box>
-            )}
-            
             {/* Success State - Display Cameras */}
             {!isLoadingCameras && !cameraError && availableCameras.length > 0 && (
               <>
                 <VStack spacing="8px" align="stretch">
                   {availableCameras.map((camera) => {
-                    const isDisabled = isCameraDisabled(camera.id);
                     const isConfiguring = isCameraConfiguring(camera.id);
-                    
+                    const isConfigured = isCameraConfigured(camera.id);
+
                     return (
                       <Flex
                         key={camera.id}
                         align="center"
-                        p="8px"
+                        p="12px"
                         borderRadius="8px"
                         border="1px solid"
                         borderColor={borderColor}
                         bg={bgColor}
-                        opacity={isDisabled ? 0.5 : 1}
-                        cursor={isDisabled ? 'not-allowed' : 'default'}
-                        transition="opacity 0.2s ease"
-                      >
-                        <Checkbox
-                          isChecked={selectedCameras.includes(camera.id)}
-                          isDisabled={isDisabled}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              // Single camera workflow: disable others when selecting one
-                              console.log(`🔧 Starting configuration for camera: ${camera.id}`);
-                              setSelectedCameras(prev => [...prev, camera.id]);
-                              setSelectedCameraForConfig(camera.id);
-                              setConfiguringCameraId(camera.id);
-                              setCamerasDisabled(true);
-                              setShowCameraPopup(true);
-                            } else {
-                              // Only allow unchecking if not currently configuring this camera
-                              if (!isConfiguring) {
-                                setSelectedCameras(prev => prev.filter(id => id !== camera.id));
-                              }
+                        transition="all 0.2s ease"
+                        cursor="pointer"
+                        _hover={{ bg: hoverBg, transform: 'translateY(-2px)', boxShadow: 'md' }}
+                        onClick={() => {
+                          console.log(`🔧 Opening configuration for camera: ${camera.id}`);
+                          setSelectedCameras(prev => {
+                            if (!prev.includes(camera.id)) {
+                              return [...prev, camera.id];
                             }
-                            onStepChange?.('packing_area', { selectedCameras });
-                          }}
-                          colorScheme="brand"
-                          me="12px"
-                        />
+                            return prev;
+                          });
+                          setSelectedCameraForConfig(camera.id);
+                          setConfiguringCameraId(camera.id);
+                          setShowCameraPopup(true);
+                        }}
+                      >
                         <Box flex="1">
                           <Flex align="center" gap="8px">
-                            <Text 
-                              fontSize={adaptiveConfig.fontSize.body} 
-                              fontWeight="600" 
-                              color={isDisabled ? secondaryText : textColor}
+                            <Text
+                              fontSize={adaptiveConfig.fontSize.body}
+                              fontWeight="600"
+                              color={textColor}
                             >
                               {camera.name}
                             </Text>
-                            {isConfiguring && (
-                              <Text fontSize="12px" color="orange.500">⚙️</Text>
+                            {isConfigured && (
+                              <Text fontSize="14px" color="green.500">✅</Text>
                             )}
                           </Flex>
-                          <Text 
-                            fontSize={adaptiveConfig.fontSize.small} 
-                            color={isDisabled ? 'gray.400' : secondaryText}
+                          <Text
+                            fontSize={adaptiveConfig.fontSize.small}
+                            color={secondaryText}
                           >
-                            {camera.ip} • Status: {camera.status}
-                            {isDisabled && ' (Temporarily disabled)'}
+                            {isConfigured ? 'Configured' : 'Not configured'}
                           </Text>
                         </Box>
                         <Box
-                          w="8px"
-                          h="8px"
+                          w="10px"
+                          h="10px"
                           borderRadius="full"
-                          bg={camera.status === 'online' ? (isDisabled ? 'gray.300' : 'green.400') : 'red.400'}
+                          bg={isConfigured ? 'green.400' : 'red.400'}
                           flexShrink={0}
                         />
                       </Flex>
                     );
                   })}
                 </VStack>
-                <Text fontSize={adaptiveConfig.fontSize.small} color="blue.500" mt="12px" fontStyle="italic">
-                  📊 Selected: {selectedCameras.length} camera(s) for detection monitoring
-                </Text>
               </>
             )}
           </Box>
         </Box>
         
-        {/* Video Configuration - Now integrated into popup above */}
-
-
-
-        {/* ROI Configuration Status */}
-        {configuringCameraId && selectedPackingMethod && (
-          <Box>
-            <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="600" color={textColor} mb="12px">
-              🎯 ROI Configuration Status
-            </Text>
-            <Box 
-              bg={cardBg} 
-              p="16px" 
-              borderRadius="12px"
-              border="2px solid" 
-              borderColor={currentColors.brand500}
-              minH="150px"
-            >
-              <VStack spacing="12px" align="stretch">
-                <HStack justify="space-between">
-                  <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor}>
-                    Camera: {availableCameras.find(c => c.id === configuringCameraId)?.name}
-                  </Text>
-                  <Badge colorScheme="blue">
-                    {selectedPackingMethod === 'traditional' ? 'Traditional' : 'QR Code'}
-                  </Badge>
-                </HStack>
-                
-                {/* Video Path Status */}
-                <Box>
-                  <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText} mb="4px">
-                    Training Video Status:
-                  </Text>
-                  {roiVideoPath ? (
-                    <HStack spacing="8px">
-                      <Text fontSize="16px">✅</Text>
-                      <Text fontSize="sm" color="green.600" fontWeight="500">
-                        Video configured and ready for ROI setup
-                      </Text>
-                    </HStack>
-                  ) : (
-                    <Text fontSize="sm" color="orange.500">
-                      Please configure training video using the button above
-                    </Text>
-                  )}
-                </Box>
-                
-                {/* Instructions */}
-                <Box>
-                  <Text fontSize={adaptiveConfig.fontSize.small} color="blue.600" fontStyle="italic">
-                    💡 Once video is validated, ROI configuration modal will open automatically
-                  </Text>
-                </Box>
-              </VStack>
-            </Box>
-          </Box>
-        )}
-
-        {/* Detection Stats */}
-        <Box
-          bg={cardBg}
-          borderRadius="12px"
-          p="16px"
-          border="1px solid"
-          borderColor="purple.400"
-        >
-          <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="600" color={textColor} mb="8px">
-            📈 Detection Statistics:
-          </Text>
-          <VStack align="stretch" spacing="4px">
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              <strong>Today:</strong> 47 detections, 23 alerts sent
-            </Text>
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              <strong>This Week:</strong> 312 detections, 85% accuracy
-            </Text>
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              <strong>Active Zones:</strong> 2 configured, 1 active
-            </Text>
-            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-              <strong>Last Detection:</strong> 2 minutes ago
-            </Text>
-          </VStack>
-        </Box>
       </VStack>
 
       {/* Camera Configuration Popup */}
-      <Modal 
-        isOpen={showCameraPopup} 
-        onClose={cancelCameraConfiguration}
+      <Modal
+        isOpen={showCameraPopup}
+        onClose={() => setShowCameraPopup(false)}
         size="6xl"
         isCentered
       >
@@ -744,11 +690,12 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
               overflow="visible"
             >
               {/* Left Panel - Section 1 */}
-              <Box 
+              <Box
+                ref={traditionalScrollRef}
                 flex="1"
                 w="auto"
                 minW="0"
-                bg={cardBg} 
+                bg={cardBg}
                 p="20px"
                 borderRadius="12px"
                 border="1px solid"
@@ -815,21 +762,33 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                       <Text fontSize="sm" color="blue.500" fontWeight="500">
                         ⏱️ Video Requirements: Minimum 1 minute - Maximum 5 minutes duration
                       </Text>
-                      
-                      <Input
-                        value={traditionalInputPath}
-                        placeholder={getPlaceholderPath()}
-                        size="sm"
-                        borderColor={borderColor}
-                        _focus={{ borderColor: currentColors.brand500 }}
-                        bg="white"
-                        onFocus={(e) => {
-                          e.target.select(); // Step 3 standard - select all text for easy replacement
-                        }}
-                        onChange={(e) => {
-                          handleVideoPathChange(e.target.value, 'traditional');
-                        }}
-                      />
+
+                      {/* Input field with Browse button */}
+                      <HStack spacing="8px">
+                        <Input
+                          value={traditionalInputPath}
+                          placeholder={getPlaceholderPath()}
+                          size="sm"
+                          borderColor={borderColor}
+                          _focus={{ borderColor: currentColors.brand500 }}
+                          bg="white"
+                          flex="1"
+                          onFocus={(e) => {
+                            e.target.select();
+                          }}
+                          onChange={(e) => {
+                            handleVideoPathChange(e.target.value, 'traditional');
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          minW="80px"
+                          onClick={handleTraditionalBrowseClick}
+                          colorScheme="gray"
+                        >
+                          📁 Browse...
+                        </Button>
+                      </HStack>
 
                       {/* Validation Result */}
                       {renderValidationResult(traditionalValidation, traditionalValidating)}
@@ -852,11 +811,12 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
               </Box>
               
               {/* Right Panel - Section 2 */}
-              <Box 
+              <Box
+                ref={qrScrollRef}
                 flex="1"
                 w="auto"
                 minW="0"
-                bg={cardBg} 
+                bg={cardBg}
                 p="20px"
                 borderRadius="12px"
                 border="2px solid"
@@ -1130,21 +1090,33 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                       <Text fontSize="xs" color={secondaryText}>
                         📝 QR code packing videos (1-5 min) • Record with QR visible in center
                       </Text>
-                      
-                      <Input
-                        value={qrInputPath}
-                        placeholder={getPlaceholderPath()}
-                        size="sm"
-                        borderColor={borderColor}
-                        _focus={{ borderColor: currentColors.brand500 }}
-                        bg="white"
-                        onFocus={(e) => {
-                          e.target.select(); // Step 3 standard - select all text for easy replacement
-                        }}
-                        onChange={(e) => {
-                          handleVideoPathChange(e.target.value, 'qr');
-                        }}
-                      />
+
+                      {/* Input field with Browse button */}
+                      <HStack spacing="8px">
+                        <Input
+                          value={qrInputPath}
+                          placeholder={getPlaceholderPath()}
+                          size="sm"
+                          borderColor={borderColor}
+                          _focus={{ borderColor: currentColors.brand500 }}
+                          bg="white"
+                          flex="1"
+                          onFocus={(e) => {
+                            e.target.select();
+                          }}
+                          onChange={(e) => {
+                            handleVideoPathChange(e.target.value, 'qr');
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          minW="80px"
+                          onClick={handleQRBrowseClick}
+                          colorScheme="gray"
+                        >
+                          📁 Browse...
+                        </Button>
+                      </HStack>
 
                       {/* Validation Result - Compact */}
                       {renderValidationResult(qrValidation, qrValidating)}

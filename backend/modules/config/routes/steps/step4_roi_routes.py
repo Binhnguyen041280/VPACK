@@ -569,6 +569,70 @@ def test_video_access():
         response, status_code = handle_general_error(e, "test video access")
         return jsonify(response), status_code
 
+@step4_roi_bp.route('/upload-video', methods=['POST', 'OPTIONS'])
+def upload_video():
+    """
+    Upload video file for processing
+
+    POST body (multipart/form-data):
+        video: Video file
+
+    Returns:
+        JSON with file path on server
+    """
+    try:
+        if request.method == 'OPTIONS':
+            return jsonify({'success': True}), 200
+
+        if 'video' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': 'No video file provided'
+            }), 400
+
+        file = request.files['video']
+
+        if file.filename == '':
+            return jsonify({
+                'success': False,
+                'error': 'Empty filename'
+            }), 400
+
+        # Validate file extension
+        allowed_extensions = {'.mp4', '.mov', '.avi', '.mkv', '.webm'}
+        file_ext = os.path.splitext(file.filename)[1].lower()
+
+        if file_ext not in allowed_extensions:
+            return jsonify({
+                'success': False,
+                'error': f'Unsupported file type: {file_ext}. Allowed: {", ".join(allowed_extensions)}'
+            }), 400
+
+        # Create upload directory if it doesn't exist
+        upload_dir = os.path.join(os.getcwd(), 'var', 'uploads', 'videos')
+        os.makedirs(upload_dir, exist_ok=True)
+
+        # Generate unique filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        safe_filename = f"{timestamp}_{file.filename}"
+        file_path = os.path.join(upload_dir, safe_filename)
+
+        # Save file
+        file.save(file_path)
+
+        logger.info(f"Video uploaded successfully: {file_path}")
+
+        return jsonify({
+            'success': True,
+            'file_path': file_path,
+            'filename': safe_filename,
+            'original_name': file.filename
+        }), 200
+
+    except Exception as e:
+        response, status_code = handle_general_error(e, "upload video")
+        return jsonify(response), status_code
+
 # Register error handlers for this blueprint
 @step4_roi_bp.errorhandler(400)
 def bad_request(error):

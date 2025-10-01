@@ -32,7 +32,7 @@ class ROIVideoService:
         }
         
         # Video processing settings
-        self.max_video_size = 500 * 1024 * 1024  # 500MB limit
+        self.max_video_size = 1024 * 1024 * 1024  # 1GB limit
         self.chunk_size = 8192  # 8KB chunks for streaming
         
     def validate_video_path(self, video_path: str) -> Dict[str, Any]:
