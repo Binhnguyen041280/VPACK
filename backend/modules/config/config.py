@@ -117,24 +117,12 @@ if __name__ == '__main__':
     try:
         # Initialize app
         app, DB_PATH, logger = init_app_and_config()
-        
-        # Add simple test endpoint
-        @app.route('/api/test', methods=['GET'])
-        def test():
-            from flask import jsonify
-            return jsonify({
-                'status': 'ok',
-                'message': 'VTrack Config Server is running!',
-                'timestamp': datetime.now().isoformat(),
-                'db_path': DB_PATH
-            })
-        
+
         # Server info
         print("="*50)
         print("🚀 V_Track Configuration Server")
         print("="*50)
         print(f"🌐 Server will start on: http://localhost:8080")
-        print(f"🔧 Test URL: http://localhost:8080/api/test")
         print(f"📡 API Base: http://localhost:8080/api/config/")
         print(f"📍 Database: {DB_PATH}")
         print("="*50)

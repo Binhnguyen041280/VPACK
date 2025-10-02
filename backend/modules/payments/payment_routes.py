@@ -366,20 +366,6 @@ def health_check():
             'success': False,
             'error': str(e)
         }), 500
-
-@payment_bp.route('/pricing/test', methods=['GET'])
-def test_pricing_connection():
-    """Test connection to pricing service"""
-    try:
-        pricing_client = get_cloud_pricing_client()
-        result = pricing_client.test_connection()
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({
-            'connected': False,
-            'error': str(e)
-        }), 500
-
 @payment_bp.route('/activate-license', methods=['POST'])
 def activate_license():
     """

@@ -661,46 +661,6 @@ def run_qr_detector_endpoint():
         logger.error(f"[MVD-SUBPROCESS] Unexpected error in run-qr-detector: {str(e)}", exc_info=True)
         return jsonify({"success": False, "error": f"System error: {str(e)}"}), 500
 
-@qr_detection_bp.route('/test', methods=['GET'])
-def test_qr_endpoint():
-    """Test endpoint with sample video for QR detection development"""
-    try:
-        # Use the test video from the project
-        test_video = "/Users/annhu/vtrack_app/V_Track/resources/Inputvideo/Cam1D/Cam1D_20250604_110517.mp4"
-        test_time = 5.0  # Test at 5 seconds
-        
-        # Test ROI (center area)
-        test_roi = {
-            "x": 200,
-            "y": 150, 
-            "w": 400,
-            "h": 300
-        }
-        
-        logger.info(f"Running test QR detection at {test_time}s with ROI {test_roi}")
-        
-        result = detect_qr_at_time(
-            video_path=test_video,
-            time_seconds=test_time,
-            roi_config=test_roi
-        )
-        
-        return jsonify({
-            "test_status": "completed",
-            "test_video": test_video,
-            "test_time": test_time,
-            "test_roi": test_roi,
-            "result": result
-        }), 200
-        
-    except Exception as e:
-        error_msg = f"Test QR endpoint error: {str(e)}"
-        logger.error(error_msg)
-        return jsonify({
-            "test_status": "failed",
-            "error": error_msg
-        }), 500
-
 @qr_detection_bp.route('/get-cached-trigger', methods=['POST'])
 def get_cached_trigger():
     """

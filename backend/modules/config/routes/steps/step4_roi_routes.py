@@ -529,46 +529,6 @@ def save_roi_configuration():
     except Exception as e:
         response, status_code = handle_general_error(e, "save ROI configuration")
         return jsonify(response), status_code
-
-@step4_roi_bp.route('/test-video-access', methods=['GET', 'OPTIONS'])
-def test_video_access():
-    """
-    Test video file access and basic validation
-    
-    Query params:
-        video_path: Path to video file
-        
-    Returns:
-        JSON with access test results
-    """
-    try:
-        if request.method == 'OPTIONS':
-            return jsonify({'success': True}), 200
-        
-        video_path = request.args.get('video_path')
-        if not video_path:
-            return jsonify({
-                'success': False,
-                'error': 'video_path parameter is required'
-            }), 400
-        
-        logger.info(f"Testing video access for: {video_path}")
-        
-        # Validate video path
-        validation = roi_video_service.validate_video_path(video_path)
-        
-        return jsonify({
-            'success': True,
-            'data': {
-                'path_validation': validation,
-                'timestamp': roi_video_service.__class__.__name__  # Placeholder timestamp
-            }
-        }), 200
-        
-    except Exception as e:
-        response, status_code = handle_general_error(e, "test video access")
-        return jsonify(response), status_code
-
 @step4_roi_bp.route('/upload-video', methods=['POST', 'OPTIONS'])
 def upload_video():
     """

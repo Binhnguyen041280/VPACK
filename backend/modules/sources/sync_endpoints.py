@@ -236,37 +236,6 @@ def get_sync_dashboard():
             'message': f'Error getting sync dashboard: {str(e)}'
         }), 500
 
-@sync_bp.route('/test-pydrive', methods=['GET'])
-def test_pydrive_connection():
-    """Test PyDrive2 installation and basic functionality"""
-    try:
-        # Test PyDrive2 import
-        from pydrive2.auth import GoogleAuth
-        
-        # Test basic functionality
-        GoogleAuth()
-        
-        return jsonify({
-            'success': True,
-            'message': 'PyDrive2 is installed and working',
-            'pydrive_version': '1.15.4',
-            'test_result': 'PyDrive2 GoogleAuth class imported successfully'
-        }), 200
-        
-    except ImportError as e:
-        return jsonify({
-            'success': False,
-            'message': 'PyDrive2 not installed or import failed',
-            'error': str(e),
-            'suggestion': 'Run: pip install PyDrive2==1.15.4'
-        }), 500
-    except Exception as e:
-        logger.error(f"❌ PyDrive test error: {e}")
-        return jsonify({
-            'success': False,
-            'message': f'PyDrive test failed: {str(e)}'
-        }), 500
-
 @sync_bp.route('/debug-credentials/<int:source_id>', methods=['GET'])
 def debug_credentials(source_id: int):
     """Debug credentials loading step by step"""
