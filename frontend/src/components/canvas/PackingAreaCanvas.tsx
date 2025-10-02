@@ -439,20 +439,48 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
       try {
         setIsLoadingCameras(true);
         setCameraError(null);
-        
+
         console.log('🔍 PackingAreaCanvas - Fetching cameras from processing_config...');
         const response = await stepConfigService.fetchProcessingConfigCameras();
-        
+
         if (response.success && response.data.selectedCameras && response.data.selectedCameras.length > 0) {
-          // Transform selectedCameras into availableCameras format
+          // Fetch ROI status for all cameras
+          console.log('🔍 PackingAreaCanvas - Fetching ROI status...');
+          const roiStatusResponse = await fetch('http://localhost:8080/api/config/step/packing-area/cameras/status', {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          });
+
+          let roiStatusMap: { [key: string]: boolean } = {};
+          if (roiStatusResponse.ok) {
+            const roiData = await roiStatusResponse.json();
+            if (roiData.success && roiData.data.cameras) {
+              // Create map of camera_name -> has_roi
+              roiStatusMap = roiData.data.cameras.reduce((map: any, camera: any) => {
+                map[camera.camera_name] = camera.has_roi;
+                return map;
+              }, {});
+              console.log('✅ PackingAreaCanvas - ROI status loaded:', roiStatusMap);
+            }
+          }
+
+          // Transform selectedCameras into availableCameras format with ROI status
           const transformedCameras: Camera[] = response.data.selectedCameras.map((cameraName, index) => ({
             id: cameraName, // Use camera name as ID
             name: `Camera - ${cameraName}`, // Add "Camera - " prefix
             ip: `192.168.1.${100 + index}`, // Generate mock IP based on index
             status: 'online' as const // Default to online
           }));
-          
-          console.log('✅ PackingAreaCanvas - Transformed cameras from processing_config:', transformedCameras);
+
+          // Update configuredCameras state with cameras that have ROI
+          const camerasWithROI = response.data.selectedCameras.filter((cameraName: string) => roiStatusMap[cameraName]);
+          setConfiguredCameras(camerasWithROI);
+
+          console.log('✅ PackingAreaCanvas - Transformed cameras:', transformedCameras);
+          console.log('✅ PackingAreaCanvas - Configured cameras:', camerasWithROI);
           setAvailableCameras(transformedCameras);
         } else {
           // No cameras found in processing_config
@@ -467,7 +495,7 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
         setIsLoadingCameras(false);
       }
     };
-    
+
     loadCamerasFromProcessingConfig();
   }, []);
   

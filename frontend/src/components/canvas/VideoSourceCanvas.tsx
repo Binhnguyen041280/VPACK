@@ -1145,6 +1145,7 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                     session_token={driveSessionTokenRef.current}
                     folders={driveFolders}
                     isLoading={folderTreeLoading}
+                    initialSelectedFolders={selectedTreeFolders}
                     onFoldersSelected={handleTreeFolderSelection}
                     maxDepth={3}
                   />

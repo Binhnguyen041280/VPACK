@@ -54,6 +54,7 @@ interface GoogleDriveFolderTreeProps {
   session_token?: string; // Optional, not used - kept for compatibility
   folders?: DriveFolder[]; // NEW: Pre-loaded folders from parent component
   isLoading?: boolean; // NEW: Loading state from parent
+  initialSelectedFolders?: SelectedFolder[]; // NEW: Pre-selected folders for restoring state
   onFoldersSelected: (folders: SelectedFolder[]) => void;
   maxDepth?: number;
   className?: string;
@@ -68,6 +69,7 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
   session_token,
   folders = [], // NEW: Pre-loaded folders from parent
   isLoading = false, // NEW: Loading state from parent
+  initialSelectedFolders = [], // NEW: Pre-selected folders for restoring state
   onFoldersSelected,
   maxDepth = 3,
   className = ''
@@ -117,6 +119,22 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
 
     initializeComponent();
   }, [folders]); // Re-run when folders prop changes
+
+  // Restore initial selected folders (for edit mode)
+  useEffect(() => {
+    if (initialSelectedFolders && initialSelectedFolders.length > 0) {
+      console.log(`🔄 Restoring ${initialSelectedFolders.length} previously selected folders`);
+      setSelectedFolders(initialSelectedFolders);
+
+      // Set selected depth based on first folder
+      if (initialSelectedFolders[0]?.depth !== undefined) {
+        setSelectedDepth(initialSelectedFolders[0].depth);
+      }
+
+      // Notify parent immediately
+      onFoldersSelected(initialSelectedFolders);
+    }
+  }, [initialSelectedFolders]);
 
   // Auto-retry ONLY after initial load (for stop & auth scenarios) - ONE TIME ONLY
   useEffect(() => {

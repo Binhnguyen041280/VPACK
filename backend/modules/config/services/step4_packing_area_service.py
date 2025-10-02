@@ -320,6 +320,82 @@ class Step4PackingAreaService:
             log_step_operation("4", "roi_finalization", {"error": error_msg}, False)
             return {"success": False, "error": error_msg}
 
+    def get_all_cameras_roi_status(self) -> Dict[str, Any]:
+        """
+        Get ROI configuration status for all cameras.
+        Matches cameras from camera_configurations with packing_profiles.
+
+        Returns:
+            Dict containing cameras list with their ROI status:
+            {
+                "cameras": [
+                    {"camera_name": "Cam1", "has_roi": true, "profile_name": "..."},
+                    {"camera_name": "Cam2", "has_roi": false}
+                ]
+            }
+        """
+        try:
+            with safe_connection_wrapper() as conn:
+                cursor = conn.cursor()
+
+                # Get all cameras from camera_configurations
+                cursor.execute("""
+                    SELECT DISTINCT camera_name
+                    FROM camera_configurations
+                    WHERE is_selected = 1
+                    ORDER BY camera_name
+                """)
+
+                all_cameras = [row[0] for row in cursor.fetchall()]
+
+                # Get cameras with ROI config from packing_profiles
+                # profile_name format: "CameraName_YYYYMMDD_HHMMSS"
+                cursor.execute("""
+                    SELECT profile_name
+                    FROM packing_profiles
+                    WHERE packing_area IS NOT NULL
+                """)
+
+                configured_profiles = cursor.fetchall()
+
+                # Map camera names to their profiles
+                camera_status = []
+                for camera_name in all_cameras:
+                    # Find matching profile (profile_name starts with camera_name)
+                    matching_profile = None
+                    for (profile_name,) in configured_profiles:
+                        if profile_name.startswith(camera_name + "_"):
+                            matching_profile = profile_name
+                            break
+
+                    camera_status.append({
+                        "camera_name": camera_name,
+                        "has_roi": matching_profile is not None,
+                        "profile_name": matching_profile if matching_profile else None
+                    })
+
+                result = {
+                    "cameras": camera_status,
+                    "total": len(camera_status),
+                    "configured": len([c for c in camera_status if c["has_roi"]])
+                }
+
+                log_step_operation("4", "get_all_cameras_roi_status", {
+                    "total": result["total"],
+                    "configured": result["configured"]
+                })
+
+                return result
+
+        except Exception as e:
+            log_step_operation("4", "get_all_cameras_roi_status", {"error": str(e)}, False)
+            return {
+                "cameras": [],
+                "total": 0,
+                "configured": 0,
+                "error": str(e)
+            }
+
 
 # Create singleton instance for import
 step4_packing_area_service = Step4PackingAreaService()

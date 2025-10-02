@@ -133,36 +133,72 @@ def update_step_packing_area():
         return jsonify(error_response), status_code
 
 
+@step4_bp.route('/packing-area/cameras/status', methods=['GET'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
+def get_all_cameras_roi_status():
+    """
+    Get ROI configuration status for all cameras.
+    Returns list of cameras with their ROI config status.
+
+    Returns:
+        JSON response with:
+        {
+            "cameras": [
+                {"camera_name": "Cam1", "has_roi": true, "profile_name": "Cam1_20251002"},
+                {"camera_name": "Cam2", "has_roi": false}
+            ]
+        }
+    """
+    try:
+        log_step_operation("4", "GET all cameras ROI status request")
+
+        # Get ROI status for all cameras from service
+        status = step4_packing_area_service.get_all_cameras_roi_status()
+
+        response = create_success_response(status, "Camera ROI status retrieved successfully")
+
+        log_step_operation("4", "GET all cameras ROI status success", {
+            "total_cameras": len(status.get("cameras", [])),
+            "configured_count": len([c for c in status.get("cameras", []) if c.get("has_roi")])
+        })
+
+        return jsonify(response), 200
+
+    except Exception as e:
+        error_response, status_code = handle_general_error(e, "get all cameras ROI status", "step4")
+        return jsonify(error_response), status_code
+
+
 @step4_bp.route('/packing-area/camera/<camera_name>', methods=['GET'])
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def get_step_camera_packing_profile(camera_name):
     """
     Get packing area configuration for a specific camera.
-    
+
     Path Parameter:
         camera_name: Name of the camera
-    
+
     Returns:
         JSON response with camera-specific packing configuration
     """
     try:
         log_step_operation("4", f"GET camera packing profile request for {camera_name}")
-        
+
         # Get camera profile from service
         profile = step4_packing_area_service.get_camera_packing_profile(camera_name)
-        
+
         if "error" in profile:
             error_response = create_error_response(profile["error"], "step4")
             return jsonify(error_response), 500
-        
+
         response = create_success_response(profile, f"Camera profile retrieved for {camera_name}")
-        
+
         log_step_operation("4", f"GET camera packing profile success for {camera_name}", {
             "exists": profile.get("exists", False)
         })
-        
+
         return jsonify(response), 200
-        
+
     except Exception as e:
         error_response, status_code = handle_general_error(e, f"get camera profile for {camera_name}", "step4")
         return jsonify(error_response), status_code
