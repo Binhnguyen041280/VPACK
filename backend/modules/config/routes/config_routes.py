@@ -15,7 +15,7 @@ try:
 except ImportError:
     DB_RWLOCK_AVAILABLE = False
     db_rwlock = None
-from modules.sources.path_manager import PathManager
+from modules.sources.video_source_manager import VideoSourceManager
 # timezone_schema_migration no longer needed - using simplified schema
 from ..utils import get_working_path_for_source, load_config
 from ..services.validate_packing_video_service import validate_packing_video
@@ -56,8 +56,8 @@ def save_config():
         try:
             # Try to get active source for path mapping
             try:
-                path_manager = PathManager()
-                active_sources = path_manager.get_all_active_sources()
+                source_manager = VideoSourceManager()
+                active_sources = source_manager.get_all_active_sources()
                 
                 if active_sources:
                     active_source = active_sources[0]  # Single active source
@@ -79,9 +79,9 @@ def save_config():
                     print("No active video source found, using video_root as-is")
                     
             except ImportError:
-                print("PathManager not available, using video_root as-is")
+                print("VideoSourceManager not available, using video_root as-is")
             except Exception as pm_error:
-                print(f"PathManager error: {pm_error}, using video_root as-is")
+                print(f"VideoSourceManager error: {pm_error}, using video_root as-is")
                 
         except Exception as path_error:
             print(f"Error in path mapping: {path_error}")

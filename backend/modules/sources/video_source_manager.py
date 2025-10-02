@@ -11,7 +11,7 @@ from modules.scheduler.db_sync import db_rwlock
 # Cấu hình múi giờ Việt Nam - ĐỒNG NHẤT VỚI FILE_LISTER
 VIETNAM_TZ = pytz.timezone('Asia/Ho_Chi_Minh')
 
-class PathManager:
+class VideoSourceManager:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         

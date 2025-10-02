@@ -4,7 +4,7 @@ from datetime import datetime
 import json
 import os
 from modules.db_utils.safe_connection import safe_db_connection
-from modules.sources.path_manager import PathManager
+from modules.sources.video_source_manager import VideoSourceManager
 from ..utils import detect_camera_folders, has_video_files, extract_cameras_from_cloud_folders
 
 camera_routes_bp = Blueprint('camera_routes', __name__)
@@ -28,8 +28,8 @@ def debug_cameras():
                 cameras = []
                 
             # Get active source info
-            path_manager = PathManager()
-            active_sources = path_manager.get_all_active_sources()
+            source_manager = VideoSourceManager()
+            active_sources = source_manager.get_all_active_sources()
             
             return jsonify({
                 "processing_config": {
@@ -121,8 +121,8 @@ def update_source_cameras():
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def get_cameras():
     try:
-        path_manager = PathManager()
-        sources = path_manager.get_all_active_sources()
+        source_manager = VideoSourceManager()
+        sources = source_manager.get_all_active_sources()
         
         cameras = []
         
@@ -198,8 +198,8 @@ def sync_cloud_cameras():
     """Manual sync cloud cameras from active cloud source"""
     try:
         # Get active cloud source
-        path_manager = PathManager()
-        sources = path_manager.get_all_active_sources()
+        source_manager = VideoSourceManager()
+        sources = source_manager.get_all_active_sources()
         cloud_source = None
         
         for source in sources:
@@ -257,8 +257,8 @@ def refresh_cameras():
     """Refresh cameras based on active source type"""
     try:
         # Get active source
-        path_manager = PathManager()
-        sources = path_manager.get_all_active_sources()
+        source_manager = VideoSourceManager()
+        sources = source_manager.get_all_active_sources()
         
         if not sources:
             return jsonify({
@@ -349,10 +349,10 @@ def get_camera_status():
                 processing_cameras = json.loads(selected_cameras) if selected_cameras else []
             except:
                 processing_cameras = []
-        
+
         # Get active sources
-        path_manager = PathManager()
-        active_sources = path_manager.get_all_active_sources()
+        source_manager = VideoSourceManager()
+        active_sources = source_manager.get_all_active_sources()
         
         # Get source-specific camera info
         source_cameras = []

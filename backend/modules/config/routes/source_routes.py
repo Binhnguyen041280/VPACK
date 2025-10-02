@@ -3,7 +3,7 @@ from flask_cors import cross_origin
 import json
 import os
 from modules.db_utils.safe_connection import safe_db_connection
-from modules.sources.path_manager import PathManager
+from modules.sources.video_source_manager import VideoSourceManager
 from ..utils import (
     get_working_path_for_source,
     detect_camera_folders,
@@ -42,7 +42,7 @@ def save_video_sources():
     if not all([source_type, name, path]):
         return jsonify({"error": "Source missing required fields"}), 400
     
-    path_manager = PathManager()
+    source_manager = VideoSourceManager()
     
     try:
         # ENHANCED: Handle overwrite mode
@@ -63,11 +63,11 @@ def save_video_sources():
                 cursor.execute("UPDATE video_sources SET active = 0")
         
         # COMMON: Add new source as active
-        success, message = path_manager.add_source(source_type, name, path, config_data)
+        success, message = source_manager.add_source(source_type, name, path, config_data)
         
         if success:
             # Get source ID for database operations
-            source_id = path_manager.get_source_id_by_name(name)
+            source_id = source_manager.get_source_id_by_name(name)
             
             # Calculate correct working path and update processing_config
             working_path = get_working_path_for_source(source_type, name, path)
@@ -199,8 +199,8 @@ def test_source_connection():
                     "source_type": source_type
                 }), 400
             
-            path_manager = PathManager()
-            is_accessible, message = path_manager.validate_source_accessibility(source_config)
+            source_manager = VideoSourceManager()
+            is_accessible, message = source_manager.validate_source_accessibility(source_config)
             
             return jsonify({
                 "accessible": is_accessible,
@@ -248,8 +248,8 @@ def test_source_connection():
 def get_video_sources():
     """Get all video sources"""
     try:
-        path_manager = PathManager()
-        sources = path_manager.get_all_active_sources()
+        source_manager = VideoSourceManager()
+        sources = source_manager.get_all_active_sources()
         
         return jsonify({"sources": sources}), 200
         
@@ -264,10 +264,10 @@ def update_video_source(source_id):
         data = request.json
         if not data:
           return jsonify({"error": "No JSON data provided"}), 400
-        path_manager = PathManager()
+        source_manager = VideoSourceManager()
         
         # Get current source for validation
-        current_source = path_manager.get_source_by_id(source_id)
+        current_source = source_manager.get_source_by_id(source_id)
         if not current_source:
             return jsonify({"error": f"Source with id {source_id} not found"}), 404
         
@@ -276,7 +276,7 @@ def update_video_source(source_id):
         new_config = data.get('config', current_source['config'])
         
         # Update source config only
-        success, message = path_manager.update_source(source_id, config=new_config)
+        success, message = source_manager.update_source(source_id, config=new_config)
         
         if not success:
             return jsonify({"error": message}), 400
@@ -294,14 +294,14 @@ def update_video_source(source_id):
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def delete_video_source(source_id):
     """Delete video source (used by Change button to reset workflow)"""
-    path_manager = PathManager()
+    source_manager = VideoSourceManager()
     
     try:
         # Get source info before deletion for logging
-        source = path_manager.get_source_by_id(source_id)
+        source = source_manager.get_source_by_id(source_id)
         source_name = source.get('name', 'Unknown') if source else 'Unknown'
         
-        success, message = path_manager.delete_source(source_id)
+        success, message = source_manager.delete_source(source_id)
         
         if success:
             # Clean reset processing_config 
@@ -337,7 +337,7 @@ def toggle_source_status(source_id):
     if not data:
       return jsonify({"error": "No JSON data provided"}), 400
     active = data.get('active', True)
-    path_manager = PathManager()
+    source_manager = VideoSourceManager()
     
     try:
         # FIXED: Consolidate ALL database operations in single context
@@ -348,11 +348,11 @@ def toggle_source_status(source_id):
                 # Disable all other sources first (Single Active Source)
                 cursor.execute("UPDATE video_sources SET active = 0")
             
-            success, message = path_manager.toggle_source_status(source_id, active)
+            success, message = source_manager.toggle_source_status(source_id, active)
             
             if success and active:
                 # Update input_path to this source
-                source = path_manager.get_source_by_id(source_id)
+                source = source_manager.get_source_by_id(source_id)
                 if source:
                     # Update input_path
                     cursor.execute("""
