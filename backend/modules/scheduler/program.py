@@ -40,6 +40,7 @@ from typing import Dict, Any, List, Optional
 from modules.db_utils import find_project_root
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.config.logging_config import get_logger
+from modules.utils.simple_timezone import get_system_timezone_from_db
 from .file_lister import run_file_scan, get_db_path
 from .batch_scheduler import BatchScheduler
 from .db_sync import frame_sampler_event, event_detector_event
@@ -68,16 +69,20 @@ running_state = {
 
 scheduler = BatchScheduler()
 
+def _get_log_tz():
+    """Get system timezone for logging."""
+    return ZoneInfo(get_system_timezone_from_db())
+
 def init_default_program():
     """Initialize the default program based on first run status.
-    
+
     Checks if the first run has been completed and automatically starts
     the default mode if appropriate. This ensures the system continues
     processing after initial setup.
-    
+
     Uses timezone-aware logging for better debugging across different timezones.
     """
-    start_time = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh'))
+    start_time = datetime.now(_get_log_tz())
     logger.info(f"Initializing default program at {start_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
     
     try:
@@ -89,9 +94,9 @@ def init_default_program():
                 first_run_completed = result[0] == 'true' if result else False
         
         logger.info(f"First run completed: {first_run_completed}, Scheduler running: {scheduler.running}")
-        
+
         if first_run_completed and not scheduler.running:
-            logger.info(f"Chuyển sang chế độ chạy mặc định (quét lặp) at {datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')).strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            logger.info(f"Chuyển sang chế độ chạy mặc định (quét lặp) at {datetime.now(_get_log_tz()).strftime('%Y-%m-%d %H:%M:%S %Z')}")
             running_state["current_running"] = "Default"
             scheduler.start()
             
@@ -191,19 +196,19 @@ def program():
             # Update state for first run processing with timezone context
             running_state["days"] = days
             running_state["custom_path"] = None
-            
-            start_time = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh'))
+
+            start_time = datetime.now(_get_log_tz())
             logger.info(f"Starting first run processing for {days} days at {start_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-            
+
             try:
                 # Scan and queue files from the specified number of days
                 run_file_scan(scan_action="first", days=days)
-                
-                completion_time = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh'))
+
+                completion_time = datetime.now(_get_log_tz())
                 logger.info(f"First run scan completed at {completion_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-                
+
             except Exception as e:
-                error_time = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh'))
+                error_time = datetime.now(_get_log_tz())
                 logger.error(f"Failed to run first scan at {error_time.strftime('%Y-%m-%d %H:%M:%S %Z')}: {str(e)}")
                 return jsonify({"error": f"Failed to run first scan: {str(e)}"}), 500
         # CUSTOM PROCESSING: Process specific file or directory
@@ -303,27 +308,27 @@ def program():
 
         if card == "First Run":
             try:
-                completion_time = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh'))
+                completion_time = datetime.now(_get_log_tz())
                 completion_utc = datetime.now(timezone.utc)
-                
+
                 with db_rwlock:
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
                         cursor.execute("UPDATE program_status SET value = ? WHERE key = ?", ("true", "first_run_completed"))
-                        
+
                         # Also store completion timestamp for audit purposes
                         cursor.execute(
                             "INSERT OR REPLACE INTO program_status (key, value) VALUES (?, ?)",
                             ("first_run_completed_at", completion_utc.isoformat())
                         )
-                        
+
                 logger.info(
                     f"Transitioning to default mode (continuous scan) after First Run completion at "
                     f"{completion_time.strftime('%Y-%m-%d %H:%M:%S %Z')}"
                 )
-                
+
             except Exception as e:
-                error_time = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh'))
+                error_time = datetime.now(_get_log_tz())
                 logger.error(f"Error updating first_run_completed at {error_time.strftime('%Y-%m-%d %H:%M:%S %Z')}: {e}")
 
     elif action == "stop":

@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 from modules.config.logging_config import get_logger
 # Removed timezone_validation - using simple validation inline
 # Removed enhanced_timezone_query import - consolidating into single file
-from modules.utils.simple_timezone import simple_validate_timezone, get_available_timezones
+from modules.utils.simple_timezone import simple_validate_timezone, get_available_timezones, get_system_timezone_from_db
 
 query_bp = Blueprint('query', __name__)
 logger = get_logger(__name__)
@@ -130,8 +130,8 @@ def query_events():
     try:
         # Simple parameter validation (replacing complex timezone_validation)
         from_time = data.get('from_time')
-        to_time = data.get('to_time') 
-        timezone_str = data.get('timezone', 'Asia/Ho_Chi_Minh')
+        to_time = data.get('to_time')
+        timezone_str = data.get('timezone', get_system_timezone_from_db())
         
         # Validate timezone
         tz_result = simple_validate_timezone(timezone_str)
@@ -243,13 +243,13 @@ def parse_time_range(from_time: Optional[str], to_time: Optional[str],
                     try:
                         user_tz = ZoneInfo(validation_result['timezone'])
                     except:
-                        user_tz = ZoneInfo("Asia/Ho_Chi_Minh")
+                        user_tz = ZoneInfo(get_system_timezone_from_db())
                 else:
-                    user_tz = ZoneInfo("Asia/Ho_Chi_Minh")
+                    user_tz = ZoneInfo(get_system_timezone_from_db())
             except:
-                user_tz = ZoneInfo("Asia/Ho_Chi_Minh")
+                user_tz = ZoneInfo(get_system_timezone_from_db())
         else:
-            user_tz = ZoneInfo("Asia/Ho_Chi_Minh")
+            user_tz = ZoneInfo(get_system_timezone_from_db())
         
         if from_time and to_time:
             # Parse custom time range
@@ -595,7 +595,7 @@ def query_events_enhanced():
         "to_time": "2024-01-15 18:00:00",    // Local time or various formats
         "cameras": ["Camera01", "Camera02"],  // Optional camera filter
         "tracking_codes": ["TC001", "TC002"], // Optional tracking code filter
-        "user_timezone": "Asia/Ho_Chi_Minh",  // Optional timezone override
+        "user_timezone": "<system_timezone>",  // Optional timezone override (defaults to system timezone)
         "search_string": "search text",       // Optional text search
         "include_processed": false            // Include processed events
     }
@@ -617,9 +617,9 @@ def query_events_enhanced():
         search_string = data.get('search_string', '')
         include_processed = data.get('include_processed', False)
         
-        # Use global timezone if not specified
+        # Use system timezone if not specified
         if not user_timezone:
-            user_timezone = "Asia/Ho_Chi_Minh"
+            user_timezone = get_system_timezone_from_db()
         
         # Use the existing query logic in this file instead of enhanced module
         with db_rwlock.gen_rlock():
@@ -733,7 +733,7 @@ def get_timezone_info():
     """Get current timezone configuration for query interface."""
     try:
         # Get timezone info using simple implementation
-        current_tz_name = "Asia/Ho_Chi_Minh"
+        current_tz_name = get_system_timezone_from_db()
         current_tz = ZoneInfo(current_tz_name)
         now = datetime.now(current_tz)
         utc_offset_hours = now.utcoffset().total_seconds() / 3600

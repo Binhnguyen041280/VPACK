@@ -38,6 +38,7 @@ from typing import List, Tuple, Dict, Optional, Any
 from modules.db_utils import find_project_root
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.config.logging_config import get_logger
+from modules.utils.simple_timezone import get_system_timezone_from_db
 # Removed video_timezone_detector - using simple video detection
 from .db_sync import db_rwlock
 from .config.scheduler_config import SchedulerConfig
@@ -47,6 +48,10 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 logger = get_logger(__name__, {"module": "file_lister"})
 logger.info("File lister logging initialized")
+
+def _get_system_tz():
+    """Get system timezone from database configuration."""
+    return ZoneInfo(get_system_timezone_from_db())
 
 
 DB_PATH = os.path.join(BASE_DIR, "database", "events.db")
@@ -107,12 +112,12 @@ def get_file_creation_time(file_path: str, camera_name: Optional[str] = None) ->
         # Simple video file detection (replacing complex video_timezone_detector)
         video_extensions = ('.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.m4v')
         if not os.path.isfile(file_path) or not file_path.lower().endswith(video_extensions):
-            # For non-video files, use filesystem time with user's timezone
-            user_timezone = ZoneInfo('Asia/Ho_Chi_Minh')
+            # For non-video files, use filesystem time with system timezone
+            user_timezone = _get_system_tz()
             return datetime.fromtimestamp(os.path.getctime(file_path), tz=user_timezone)
-        
-        # Use simple filesystem time with user timezone (fallback approach)
-        user_timezone = ZoneInfo('Asia/Ho_Chi_Minh')
+
+        # Use simple filesystem time with system timezone (fallback approach)
+        user_timezone = _get_system_tz()
         file_stat_time = os.path.getctime(file_path)
         timezone_aware_time = datetime.fromtimestamp(file_stat_time, tz=user_timezone)
 
@@ -121,14 +126,14 @@ def get_file_creation_time(file_path: str, camera_name: Optional[str] = None) ->
         
     except Exception as e:
         logger.error(f"Error extracting timezone-aware creation time for {file_path}: {e}")
-        # Safe fallback: use filesystem time with user's configured timezone
+        # Safe fallback: use filesystem time with system timezone
         try:
-            user_timezone = ZoneInfo('Asia/Ho_Chi_Minh')
+            user_timezone = _get_system_tz()
             return datetime.fromtimestamp(os.path.getctime(file_path), tz=user_timezone)
         except Exception as fallback_error:
             logger.error(f"Fallback timezone retrieval failed for {file_path}: {fallback_error}")
-            # Ultimate fallback: use default timezone
-            return datetime.fromtimestamp(os.path.getctime(file_path), tz=ZoneInfo('Asia/Ho_Chi_Minh'))
+            # Ultimate fallback: use system timezone
+            return datetime.fromtimestamp(os.path.getctime(file_path), tz=_get_system_tz())
 
 def compute_chunk_interval(ctimes: List[float]) -> int:
     """Calculate median time interval between video files for processing estimation.
@@ -202,7 +207,7 @@ def scan_files(root_path: str, video_root: str, time_threshold: Optional[datetim
     video_files = []
     file_ctimes = []
     video_extensions = ('.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv')
-    current_date = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')).date()
+    current_date = datetime.now(_get_system_tz()).date()
     
     # Performance counters for diagnostic logging
     skipped_by_ctime = 0
@@ -230,13 +235,13 @@ def scan_files(root_path: str, video_root: str, time_threshold: Optional[datetim
                 except Exception as e:
                     ffprobe_errors += 1
                     logger.warning(f"Enhanced creation time extraction failed for {file_path}: {e}")
-                    # Fallback to filesystem creation time with user timezone
+                    # Fallback to filesystem creation time with system timezone
                     try:
-                        user_timezone = ZoneInfo('Asia/Ho_Chi_Minh')
+                        user_timezone = _get_system_tz()
                         file_ctime = datetime.fromtimestamp(os.path.getctime(file_path), tz=user_timezone)
                     except Exception:
                         # Ultimate fallback
-                        file_ctime = datetime.fromtimestamp(os.path.getctime(file_path), tz=ZoneInfo('Asia/Ho_Chi_Minh'))
+                        file_ctime = datetime.fromtimestamp(os.path.getctime(file_path), tz=_get_system_tz())
 
                 logger.debug(f"Checking file {file_path}, ctime={file_ctime}, max_ctime={max_ctime}")
                 
@@ -263,18 +268,18 @@ def scan_files(root_path: str, video_root: str, time_threshold: Optional[datetim
                     try:
                         # Ensure file_ctime is timezone-aware
                         if file_ctime.tzinfo is None:
-                            # Assume naive datetime is in user's timezone
-                            file_ctime_local = file_ctime.replace(tzinfo=ZoneInfo('Asia/Ho_Chi_Minh'))
+                            # Assume naive datetime is in system timezone
+                            file_ctime_local = file_ctime.replace(tzinfo=_get_system_tz())
                         else:
-                            # Convert to user's local timezone
-                            file_ctime_local = file_ctime.astimezone(ZoneInfo('Asia/Ho_Chi_Minh'))
-                        
+                            # Convert to system timezone
+                            file_ctime_local = file_ctime.astimezone(_get_system_tz())
+
                         file_time = file_ctime_local.time()
-                        
-                        # Working hours comparison in user's local time
+
+                        # Working hours comparison in system time
                         if not (from_time <= file_time <= to_time):
                             skipped_by_ctime += 1
-                            user_tz_name = "Asia/Ho_Chi_Minh"
+                            user_tz_name = get_system_timezone_from_db()
                             logger.debug(
                                 f"Skipped file {file_path} due to time outside working hours: "
                                 f"{file_time} (local time in {user_tz_name}) not in "
@@ -298,7 +303,7 @@ def scan_files(root_path: str, video_root: str, time_threshold: Optional[datetim
 
         # Track camera directory modification times if requested
         if camera_ctime_map is not None:
-            user_timezone = ZoneInfo('Asia/Ho_Chi_Minh')
+            user_timezone = _get_system_tz()
             dir_ctime = datetime.fromtimestamp(os.path.getctime(root), tz=user_timezone)
             camera_ctime_map[camera_name] = max(camera_ctime_map.get(camera_name, 0), dir_ctime.timestamp())
 
@@ -357,8 +362,8 @@ def save_files_to_db(conn: Any, video_files: List[str], file_ctimes: List[float]
         else:
             absolute_path = os.path.join(video_root, file_path)
             
-        # Convert timestamp to datetime object with user timezone
-        user_timezone = ZoneInfo('Asia/Ho_Chi_Minh')
+        # Convert timestamp to datetime object with system timezone
+        user_timezone = _get_system_tz()
         file_ctime_dt = datetime.fromtimestamp(file_ctime, tz=user_timezone)
         
         # Set priority (custom processing gets higher priority)
@@ -380,7 +385,7 @@ def save_files_to_db(conn: Any, video_files: List[str], file_ctimes: List[float]
             days_val,             # days
             custom_path,          # custom_path
             absolute_path,        # file_path
-            datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')),  # created_at
+            datetime.now(_get_system_tz()),  # created_at
             file_ctime_dt,        # ctime
             priority,             # priority
             camera_name,          # camera_name
@@ -414,7 +419,7 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
 
                 cursor.execute('SELECT MAX(ctime) FROM file_list')
                 last_ctime = cursor.fetchone()[0]
-                max_ctime = datetime.fromisoformat(last_ctime.replace('Z', '+00:00')) if last_ctime else datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')).replace(year=1900)
+                max_ctime = datetime.fromisoformat(last_ctime.replace('Z', '+00:00')) if last_ctime else datetime.now(_get_system_tz()).replace(year=1900)
 
                 cursor.execute("SELECT input_path, selected_cameras FROM processing_config WHERE id = 1")
                 result = cursor.fetchone()
@@ -443,7 +448,7 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
 
                     # Get timezone configuration for logging context
                     configured_timezone = general_info[3] if len(general_info) > 3 and general_info[3] else None
-                    user_timezone_name = "Asia/Ho_Chi_Minh"
+                    user_timezone_name = get_system_timezone_from_db()
 
                     # Log working hours configuration with timezone context
                     if from_time and to_time:
@@ -458,7 +463,7 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
                             )
                 else:
                     working_days, from_time, to_time = [], None, None
-                    user_timezone_name = "Asia/Ho_Chi_Minh"
+                    user_timezone_name = get_system_timezone_from_db()
 
                 logger.info(
                     f"Scanning configuration - Working days: {working_days}, "
@@ -488,14 +493,14 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
                     working_days, from_time, to_time, selected_cameras, strict_date_match=False
                 )
         elif scan_action == "first" and days:
-            time_threshold = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')) - timedelta(days=days)
+            time_threshold = datetime.now(_get_system_tz()) - timedelta(days=days)
             video_files, file_ctimes = scan_files(
                 video_root, video_root, time_threshold, None, False, None,
                 working_days, from_time, to_time, selected_cameras, strict_date_match=False
             )
         else:  # default
             scan_days = default_scan_days if default_scan_days is not None else SchedulerConfig.DEFAULT_SCAN_DAYS
-            time_threshold = datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')) - timedelta(days=scan_days) if is_initial_scan else datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')) - timedelta(days=1)
+            time_threshold = datetime.now(_get_system_tz()) - timedelta(days=scan_days) if is_initial_scan else datetime.now(_get_system_tz()) - timedelta(days=1)
             restrict_to_current_date = not is_initial_scan
             video_files, file_ctimes = scan_files(
                 video_root, video_root, time_threshold, max_ctime, restrict_to_current_date, camera_ctime_map,

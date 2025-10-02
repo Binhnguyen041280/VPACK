@@ -30,6 +30,7 @@ from zoneinfo import ZoneInfo
 from typing import List, Tuple, Optional
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.config.logging_config import get_logger
+from modules.utils.simple_timezone import get_system_timezone_from_db
 from .db_sync import db_rwlock, frame_sampler_event, event_detector_event
 from .file_lister import run_file_scan
 from .program_runner import start_frame_sampler_thread, start_event_detector_thread
@@ -291,9 +292,9 @@ class BatchScheduler:
                                     if created_at_utc.tzinfo != timezone.utc:
                                         created_at_utc = created_at_utc.astimezone(timezone.utc)
                                 else:
-                                    # Assume naive datetime is in user's local timezone
+                                    # Assume naive datetime is in system timezone
                                     created_at_naive = datetime.fromisoformat(created_at_str)
-                                    created_at_utc = created_at_naive.replace(tzinfo=ZoneInfo('Asia/Ho_Chi_Minh')).astimezone(timezone.utc)
+                                    created_at_utc = created_at_naive.replace(tzinfo=ZoneInfo(get_system_timezone_from_db())).astimezone(timezone.utc)
                             except (ValueError, TypeError) as e:
                                 logger.warning(f"Failed to parse created_at '{created_at_str}' for {file_path}: {e}")
                                 created_at_utc = datetime.min.replace(tzinfo=timezone.utc)
@@ -306,8 +307,8 @@ class BatchScheduler:
                                          ('timeout', file_path))
                             
                             # Log timeout with timezone context
-                            local_now = now_utc.astimezone(ZoneInfo('Asia/Ho_Chi_Minh'))
-                            local_created = created_at_utc.astimezone(ZoneInfo('Asia/Ho_Chi_Minh'))
+                            local_now = now_utc.astimezone(ZoneInfo(get_system_timezone_from_db()))
+                            local_created = created_at_utc.astimezone(ZoneInfo(get_system_timezone_from_db()))
                             
                             logger.warning(
                                 f"Timeout processing {file_path} after {self.timeout_seconds}s "
