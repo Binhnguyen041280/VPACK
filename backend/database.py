@@ -227,8 +227,9 @@ def update_database():
                         timezone_iana_name, timezone_display_name, timezone_utc_offset_hours,
                         timezone_format_type, timezone_validated, timezone_updated_at, language
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (1, "Vietnam", "Asia/Ho_Chi_Minh", "Alan_go", working_days, "07:00", "23:00",
+                """, (1, "Vietnam", "Asia/Ho_Chi_Minh", "Alan_go", working_days, "00:00", "00:00",
                       # Default timezone for first-time initialization - user can change via UI (Step 2)
+                      # Default time range 00:00-00:00 means 24/7 operation
                       "Asia/Ho_Chi_Minh", "Vietnam (Ho Chi Minh City)", 7.0,
                       "iana_standard", 1, datetime.now().isoformat(), "vi"))
 

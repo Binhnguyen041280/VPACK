@@ -276,8 +276,19 @@ def scan_files(root_path: str, video_root: str, time_threshold: Optional[datetim
 
                         file_time = file_ctime_local.time()
 
-                        # Working hours comparison in system time
-                        if not (from_time <= file_time <= to_time):
+                        # Working hours comparison with midnight crossing support
+                        # Examples: 00:00-00:00 (24h), 06:00-00:00 (6am-midnight), 22:00-06:00 (night shift)
+                        if from_time == to_time:
+                            # Special case: same start/end time means 24/7 operation
+                            time_in_range = True
+                        elif from_time < to_time:
+                            # Normal range: e.g., 08:00-17:00
+                            time_in_range = from_time <= file_time <= to_time
+                        else:
+                            # Crosses midnight: e.g., 22:00-06:00 or 06:00-00:00
+                            time_in_range = file_time >= from_time or file_time <= to_time
+
+                        if not time_in_range:
                             skipped_by_ctime += 1
                             user_tz_name = get_system_timezone_from_db()
                             logger.debug(
@@ -290,7 +301,15 @@ def scan_files(root_path: str, video_root: str, time_threshold: Optional[datetim
                         logger.warning(f"Failed to apply timezone-aware working hours filter for {file_path}: {e}")
                         # Fallback to naive time comparison for backward compatibility
                         file_time = file_ctime.time() if hasattr(file_ctime, 'time') else file_ctime
-                        if not (from_time <= file_time <= to_time):
+
+                        if from_time == to_time:
+                            time_in_range = True
+                        elif from_time < to_time:
+                            time_in_range = from_time <= file_time <= to_time
+                        else:
+                            time_in_range = file_time >= from_time or file_time <= to_time
+
+                        if not time_in_range:
                             skipped_by_ctime += 1
                             logger.debug(f"Skipped file {file_path} due to time outside working hours (fallback): {file_time}")
                             continue
