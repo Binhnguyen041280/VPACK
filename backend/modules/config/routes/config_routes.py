@@ -1209,9 +1209,19 @@ def update_step_video_source():
             # FIXED: Create separate camera_paths for video_sources vs processing_config
             video_sources_camera_paths = {}  # Google Drive folder IDs for download
             processing_config_camera_paths = {}  # Local sync paths for processing
-            
+
             # Build temporary source name for working path calculation
-            temp_source_name = f"CloudStorage_{int(datetime.now().timestamp())}"
+            # FIX: Reuse existing cloud source name to ensure single folder
+            from modules.video_sources.video_source_repository import get_active_source
+            active_source = get_active_source()
+            if active_source and active_source['source_type'] == 'cloud':
+                # Reuse existing cloud source name → same folder
+                temp_source_name = active_source['name']
+                print(f"♻️  Reusing existing cloud source: {temp_source_name}")
+            else:
+                # First time setup - create new timestamp-based name
+                temp_source_name = f"CloudStorage_{int(datetime.now().timestamp())}"
+                print(f"🆕 Creating new cloud source: {temp_source_name}")
             
             # Determine input path for cloud storage first
             if selected_tree_folders and len(selected_tree_folders) > 0:

@@ -62,8 +62,10 @@ class FrameSamplerTrigger:
                 self.log_dir = os.path.join(get_logs_dir(), "frame_processing")
                 os.makedirs(self.log_dir, exist_ok=True)
                 # Use zoneinfo for user timezone instead of hardcoded parsing
-                self.video_timezone = ZoneInfo("Asia/Ho_Chi_Minh")
-                logging.info(f"Using user timezone: Asia/Ho_Chi_Minh")
+                from modules.utils.simple_timezone import get_system_timezone_from_db
+                system_tz_str = get_system_timezone_from_db()
+                self.video_timezone = ZoneInfo(system_tz_str)
+                logging.info(f"Using system timezone from config: {system_tz_str}")
                 cursor.execute("SELECT frame_rate, frame_interval, min_packing_time FROM processing_config WHERE id = 1")
                 result = cursor.fetchone()
                 self.fps, self.frame_interval, self.min_packing_time = result if result else (30, 5, 5)
@@ -162,22 +164,11 @@ class FrameSamplerTrigger:
             datetime: Timezone-aware video start time
         """
         try:
-            # Provide database access to timezone detector for camera-specific timezones
-            if camera_name:
-                with db_rwlock.gen_rlock():
-                    with safe_db_connection() as conn:
-                        cursor = conn.cursor()
-                        # Let the timezone detector get camera-specific timezone settings
-                        # Using standard timezone - all cameras use Vietnam timezone
-                        camera_timezone = ZoneInfo('Asia/Ho_Chi_Minh')
-                        if camera_timezone:
-                            logging.info(f"Found camera-specific timezone for {camera_name}: {camera_timezone}")
-            
             # Use enhanced timezone detection with camera context
             # Simple timezone-aware creation time using file system timestamp
             import os
             file_timestamp = os.path.getctime(video_file)
-            timezone_aware_time = datetime.fromtimestamp(file_timestamp, tz=ZoneInfo('Asia/Ho_Chi_Minh'))
+            timezone_aware_time = datetime.fromtimestamp(file_timestamp, tz=self.video_timezone)
             logging.info(f"Video start time with timezone detection: {timezone_aware_time}")
             return timezone_aware_time
             

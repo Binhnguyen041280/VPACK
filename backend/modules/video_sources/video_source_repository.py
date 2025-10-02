@@ -141,21 +141,26 @@ class VideoSourceRepository:
             return None
     
     def _cleanup_source_relations(self, cursor, source_id: int):
-        """Clean up related tables for a specific source"""
+        """Clean up related tables for a specific source
+
+        MODIFIED: Preserve download history to avoid re-downloading files
+        """
         try:
-            # Clean camera configurations
+            # Clean camera configurations (will be recreated with new config)
             cursor.execute("DELETE FROM camera_configurations WHERE source_id = ?", (source_id,))
+            self.logger.info(f"✅ Cleaned camera_configurations for source_id={source_id}")
 
-            # Clean sync status
+            # Clean sync status (will be recreated)
             cursor.execute("DELETE FROM sync_status WHERE source_id = ?", (source_id,))
+            self.logger.info(f"✅ Cleaned sync_status for source_id={source_id}")
 
-            # Clean downloaded files
-            cursor.execute("DELETE FROM downloaded_files WHERE source_id = ?", (source_id,))
+            # PRESERVE downloaded files - avoid re-downloading when config changes
+            # cursor.execute("DELETE FROM downloaded_files WHERE source_id = ?", (source_id,))
+            self.logger.info(f"♻️  PRESERVED downloaded_files for source_id={source_id} (avoid re-download)")
 
-            # Clean last downloaded file
-            cursor.execute("DELETE FROM last_downloaded_file WHERE source_id = ?", (source_id,))
-
-            self.logger.info(f"✅ Cleaned up related tables for source_id={source_id}")
+            # PRESERVE last downloaded tracking - continue from where we left off
+            # cursor.execute("DELETE FROM last_downloaded_file WHERE source_id = ?", (source_id,))
+            self.logger.info(f"♻️  PRESERVED last_downloaded_file for source_id={source_id}")
 
         except Exception as e:
             self.logger.error(f"⚠️ Error cleaning up source relations: {e}")

@@ -53,8 +53,10 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
         video_path = header.split("Video_File: ")[1].split(",")[0].strip()
         # Parse start_time with timezone awareness
         start_time_dt = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
-        # Assume start_time_str is in local timezone from video metadata
-        user_timezone = ZoneInfo("Asia/Ho_Chi_Minh")
+        # Get system timezone from config instead of hardcoding
+        from modules.utils.simple_timezone import get_system_timezone_from_db
+        system_tz_str = get_system_timezone_from_db()
+        user_timezone = ZoneInfo(system_tz_str)
         start_time_dt = start_time_dt.replace(tzinfo=user_timezone)
         # Convert to UTC for consistent storage
         start_time_dt_utc = start_time_dt.astimezone(timezone.utc)
