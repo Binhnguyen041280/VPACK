@@ -890,13 +890,14 @@ def cloud_oauth_callback():
             # Create user profile using existing account module
             try:
                 from modules.account.account import create_user_profile
-                
+
                 user_profile_data = {
                     'email': user_info['email'],
                     'name': user_info.get('name', 'Unknown User'),
-                    'picture': user_info.get('photo_url')
+                    'picture': user_info.get('photo_url'),
+                    'authentication_method': 'google_drive'  # Mark as Google Drive auth
                 }
-                
+
                 create_success = create_user_profile(user_profile_data)
                 
                 if create_success:

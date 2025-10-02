@@ -299,29 +299,30 @@ function Chat(props: { apiKeyApp: string }) {
     checkExistingGmailAuth();
   }, []);
 
-  // Check if user has completed configuration and redirect to trace page
+  // Check if user has NOT completed configuration and show camera config page
   useEffect(() => {
     // Only check after component has mounted (client-side only)
     if (typeof window !== 'undefined') {
       const userConfigured = localStorage.getItem('userConfigured');
       const configParam = searchParams.get('config');
-      
+
       // Skip redirect if user intentionally navigated to Camera Config
       if (configParam === 'camera') {
         console.log('🎯 User navigated to Camera Config - skipping auto-redirect');
         setIsCheckingConfig(false); // Allow render
         return;
       }
-      
-      // If user has completed configuration, redirect to trace page
-      if (userConfigured === 'true') {
-        console.log('🔄 Redirecting configured user to trace page...');
-        router.push('/trace');
-        return; // Don't set isCheckingConfig to false, we're redirecting
+
+      // If user has NOT completed configuration, stay on camera config page (no redirect)
+      if (userConfigured !== 'true') {
+        console.log('🎯 First-time user - showing camera config page...');
+        setIsCheckingConfig(false); // Allow render
+        return;
       }
-      
-      // First-time user or no config - allow normal render
-      setIsCheckingConfig(false);
+
+      // If user has completed configuration, redirect to trace page
+      console.log('🔄 Redirecting configured user to trace page...');
+      router.push('/trace');
     }
   }, [router, searchParams]);
 
