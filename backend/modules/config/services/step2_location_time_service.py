@@ -24,15 +24,20 @@ from ..shared import (
 
 class Step2LocationTimeService:
     """Service class for Step 2 Location/Time configuration operations."""
-    
+
     # Default values
     DEFAULT_COUNTRY = "Vietnam"
-    DEFAULT_TIMEZONE = "Asia/Ho_Chi_Minh"
     DEFAULT_LANGUAGE = "English (en-US)"
     DEFAULT_WORKING_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     DEFAULT_FROM_TIME = "07:00"
     DEFAULT_TO_TIME = "23:00"
-    
+
+    @property
+    def DEFAULT_TIMEZONE(self):
+        """Get default timezone from DB config."""
+        from modules.utils.simple_timezone import get_system_timezone_from_db
+        return get_system_timezone_from_db()
+
     def __init__(self):
         """Initialize service with timezone validator."""
         # Using simple_validate_timezone function instead of class

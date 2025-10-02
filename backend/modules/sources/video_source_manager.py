@@ -4,12 +4,14 @@ import json
 import logging
 import uuid
 from datetime import datetime
-import pytz
+from zoneinfo import ZoneInfo
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import db_rwlock
+from modules.utils.simple_timezone import get_system_timezone_from_db
 
-# Cấu hình múi giờ Việt Nam - ĐỒNG NHẤT VỚI FILE_LISTER
-VIETNAM_TZ = pytz.timezone('Asia/Ho_Chi_Minh')
+def _get_system_tz():
+    """Get system timezone from database configuration."""
+    return ZoneInfo(get_system_timezone_from_db())
 
 class VideoSourceManager:
     def __init__(self):
@@ -239,11 +241,11 @@ class VideoSourceManager:
                     if cursor.fetchone()[0] > 0:
                         return False, f"Source name '{name}' already exists"
                     
-                    # ✅ FIXED: Use VIETNAM_TZ for created_at - ĐỒNG NHẤT VỚI FILE_LISTER
+                    # ✅ FIXED: Use system timezone for created_at
                     cursor.execute("""
                         INSERT INTO video_sources (source_type, name, path, config, active, created_at)
                         VALUES (?, ?, ?, ?, 1, ?)
-                    """, (source_type, name, path, config_json, datetime.now(VIETNAM_TZ)))
+                    """, (source_type, name, path, config_json, datetime.now(_get_system_tz())))
                     
                     source_id = cursor.lastrowid
                     

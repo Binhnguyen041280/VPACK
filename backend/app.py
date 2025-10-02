@@ -11,6 +11,7 @@ import atexit
 import sqlite3
 import queue
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 # Load environment variables
 load_dotenv()
@@ -666,12 +667,21 @@ def get_processing_status():
         }), 500
 
 # ==================== APPLICATION LIFECYCLE ====================
+def _get_system_tz():
+    """Get system timezone from database configuration."""
+    try:
+        from modules.utils.simple_timezone import get_system_timezone_from_db
+        return ZoneInfo(get_system_timezone_from_db())
+    except:
+        # Fallback to UTC if helper not available during shutdown
+        return timezone.utc
+
 def exit_handler():
     """Graceful shutdown handler"""
     try:
         with safe_db_connection(timeout=5) as conn:
             cursor = conn.cursor()
-            last_stop_time = datetime.now(tz=timezone(timedelta(hours=7))).strftime('%Y-%m-%d %H:%M:%S')
+            last_stop_time = datetime.now(tz=_get_system_tz()).strftime('%Y-%m-%d %H:%M:%S')
             cursor.execute("""
                 INSERT OR REPLACE INTO program_status (key, value)
                 VALUES ('last_stop_time', ?)

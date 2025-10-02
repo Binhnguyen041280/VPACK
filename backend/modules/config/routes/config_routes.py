@@ -537,10 +537,11 @@ def _save_general_info_to_db(conn, country, timezone_input, brand_name, working_
 @config_routes_bp.route('/global-timezone', methods=['GET'])
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def get_global_timezone():
-    """Get global timezone configuration (hardcoded to Asia/Ho_Chi_Minh)."""
+    """Get global timezone configuration from database."""
     try:
-        # Hardcoded timezone for Vietnam
-        default_timezone = "Asia/Ho_Chi_Minh"
+        # Get timezone from database configuration
+        from modules.utils.simple_timezone import get_system_timezone_from_db
+        default_timezone = get_system_timezone_from_db()
         utc_offset = get_timezone_offset(default_timezone) or 7
         
         return jsonify({
@@ -561,24 +562,26 @@ def get_global_timezone():
 @config_routes_bp.route('/global-timezone', methods=['POST'])
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def set_global_timezone():
-    """Set global timezone configuration (validates and logs but remains hardcoded)."""
+    """Set global timezone configuration."""
     try:
         data = request.json
         if not data or 'timezone' not in data:
             return jsonify({"error": "timezone field is required"}), 400
-        
+
         timezone_iana = data['timezone']
-        
+
         # Validate the provided timezone
         validation_result = simple_validate_timezone(timezone_iana)
-        
+
         if validation_result['valid']:
+            from modules.utils.simple_timezone import get_system_timezone_from_db
+            current_timezone = get_system_timezone_from_db()
             print(f"✅ Timezone validation passed for: {timezone_iana}")
-            print("⚠️ Note: Global timezone remains hardcoded to Asia/Ho_Chi_Minh")
-            
+            print(f"ℹ️  Current system timezone: {current_timezone}")
+
             return jsonify({
-                "message": "Global timezone validated (remains hardcoded to Asia/Ho_Chi_Minh)",
-                "timezone": "Asia/Ho_Chi_Minh",
+                "message": "Global timezone validated",
+                "timezone": current_timezone,
                 "requested_timezone": timezone_iana,
                 "validation_status": "valid"
             }), 200
@@ -596,17 +599,19 @@ def set_global_timezone():
 @config_routes_bp.route('/global-timezone/migrate', methods=['POST'])
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def migrate_to_global_timezone():
-    """Migration endpoint (no-op since timezone is hardcoded)."""
+    """Migration endpoint for timezone changes."""
     try:
-        print("📝 Migration requested - timezone remains hardcoded to Asia/Ho_Chi_Minh")
-        
+        from modules.utils.simple_timezone import get_system_timezone_from_db
+        current_timezone = get_system_timezone_from_db()
+        print(f"📝 Migration requested - current system timezone: {current_timezone}")
+
         migration_result = {
             'success': True,
-            'message': 'Migration completed (timezone remains hardcoded)',
-            'source_timezone': 'Asia/Ho_Chi_Minh',
-            'target_timezone': 'Asia/Ho_Chi_Minh',
+            'message': 'Migration completed (using system timezone)',
+            'source_timezone': current_timezone,
+            'target_timezone': current_timezone,
             'records_migrated': 0,
-            'hardcoded_mode': True
+            'system_managed': True
         }
         
         return jsonify(migration_result), 200
@@ -819,11 +824,13 @@ def get_step_location_time():
                     except json.JSONDecodeError:
                         working_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
                     
+                    from modules.utils.simple_timezone import get_system_timezone_from_db
+                    default_tz = get_system_timezone_from_db()
                     return jsonify({
                         "success": True,
                         "data": {
                             "country": country or "Vietnam",
-                            "timezone": timezone or "Asia/Ho_Chi_Minh",
+                            "timezone": timezone or default_tz,
                             "language": language or "English (en-US)",
                             "working_days": working_days,
                             "from_time": from_time or "07:00",
@@ -832,11 +839,13 @@ def get_step_location_time():
                     }), 200
                 else:
                     # Return defaults if no record exists in has_language_column case
+                    from modules.utils.simple_timezone import get_system_timezone_from_db
+                    default_tz = get_system_timezone_from_db()
                     return jsonify({
                         "success": True,
                         "data": {
                             "country": "Vietnam",
-                            "timezone": "Asia/Ho_Chi_Minh", 
+                            "timezone": default_tz,
                             "language": "English (en-US)",
                             "working_days": ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
                             "from_time": "07:00",
@@ -860,11 +869,13 @@ def get_step_location_time():
                     except json.JSONDecodeError:
                         working_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
                     
+                    from modules.utils.simple_timezone import get_system_timezone_from_db
+                    default_tz = get_system_timezone_from_db()
                     return jsonify({
                         "success": True,
                         "data": {
                             "country": country or "Vietnam",
-                            "timezone": timezone or "Asia/Ho_Chi_Minh",
+                            "timezone": timezone or default_tz,
                             "language": language or "English (en-US)",
                             "working_days": working_days,
                             "from_time": from_time or "07:00",
@@ -873,11 +884,13 @@ def get_step_location_time():
                     }), 200
                 else:
                     # Return defaults if no record exists
+                    from modules.utils.simple_timezone import get_system_timezone_from_db
+                    default_tz = get_system_timezone_from_db()
                     return jsonify({
                         "success": True,
                         "data": {
                             "country": "Vietnam",
-                            "timezone": "Asia/Ho_Chi_Minh", 
+                            "timezone": default_tz,
                             "language": "English (en-US)",
                             "working_days": ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
                             "from_time": "07:00",
@@ -964,7 +977,9 @@ def update_step_location_time():
                     except json.JSONDecodeError:
                         current_working_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
                 else:
-                    current_country, current_timezone, current_language = "Vietnam", "Asia/Ho_Chi_Minh", "English (en-US)"
+                    from modules.utils.simple_timezone import get_system_timezone_from_db
+                    default_tz = get_system_timezone_from_db()
+                    current_country, current_timezone, current_language = "Vietnam", default_tz, "English (en-US)"
                     current_working_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
                     current_from_time, current_to_time = "07:00", "23:00"
                     current_working_days_json = json.dumps(current_working_days)
@@ -983,7 +998,9 @@ def update_step_location_time():
                     except json.JSONDecodeError:
                         current_working_days = []
                 else:
-                    current_country, current_timezone = "Vietnam", "Asia/Ho_Chi_Minh"
+                    from modules.utils.simple_timezone import get_system_timezone_from_db
+                    default_tz = get_system_timezone_from_db()
+                    current_country, current_timezone = "Vietnam", default_tz
                     current_working_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
                     current_from_time, current_to_time = "07:00", "23:00"
             

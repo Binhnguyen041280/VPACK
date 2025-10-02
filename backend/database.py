@@ -228,7 +228,8 @@ def update_database():
                         timezone_format_type, timezone_validated, timezone_updated_at, language
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (1, "Vietnam", "Asia/Ho_Chi_Minh", "Alan_go", working_days, "07:00", "23:00",
-                      "Asia/Ho_Chi_Minh", "Vietnam (Ho Chi Minh City)", 7.0, 
+                      # Default timezone for first-time initialization - user can change via UI (Step 2)
+                      "Asia/Ho_Chi_Minh", "Vietnam (Ho Chi Minh City)", 7.0,
                       "iana_standard", 1, datetime.now().isoformat(), "vi"))
 
             # ==================== PLATFORM MANAGEMENT TABLES ====================
@@ -336,10 +337,13 @@ def update_database():
             if cursor.fetchone()[0] == 0:
                 current_utc_timestamp = int(datetime.now().timestamp() * 1000)
                 cursor.execute("""
-                    INSERT INTO timezone_metadata 
+                    INSERT INTO timezone_metadata
                     (system_timezone, migration_version, migration_timestamp, utc_storage_enabled, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?)
-                """, ("Asia/Ho_Chi_Minh", 1, current_utc_timestamp, True, current_utc_timestamp, current_utc_timestamp))
+                """, (
+                    # Default timezone for first-time initialization - sync with general_info
+                    "Asia/Ho_Chi_Minh", 1, current_utc_timestamp, True, current_utc_timestamp, current_utc_timestamp
+                ))
                 print("✅ Initialized timezone_metadata table")
             
             # 10. Camera Configs Table (for timezone-specific camera configurations)
@@ -707,9 +711,10 @@ def update_database():
                 print(f"🔄 Migrating {len(rows_to_migrate)} existing timezone records...")
                 for row_id, current_timezone, iana_name in rows_to_migrate:
                     try:
-                        # Simple migration logic for common cases
+                        # Migration fallback logic for common UTC offset formats
+                        # Note: These are safe defaults for legacy data migration only
                         if current_timezone == "UTC+7":
-                            iana_timezone = "Asia/Ho_Chi_Minh"
+                            iana_timezone = "Asia/Ho_Chi_Minh"  # Most common UTC+7 timezone
                             display_name = "Vietnam (Ho Chi Minh City)"
                             offset_hours = 7.0
                             format_type = "utc_offset"
@@ -724,7 +729,8 @@ def update_database():
                             offset_hours = 9.0
                             format_type = "utc_offset"
                         else:
-                            # Default fallback
+                            # Default fallback for unknown legacy formats
+                            # Safe default - user should update via UI if incorrect
                             iana_timezone = "Asia/Ho_Chi_Minh"
                             display_name = "Vietnam (Ho Chi Minh City)"
                             offset_hours = 7.0
