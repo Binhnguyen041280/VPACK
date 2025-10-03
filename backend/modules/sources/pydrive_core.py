@@ -617,11 +617,12 @@ class PyDriveCore:
 
                     if db_path:
                         # Trigger file_lister scan on cloud staging directory
+                        # FIXED: Use 'default' mode for automated cloud sync (not 'custom')
                         list_files(
                             video_root=base_path,      # Cloud staging path
-                            scan_action='custom',      # Custom scan mode
-                            custom_path=base_path,     # Scan this specific path
-                            days=1,                    # Only recent files
+                            scan_action='default',     # Default mode for automated sync
+                            custom_path=None,          # Not needed for default mode
+                            days=None,                 # Use incremental scan
                             db_path=db_path,
                             is_initial_scan=False
                         )

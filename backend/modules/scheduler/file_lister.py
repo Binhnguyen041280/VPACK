@@ -412,14 +412,36 @@ def save_files_to_db(conn: Any, video_files: List[str], file_ctimes: List[float]
             0                     # is_processed
         ))
 
-    # Perform batch database insertion
+    # Perform batch database insertion with duplicate check
     with conn:
         cursor = conn.cursor()
-        cursor.executemany('''
-            INSERT INTO file_list (program_type, days, custom_path, file_path, created_at, ctime, priority, camera_name, status, is_processed)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', insert_data)
-        logger.info(f"Inserted {len(insert_data)} files into file_list table")
+
+        # FIXED: Check for duplicates before inserting
+        inserted_count = 0
+        skipped_count = 0
+
+        for record in insert_data:
+            file_path = record[3]  # file_path is 4th element
+
+            # Check if file already exists and is pending/processing
+            cursor.execute("""
+                SELECT id FROM file_list
+                WHERE file_path = ?
+                AND (status IN ('pending', 'Processing', 'frame sampling...') OR is_processed = 0)
+            """, (file_path,))
+
+            if cursor.fetchone():
+                skipped_count += 1
+                logger.debug(f"Skipping duplicate file: {file_path}")
+            else:
+                # File not in queue, safe to insert
+                cursor.execute('''
+                    INSERT INTO file_list (program_type, days, custom_path, file_path, created_at, ctime, priority, camera_name, status, is_processed)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', record)
+                inserted_count += 1
+
+        logger.info(f"Inserted {inserted_count} new files, skipped {skipped_count} duplicates")
 
 def list_files(video_root, scan_action, custom_path, days, db_path, default_scan_days=None, camera_ctime_map=None, is_initial_scan=False):
     try:

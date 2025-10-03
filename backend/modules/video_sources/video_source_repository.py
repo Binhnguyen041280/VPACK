@@ -105,8 +105,8 @@ class VideoSourceRepository:
                     cursor.execute("ROLLBACK")
                     return None
 
-                # STEP 3: Clean up related tables for this source
-                self._cleanup_source_relations(cursor, target_source_id)
+                # STEP 3: Clean up related tables for this source (with smart email detection)
+                self._cleanup_source_relations(cursor, target_source_id, source_data)
 
                 # STEP 4: Initialize related tables for the updated source
                 self._initialize_source_relations(cursor, target_source_id, source_data)
@@ -140,27 +140,50 @@ class VideoSourceRepository:
                 pass
             return None
     
-    def _cleanup_source_relations(self, cursor, source_id: int):
+    def _cleanup_source_relations(self, cursor, source_id: int, new_source_data: Dict[str, Any] = None):
         """Clean up related tables for a specific source
 
-        MODIFIED: Preserve download history to avoid re-downloading files
+        MODIFIED: Smart cleanup based on email change detection
+        - Same email → Preserve download history (avoid re-download)
+        - Different email → Clean download history (new account)
         """
         try:
-            # Clean camera configurations (will be recreated with new config)
+            # Check if email is changing (different account)
+            email_changed = False
+            if new_source_data and new_source_data.get('source_type') == 'cloud':
+                new_email = new_source_data.get('config', {}).get('user_email', '')
+
+                # Get current source email
+                cursor.execute("SELECT config FROM video_sources WHERE id = ?", (source_id,))
+                result = cursor.fetchone()
+                if result and result[0]:
+                    try:
+                        old_config = json.loads(result[0])
+                        old_email = old_config.get('user_email', '')
+
+                        if old_email and new_email and old_email != new_email:
+                            email_changed = True
+                            self.logger.info(f"📧 Email changed: {old_email} → {new_email}")
+                    except:
+                        pass
+
+            # Always clean camera configurations (will be recreated with new config)
             cursor.execute("DELETE FROM camera_configurations WHERE source_id = ?", (source_id,))
             self.logger.info(f"✅ Cleaned camera_configurations for source_id={source_id}")
 
-            # Clean sync status (will be recreated)
+            # Always clean sync status (will be recreated)
             cursor.execute("DELETE FROM sync_status WHERE source_id = ?", (source_id,))
             self.logger.info(f"✅ Cleaned sync_status for source_id={source_id}")
 
-            # PRESERVE downloaded files - avoid re-downloading when config changes
-            # cursor.execute("DELETE FROM downloaded_files WHERE source_id = ?", (source_id,))
-            self.logger.info(f"♻️  PRESERVED downloaded_files for source_id={source_id} (avoid re-download)")
-
-            # PRESERVE last downloaded tracking - continue from where we left off
-            # cursor.execute("DELETE FROM last_downloaded_file WHERE source_id = ?", (source_id,))
-            self.logger.info(f"♻️  PRESERVED last_downloaded_file for source_id={source_id}")
+            # Smart cleanup for download history
+            if email_changed:
+                # Different email → Clean everything (new account, different files)
+                cursor.execute("DELETE FROM downloaded_files WHERE source_id = ?", (source_id,))
+                cursor.execute("DELETE FROM last_downloaded_file WHERE source_id = ?", (source_id,))
+                self.logger.info(f"🗑️  CLEANED download history (email changed to different account)")
+            else:
+                # Same email → Preserve download history (avoid re-download)
+                self.logger.info(f"♻️  PRESERVED download history (same email account)")
 
         except Exception as e:
             self.logger.error(f"⚠️ Error cleaning up source relations: {e}")

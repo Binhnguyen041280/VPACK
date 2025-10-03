@@ -1227,22 +1227,66 @@ def update_step_video_source():
             video_sources_camera_paths = {}  # Google Drive folder IDs for download
             processing_config_camera_paths = {}  # Local sync paths for processing
 
-            # Build temporary source name for working path calculation
-            # FIX: Reuse existing cloud source name to ensure single folder
+            # Build source name based on Gmail email from user_profiles
+            # FIXED: Use Gmail username (before @) to ensure single source per account
             from modules.video_sources.video_source_repository import get_active_source
-            active_source = get_active_source()
-            if active_source and active_source['source_type'] == 'cloud':
-                # Reuse existing cloud source name → same folder
-                temp_source_name = active_source['name']
-                print(f"♻️  Reusing existing cloud source: {temp_source_name}")
-            else:
-                # First time setup - create new timestamp-based name
+
+            # Get user email from user_profiles database
+            user_email = None
+            gmail_username = None
+
+            try:
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT gmail_address FROM user_profiles WHERE id = (SELECT MAX(id) FROM user_profiles)")
+                    result = cursor.fetchone()
+                    if result and result[0]:
+                        user_email = result[0]
+                        # Extract username (part before @)
+                        # binhnguyen041280@gmail.com -> binhnguyen041280
+                        gmail_username = user_email.split('@')[0] if '@' in user_email else user_email
+                        print(f"📧 Found Gmail: {user_email} → Username: {gmail_username}")
+            except Exception as e:
+                print(f"⚠️ Error getting email from user_profiles: {e}")
+
+            if not gmail_username:
+                print("⚠️ WARNING: No gmail_username found in user_profiles")
+                # Fallback to timestamp (should not happen if user is logged in)
                 temp_source_name = f"CloudStorage_{int(datetime.now().timestamp())}"
-                print(f"🆕 Creating new cloud source: {temp_source_name}")
+            else:
+                # Use Gmail username as folder name (clean, simple)
+                temp_source_name = f"CloudStorage_{gmail_username}"
+
+                # Check if we're updating the same email account
+                active_source = get_active_source()
+                if active_source and active_source['source_type'] == 'cloud':
+                    active_email = active_source.get('config', {}).get('user_email', '')
+                    if active_email == user_email:
+                        print(f"♻️  Same Gmail account: {user_email} → Reusing folder '{temp_source_name}'")
+                    else:
+                        print(f"🔄 Different Gmail: {active_email} → {user_email} → New folder '{temp_source_name}'")
+                else:
+                    print(f"🆕 First cloud setup for: {user_email} → Folder '{temp_source_name}'")
+
+                print(f"📁 Final source name: {temp_source_name}")
             
             # Determine input path for cloud storage first
+            # FIXED: Extract parent path (common root) instead of first camera path
             if selected_tree_folders and len(selected_tree_folders) > 0:
-                temp_input_path = selected_tree_folders[0].get('path', '')
+                first_camera_path = selected_tree_folders[0].get('path', '')
+
+                # Extract parent path by removing camera folder name from end
+                # Example: "/My Drive/.../VTrack_Test/Cloud_Cam1" → "/My Drive/.../VTrack_Test"
+                if first_camera_path and '/' in first_camera_path:
+                    path_parts = first_camera_path.rstrip('/').split('/')
+                    if len(path_parts) > 1:
+                        # Remove last part (camera folder name) to get parent
+                        temp_input_path = '/'.join(path_parts[:-1])
+                        print(f"🎯 Extracted parent path: {temp_input_path} (from {first_camera_path})")
+                    else:
+                        temp_input_path = first_camera_path
+                else:
+                    temp_input_path = first_camera_path or "google_drive://"
             else:
                 temp_input_path = "google_drive://"
             
