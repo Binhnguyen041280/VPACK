@@ -794,12 +794,35 @@ def initialize_auto_sync():
             logger.info("🚀 Starting auto-sync for enabled cloud sources...")
             result = pydrive_downloader.auto_start_all_enabled_sources()
             if result.get('success'):
-                logger.info(f"✅ Auto-sync completed: {result.get('started_count', 0)} sources started")
+                started_count = result.get('started_count', 0)
+                logger.info(f"✅ Auto-sync completed: {started_count} sources started")
+
+                # Force initial sync for active cloud sources after restart
+                if started_count > 0:
+                    logger.info("🚀 Performing initial sync after restart...")
+                    with safe_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            SELECT id, name FROM video_sources
+                            WHERE active = 1 AND source_type = 'cloud'
+                        """)
+                        sources = cursor.fetchall()
+
+                    for source_id, source_name in sources:
+                        try:
+                            logger.info(f"📥 Initial sync for {source_name} (ID: {source_id})...")
+                            sync_result = pydrive_downloader.force_sync_now(source_id)
+                            if sync_result.get('success'):
+                                logger.info(f"✅ Initial sync completed for {source_name}")
+                            else:
+                                logger.warning(f"⚠️ Initial sync failed for {source_name}: {sync_result.get('message')}")
+                        except Exception as e:
+                            logger.error(f"❌ Error in initial sync for {source_name}: {e}")
             else:
                 logger.error(f"❌ Auto-sync failed: {result.get('error', 'Unknown error')}")
         except Exception as e:
             logger.error(f"❌ Auto-sync startup failed: {e}")
-    
+
     threading.Thread(target=startup_sync, daemon=True).start()
     logger.info("🔄 Auto-sync initialization started")
 

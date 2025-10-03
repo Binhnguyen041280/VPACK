@@ -103,13 +103,13 @@ def update_step_timing():
         
         # Update configuration via service
         success, result = step5_timing_service.update_timing_config(data)
-        
+
         if not success:
             # Service returned validation or database error
             if "error" in result:
                 error_response = create_error_response(result["error"], "step5")
                 return jsonify(error_response), 400
-        
+
         # Format successful response
         response_data = {
             "min_packing_time": result["min_packing_time"],
@@ -121,19 +121,57 @@ def update_step_timing():
             "output_path": result["output_path"],
             "changed": result["changed"]
         }
-        
+
         response = create_success_response(
             response_data,
             result.get("message", "Timing configuration updated successfully"),
             changed=result["changed"]
         )
-        
+
         log_step_operation("5", "PUT timing success", {
             "changed": result["changed"],
             "min_packing_time": result["min_packing_time"],
             "max_packing_time": result["max_packing_time"]
         })
-        
+
+        # Force sync for active cloud sources after completing Step 5 configuration
+        try:
+            from modules.db_utils.safe_connection import safe_db_connection
+            from modules.sources.pydrive_downloader import pydrive_downloader
+            import logging
+            logger = logging.getLogger(__name__)
+
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, name FROM video_sources
+                    WHERE active = 1 AND source_type = 'cloud'
+                """)
+                sources = cursor.fetchall()
+
+            if sources:
+                logger.info("🚀 Step 5 completed - triggering initial sync for cloud sources...")
+                sync_results = []
+                for source_id, source_name in sources:
+                    try:
+                        logger.info(f"📥 Syncing {source_name} (ID: {source_id})...")
+                        sync_result = pydrive_downloader.force_sync_now(source_id)
+                        if sync_result.get('success'):
+                            logger.info(f"✅ Sync completed for {source_name}")
+                            sync_results.append({'source_id': source_id, 'name': source_name, 'success': True})
+                        else:
+                            logger.warning(f"⚠️ Sync failed for {source_name}: {sync_result.get('message')}")
+                            sync_results.append({'source_id': source_id, 'name': source_name, 'success': False, 'error': sync_result.get('message')})
+                    except Exception as e:
+                        logger.error(f"❌ Error syncing {source_name}: {e}")
+                        sync_results.append({'source_id': source_id, 'name': source_name, 'success': False, 'error': str(e)})
+
+                response['data']['cloud_sync_triggered'] = True
+                response['data']['cloud_sync_results'] = sync_results
+        except Exception as sync_error:
+            logger.error(f"❌ Error triggering cloud sync: {sync_error}")
+            response['data']['cloud_sync_triggered'] = False
+
         return jsonify(response), 200
         
     except Exception as e:

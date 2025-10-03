@@ -137,13 +137,30 @@ def update_step_video_source():
             f"Video source configuration updated successfully (ID: {result['videoSourceId']})",
             changed=result["changed"]
         )
-        
+
         log_step_operation("3", "PUT video-source success", {
             "video_source_id": result["videoSourceId"],
             "camera_count": len(result["selectedCameras"]),
             "source_type": source_type
         })
-        
+
+        # AUTO-START SYNC for cloud sources immediately after config
+        if source_type == 'cloud_storage':
+            try:
+                from modules.sources.pydrive_downloader import pydrive_downloader
+                video_source_id = result['videoSourceId']
+
+                print(f"🚀 Auto-starting sync for cloud source {video_source_id}...")
+                if pydrive_downloader.start_auto_sync(video_source_id):
+                    print(f"✅ Auto-sync started successfully for source {video_source_id}")
+                    response['data']['auto_sync_started'] = True
+                else:
+                    print(f"⚠️ Failed to start auto-sync for source {video_source_id}")
+                    response['data']['auto_sync_started'] = False
+            except Exception as sync_error:
+                print(f"❌ Error starting auto-sync: {sync_error}")
+                response['data']['auto_sync_started'] = False
+
         return jsonify(response), 200
         
     except Exception as e:
