@@ -112,7 +112,11 @@ class FrameSamplerTrigger:
         return packing_area, qr_trigger_area
 
     def _parse_roi(self, roi_raw, field_name, camera_name):
-        """Parse ROI from JSON string to (x,y,w,h) tuple."""
+        """Parse ROI from JSON string to (x,y,w,h) tuple.
+
+        Database format: [x1, y1, x2, y2] - coordinates of top-left and bottom-right corners
+        Returns: (x, y, w, h) - top-left corner and width/height
+        """
         if not roi_raw:
             return None
 
@@ -125,9 +129,13 @@ class FrameSamplerTrigger:
             # Handle JSON formats
             parsed = json.loads(roi_raw) if isinstance(roi_raw, str) else roi_raw
 
-            # JSON array: [x, y, w, h]
+            # JSON array: [x1, y1, x2, y2] - convert to (x, y, w, h)
             if isinstance(parsed, list) and len(parsed) == 4:
-                return tuple(parsed)
+                x1, y1, x2, y2 = parsed
+                x, y = x1, y1
+                w = x2 - x1
+                h = y2 - y1
+                return (x, y, w, h)
 
             # JSON object: {"x": x, "y": y, "w": w, "h": h}
             if isinstance(parsed, dict):
