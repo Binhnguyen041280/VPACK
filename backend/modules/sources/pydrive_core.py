@@ -600,40 +600,10 @@ class PyDriveCore:
             else:
                 message = 'No new files to download'
 
-            # PHASE 3: Trigger processing pipeline for downloaded files
+            # PHASE 3: Files ready for batch_scheduler processing
             if total_files > 0:
-                try:
-                    logger.info(f"🔄 Triggering processing scan for {total_files} new files in {base_path}")
-
-                    # Import file_lister
-                    from modules.scheduler.file_lister import list_files
-
-                    # Get database path from config
-                    with safe_db_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT db_path FROM processing_config WHERE id = 1")
-                        result = cursor.fetchone()
-                        db_path = result[0] if result else None
-
-                    if db_path:
-                        # Trigger file_lister scan on cloud staging directory
-                        # FIXED: Use 'default' mode for automated cloud sync (not 'custom')
-                        list_files(
-                            video_root=base_path,      # Cloud staging path
-                            scan_action='default',     # Default mode for automated sync
-                            custom_path=None,          # Not needed for default mode
-                            days=None,                 # Use incremental scan
-                            db_path=db_path,
-                            is_initial_scan=False
-                        )
-
-                        logger.info(f"✅ Processing scan completed - files added to queue")
-                    else:
-                        logger.warning("⚠️ No processing config found - files downloaded but not queued")
-
-                except Exception as e:
-                    logger.error(f"❌ Error triggering processing: {e}")
-                    logger.info("Files downloaded successfully but not added to processing queue")
+                logger.info(f"📥 {total_files} files downloaded to {base_path}")
+                logger.info(f"⏳ Files will be scanned by batch_scheduler within 60s")
 
             logger.info(f"🎯 SYNC [{source_id}] COMPLETED: {message}")
 
