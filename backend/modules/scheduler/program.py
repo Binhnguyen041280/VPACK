@@ -316,12 +316,6 @@ def program():
                         cursor = conn.cursor()
                         cursor.execute("UPDATE program_status SET value = ? WHERE key = ?", ("true", "first_run_completed"))
 
-                        # Also store completion timestamp for audit purposes
-                        cursor.execute(
-                            "INSERT OR REPLACE INTO program_status (key, value) VALUES (?, ?)",
-                            ("first_run_completed_at", completion_utc.isoformat())
-                        )
-
                 logger.info(
                     f"Transitioning to default mode (continuous scan) after First Run completion at "
                     f"{completion_time.strftime('%Y-%m-%d %H:%M:%S %Z')}"
