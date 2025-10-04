@@ -163,29 +163,9 @@ def select_qr_roi(video_path, camera_id, roi_frame_path, step="mvd"):
                 cv2.destroyAllWindows()
                 return {"success": False, "error": f"OpenCV selectROI error: {str(e)}"}
 
-            # Save image to CameraROI if valid ROI exists
-            if rois:
-                roi_frame_path_new = os.path.join(CAMERA_ROI_DIR, f"camera_{camera_id}_roi_MVD.jpg")
-                try:
-                    logger.debug(f"[MVD] Saving image with ROI to: {roi_frame_path_new}")
-                    ret = cv2.imwrite(roi_frame_path_new, current_frame)
-                    if not ret:
-                        logger.error(f"[MVD] Cannot save image at: {roi_frame_path_new}")
-                        cv2.destroyAllWindows()
-                        return {"success": False, "error": f"Cannot save image at {roi_frame_path_new}"}
-                    logger.info(f"[MVD] Saved frame with ROI to: {roi_frame_path_new}")
-                except Exception as e:
-                    logger.error(f"[MVD] OpenCV imwrite error: {str(e)}\n{traceback.format_exc()}")
-                    cv2.destroyAllWindows()
-                    return {"success": False, "error": f"OpenCV imwrite error: {str(e)}"}
-                break
-            else:
-                logger.debug("[MVD] Could not select valid ROI, redisplaying previous image to redraw.")
-                cv2.namedWindow("**** Error: Invalid ROI. Redraw QR code area ****", cv2.WINDOW_NORMAL)
-                cv2.imshow("**** Error: Invalid ROI. Redraw QR code area ****", current_frame)
-                cv2.waitKey(2000)
-                cv2.destroyAllWindows()
-                continue
+            # ROI coordinates are saved to database, no need to save image files
+            # All ROIs drawn successfully, exit the while True loop
+            break
 
         # Check packing image compatibility with MVD
         logger.debug(f"[MVD] Checking packing image compatibility with MVD: {roi_frame_path}")

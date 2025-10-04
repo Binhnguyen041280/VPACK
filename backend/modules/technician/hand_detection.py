@@ -136,24 +136,9 @@ def select_roi(video_path: str, camera_id: str, step: str = "packing") -> Dict[s
                 cv2.imshow("**** Packing Area Drawn ****", current_frame)
                 cv2.waitKey(500)
                 cv2.destroyAllWindows()
-                
-                # Save frame with ROI to CameraROI
-                if step == "packing":
-                    roi_frame_path = os.path.join(CAMERA_ROI_DIR, f"camera_{camera_id}_roi_packing.jpg")
-                else:  # step == "trigger"
-                    roi_frame_path = os.path.join(CAMERA_ROI_DIR, f"camera_{camera_id}_roi_trigger.jpg")
-                
-                ret = cv2.imwrite(roi_frame_path, current_frame)
-                if not ret:
-                    logging.error(f"Cannot save image at: {roi_frame_path}")
-                    return {"success": False, "error": f"Cannot save image at {roi_frame_path}"}
-                logging.debug(f"Saved frame with ROI to: {roi_frame_path}")
 
-                # Check if file was saved successfully
-                if not os.path.exists(roi_frame_path):
-                    logging.error(f"File does not exist after saving: {roi_frame_path}")
-                    return {"success": False, "error": f"File does not exist after saving: {roi_frame_path}"}
-                
+                # ROI coordinates are saved to database, no need to save image files
+
                 # If packing step, call detect_hands to check for hands
                 hand_detected = False
                 if step == "packing":
@@ -319,18 +304,10 @@ def finalize_roi(video_path: str, camera_id: str, rois: list) -> Dict[str, Any]:
                 # Add label for ROI area
                 cv2.putText(frame, roi_type.upper(), (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
 
-            # Create filename with timestamp and camera_id
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            final_roi_frame_path = os.path.join(CAMERA_ROI_DIR, f"camera_{camera_id}_roi_final_{timestamp}.jpg")
+            # ROI coordinates are saved to database, no need to save composite image file
+            logging.debug(f"ROI configuration completed for camera {camera_id}")
 
-            # Save composite image
-            ret = cv2.imwrite(final_roi_frame_path, frame)
-            if not ret:
-                logging.error(f"Cannot save composite image at: {final_roi_frame_path}")
-                return {"success": False, "error": f"Cannot save composite image at {final_roi_frame_path}"}
-            logging.debug(f"Saved composite image with all ROIs to: {final_roi_frame_path}")
-
-            return {"success": True, "final_roi_frame": os.path.relpath(final_roi_frame_path, BASE_DIR)}
+            return {"success": True}
         
         finally:
             cap.release()
