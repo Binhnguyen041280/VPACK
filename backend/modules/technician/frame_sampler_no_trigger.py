@@ -41,7 +41,7 @@ class FrameSamplerNoTrigger:
                 min_tracking_confidence=0.5
             )
         except AttributeError as e:
-            logging.error(f"MediaPipe import error: {e}")
+            self.logger.error(f"MediaPipe import error: {e}")
             raise ImportError("MediaPipe modules not found. Please reinstall MediaPipe.")
         # Initialize log queue and writer thread
         self.log_queue = queue.Queue()
@@ -56,18 +56,18 @@ class FrameSamplerNoTrigger:
     def setup_wechat_qr(self):
         for model_file in [DETECT_PROTO, DETECT_MODEL, SR_PROTO, SR_MODEL]:
             if not os.path.exists(model_file):
-                logging.error(f"Model file not found: {model_file}")
+                self.logger.error(f"Model file not found: {model_file}")
                 raise FileNotFoundError(f"Model file not found: {model_file}")
         try:
             # Using pattern from qr_detector.py with proper error handling
             self.qr_detector = cv2.wechat_qrcode_WeChatQRCode(DETECT_PROTO, DETECT_MODEL, SR_PROTO, SR_MODEL)  # type: ignore
-            logging.info("WeChat QRCode detector initialized")
+            self.logger.info("WeChat QRCode detector initialized")
         except Exception as e:
-            logging.error(f"Failed to initialize WeChat QRCode: {str(e)}")
+            self.logger.error(f"Failed to initialize WeChat QRCode: {str(e)}")
             self.qr_detector = None
 
     def load_config(self):
-        logging.info("Loading configuration from database")
+        self.logger.info("Loading configuration from database")
         with db_rwlock.gen_rlock():
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
@@ -85,41 +85,67 @@ class FrameSamplerNoTrigger:
                 from modules.utils.simple_timezone import get_system_timezone_from_db
                 system_tz_str = get_system_timezone_from_db()
                 self.video_timezone = ZoneInfo(system_tz_str)
-                logging.info(f"Using system timezone from config: {system_tz_str}")
+                self.logger.info(f"Using system timezone from config: {system_tz_str}")
                 cursor.execute("SELECT frame_rate, frame_interval, min_packing_time, motion_threshold, stable_duration_sec FROM processing_config WHERE id = 1")
                 result = cursor.fetchone()
                 self.fps, self.frame_interval, self.min_packing_time, self.motion_threshold, self.stable_duration_sec = result if result else (30, 5, 3, 0.1, 1.0)
-            logging.info(f"Config loaded: video_root={self.video_root}, output_path={self.output_path}, timezone={self.video_timezone}, fps={self.fps}, frame_interval={self.frame_interval}, min_packing_time={self.min_packing_time}, motion_threshold={self.motion_threshold}, stable_duration_sec={self.stable_duration_sec}")
+            self.logger.info(f"Config loaded: video_root={self.video_root}, output_path={self.output_path}, timezone={self.video_timezone}, fps={self.fps}, frame_interval={self.frame_interval}, min_packing_time={self.min_packing_time}, motion_threshold={self.motion_threshold}, stable_duration_sec={self.stable_duration_sec}")
 
     def get_packing_area(self, camera_name):
-        logging.info(f"Querying qr_mvd_area for camera {camera_name}")
+        """Get packing area ROI for traditional method.
+
+        Traditional method only uses packing_area (qr_trigger_area is NULL).
+
+        Returns:
+            tuple or None: (x, y, w, h) coordinates
+        """
+        self.logger.info(f"Querying packing_area for camera {camera_name}")
         with db_rwlock.gen_rlock():
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT qr_mvd_area FROM packing_profiles WHERE profile_name = ?", (camera_name,))
+                cursor.execute("""
+                    SELECT packing_area
+                    FROM packing_profiles
+                    WHERE profile_name = ?
+                """, (camera_name,))
                 result = cursor.fetchone()
-        if result and result[0]:
-            try:
-                qr_mvd_area = result[0]
-                if qr_mvd_area.startswith('(') and qr_mvd_area.endswith(')'):
-                    x, y, w, h = map(int, qr_mvd_area.strip('()').split(','))
-                else:
-                    parsed = json.loads(qr_mvd_area)
-                    if isinstance(parsed, list) and len(parsed) == 4:
-                        x, y, w, h = parsed
-                    elif isinstance(parsed, dict):
-                        x, y, w, h = parsed.get('x', 0), parsed.get('y', 0), parsed.get('w', 0), parsed.get('h', 0)
-                    else:
-                        x, y, w, h = 0, 0, 0, 0
-                roi = (x, y, w, h)
-                logging.info(f"Using qr_mvd_area: {roi}")
-            except (ValueError, json.JSONDecodeError, KeyError, TypeError) as e:
-                logging.error(f"Error parsing qr_mvd_area for camera {camera_name}: {str(e)}")
-                roi = None
-        else:
-            logging.warning(f"No qr_mvd_area found for camera {camera_name}")
-            roi = None
-        return roi
+
+        if not result or not result[0]:
+            self.logger.warning(f"No packing_area found for camera {camera_name}")
+            return None
+
+        # Parse ROI
+        return self._parse_roi(result[0], "packing_area", camera_name)
+
+    def _parse_roi(self, roi_raw, field_name, camera_name):
+        """Parse ROI from JSON string to (x,y,w,h) tuple."""
+        if not roi_raw:
+            return None
+
+        try:
+            # Handle tuple string format: "(x,y,w,h)"
+            if isinstance(roi_raw, str) and roi_raw.startswith('(') and roi_raw.endswith(')'):
+                x, y, w, h = map(int, roi_raw.strip('()').split(','))
+                return (x, y, w, h)
+
+            # Handle JSON formats
+            parsed = json.loads(roi_raw) if isinstance(roi_raw, str) else roi_raw
+
+            # JSON array: [x, y, w, h]
+            if isinstance(parsed, list) and len(parsed) == 4:
+                return tuple(parsed)
+
+            # JSON object: {"x": x, "y": y, "w": w, "h": h}
+            if isinstance(parsed, dict):
+                return (parsed.get('x', 0), parsed.get('y', 0),
+                       parsed.get('w', 0), parsed.get('h', 0))
+
+            self.logger.error(f"Invalid {field_name} format for {camera_name}: {roi_raw}")
+            return None
+
+        except (ValueError, json.JSONDecodeError, KeyError, TypeError) as e:
+            self.logger.error(f"Error parsing {field_name} for {camera_name}: {str(e)}")
+            return None
 
     def get_video_duration(self, video_file):
         try:
@@ -127,7 +153,7 @@ class FrameSamplerNoTrigger:
             result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             return float(result.stdout.strip())
         except Exception:
-            logging.error(f"Failed to get duration of video {video_file}")
+            self.logger.error(f"Failed to get duration of video {video_file}")
             return None
 
     def load_video_files(self):
@@ -137,7 +163,7 @@ class FrameSamplerNoTrigger:
                 cursor.execute("SELECT file_path FROM file_list WHERE is_processed = 0 AND status != 'xong' ORDER BY priority DESC, created_at ASC")
                 video_files = [row[0] for row in cursor.fetchall()]
         if not video_files:
-            logging.info("No video files found with is_processed = 0 and status != 'xong'.")
+            self.logger.info("No video files found with is_processed = 0 and status != 'xong'.")
         return video_files
 
     def process_frame(self, frame, frame_count):
@@ -149,11 +175,11 @@ class FrameSamplerNoTrigger:
             texts, _ = self.qr_detector.detectAndDecode(frame)
             for text in texts:
                 if text and text != "TimeGo":
-                    logging.info(f"Second {round((frame_count - 1) / self.fps)}: QR texts={texts}, mvd={text}")
+                    self.logger.info(f"Second {round((frame_count - 1) / self.fps)}: QR texts={texts}, mvd={text}")
                     return text
             return ""
         except Exception as e:
-            logging.error(f"Error processing frame {frame_count}: {str(e)}")
+            self.logger.error(f"Error processing frame {frame_count}: {str(e)}")
             return ""
 
     def detect_hand(self, frame):
@@ -165,7 +191,7 @@ class FrameSamplerNoTrigger:
             # Return True if hand landmarks are detected
             return bool(results.multi_hand_landmarks) if results and hasattr(results, 'multi_hand_landmarks') else False
         except Exception as e:
-            logging.error(f"Error in hand detection: {str(e)}")
+            self.logger.error(f"Error in hand detection: {str(e)}")
             return False
 
     def compute_motion_level(self, prev_frame, curr_frame):
@@ -178,7 +204,7 @@ class FrameSamplerNoTrigger:
             motion_level = np.mean(diff) / 255.0
             return motion_level
         except Exception as e:
-            logging.error(f"Error computing motion level: {str(e)}")
+            self.logger.error(f"Error computing motion level: {str(e)}")
             return 1.0
 
     def _get_video_start_time(self, video_file, camera_name=None):
@@ -200,11 +226,11 @@ class FrameSamplerNoTrigger:
             import os
             file_timestamp = os.path.getctime(video_file)
             timezone_aware_time = datetime.fromtimestamp(file_timestamp, tz=self.video_timezone)
-            logging.info(f"Video start time with timezone detection: {timezone_aware_time}")
+            self.logger.info(f"Video start time with timezone detection: {timezone_aware_time}")
             return timezone_aware_time
             
         except Exception as e:
-            logging.warning(f"Enhanced timezone detection failed for {video_file}: {e}, using fallback")
+            self.logger.warning(f"Enhanced timezone detection failed for {video_file}: {e}, using fallback")
             
             # Fallback to original method with TimezoneManager
             try:
@@ -222,7 +248,7 @@ class FrameSamplerNoTrigger:
                         naive_time = datetime.strptime(result.decode().split('FileCreateDate')[1].strip().split('\n')[0].strip(), '%Y-%m-%d %H:%M:%S')
                         return naive_time.replace(tzinfo=self.video_timezone)
                     except (subprocess.CalledProcessError, IndexError):
-                        logging.warning("No metadata found, using file creation time.")
+                        self.logger.warning("No metadata found, using file creation time.")
                         return datetime.fromtimestamp(os.path.getctime(video_file), tz=self.video_timezone)
 
     def _log_writer(self):
@@ -258,22 +284,22 @@ class FrameSamplerNoTrigger:
             frame_sampler_event.wait()
             video_files = self.load_video_files()
             if not video_files:
-                logging.info("No videos to process")
+                self.logger.info("No videos to process")
                 frame_sampler_event.clear()
                 continue
             for video_file in video_files:
                 log_file = self.process_video(video_file, self.video_lock, self.get_packing_area, self.process_frame, self.frame_interval)
                 if log_file:
-                    logging.info(f"Completed processing video {video_file}, log at {log_file}")
+                    self.logger.info(f"Completed processing video {video_file}, log at {log_file}")
                 else:
-                    logging.error(f"Failed to process video {video_file}")
+                    self.logger.error(f"Failed to process video {video_file}")
             frame_sampler_event.clear()
 
     def process_video(self, video_file, video_lock, get_packing_area_func, process_frame_func, frame_interval, start_time=0, end_time=None):
         with video_lock:
-            logging.info(f"Processing video: {video_file} from {start_time}s to {end_time}s")
+            self.logger.info(f"Processing video: {video_file} from {start_time}s to {end_time}s")
             if not os.path.exists(video_file):
-                logging.error(f"File '{video_file}' does not exist")
+                self.logger.error(f"File '{video_file}' does not exist")
                 with db_rwlock.gen_wlock():
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
@@ -288,7 +314,7 @@ class FrameSamplerNoTrigger:
                     camera_name = result[0] if result and result[0] else "CamTest"
             video = cv2.VideoCapture(video_file)
             if not video.isOpened():
-                logging.error(f"Failed to open video '{video_file}'")
+                self.logger.error(f"Failed to open video '{video_file}'")
                 with db_rwlock.gen_wlock():
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
@@ -298,13 +324,13 @@ class FrameSamplerNoTrigger:
             roi = get_packing_area_func(camera_name)
             total_seconds = self.get_video_duration(video_file)
             if total_seconds is None:
-                logging.error(f"Failed to get duration of video {video_file}")
+                self.logger.error(f"Failed to get duration of video {video_file}")
                 with db_rwlock.gen_wlock():
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
                         cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
                 return None
-            logging.info(f"Video duration {video_file}: {total_seconds} seconds")
+            self.logger.info(f"Video duration {video_file}: {total_seconds} seconds")
             video_name = os.path.splitext(os.path.basename(video_file))[0]
             segment_duration = 300
             # Xác định các đoạn 300s chứa [start_time, end_time]
@@ -338,13 +364,13 @@ class FrameSamplerNoTrigger:
                     if w > 0 and h > 0 and y + h <= frame_height and x + w <= frame_width:
                         frame = frame[y:y + h, x:x + w]
                     else:
-                        logging.warning(f"Invalid ROI for frame {frame_count}: {roi}, frame_size: {frame_width}x{frame_height}")
+                        self.logger.warning(f"Invalid ROI for frame {frame_count}: {roi}, frame_size: {frame_width}x{frame_height}")
                         frame = frame
                 frame_count += 1
                 if frame_count % frame_interval != 0:
                     continue
                 if frame.size == 0 or frame.shape[0] == 0 or frame.shape[1] == 0:
-                    logging.warning(f"Empty frame {frame_count}, skipping")
+                    self.logger.warning(f"Empty frame {frame_count}, skipping")
                     continue
                 # QR detection
                 mvd = process_frame_func(frame, frame_count)
@@ -364,7 +390,7 @@ class FrameSamplerNoTrigger:
                             end_second = round((frame_count - frame_interval - 1) / self.fps, 1)
                             if start_second >= start_time and end_second <= end_time:
                                 stable_segments.append((stable_start, frame_count - frame_interval))
-                                logging.info(f"Stable segment: start={start_second}s, end={end_second}s")
+                                self.logger.info(f"Stable segment: start={start_second}s, end={end_second}s")
                         is_stable = False
                 prev_frame = frame.copy()
                 second_in_video = (frame_count - 1) / self.fps
@@ -381,7 +407,7 @@ class FrameSamplerNoTrigger:
                 end_second = round((frame_count - 1) / self.fps, 1)
                 if start_second >= start_time and end_second <= end_time:
                     stable_segments.append((stable_start, frame_count))
-                    logging.info(f"Stable segment: start={start_second}s, end={end_second}s")
+                    self.logger.info(f"Stable segment: start={start_second}s, end={end_second}s")
             # Group QR codes and select the last frame of each sequence
             grouped_qr = []
             current_mvd = None
@@ -403,7 +429,7 @@ class FrameSamplerNoTrigger:
                 last_qr_frame, last_qr_code = grouped_qr[-1]
                 last_qr_second = round((last_qr_frame - 1) / self.fps, 1)
                 if last_qr_second >= start_time and last_qr_second <= end_time:
-                    logging.info(f"Last QR event: Te={last_qr_second}s, QR={last_qr_code}")
+                    self.logger.info(f"Last QR event: Te={last_qr_second}s, QR={last_qr_code}")
             # Find Ts/Te
             video.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
             frame_count = start_frame
@@ -411,7 +437,7 @@ class FrameSamplerNoTrigger:
             prev_te_frame = None
             for idx, (te_frame, qr_code) in enumerate(grouped_qr):
                 if te_frame <= last_te + self.min_packing_time * self.fps:
-                    logging.info(f"Skipping event for QR {qr_code} at frame {te_frame}: too close to last_te {last_te}")
+                    self.logger.info(f"Skipping event for QR {qr_code} at frame {te_frame}: too close to last_te {last_te}")
                     continue
                 second_te = round((te_frame - 1) / self.fps)
                 if second_te < start_time or second_te > end_time:
@@ -432,7 +458,7 @@ class FrameSamplerNoTrigger:
                     has_stable_segment = any(start <= te_frame for start, end in stable_segments)
                     if not has_stable_segment:
                         log_file_handle(f"On,{qr_code}", second_te)
-                        logging.info(f"Logged only Te for QR {qr_code} at second {second_te}: no stable segments for first Te")
+                        self.logger.info(f"Logged only Te for QR {qr_code} at second {second_te}: no stable segments for first Te")
                         last_te = te_frame
                         prev_te_frame = te_frame
                         continue
@@ -463,7 +489,7 @@ class FrameSamplerNoTrigger:
                             ts_frame = hand_frame_count
                             second_ts = round((ts_frame - 1) / self.fps, 1)
                             if second_ts >= start_time and second_ts <= end_time:
-                                logging.info(f"Hand detected for Ts: frame={ts_frame}, time={second_ts}s")
+                                self.logger.info(f"Hand detected for Ts: frame={ts_frame}, time={second_ts}s")
                                 break
                             ts_frame = None
                 else:
@@ -487,7 +513,7 @@ class FrameSamplerNoTrigger:
                                 ts_frame = hand_frame_count
                                 second_ts = round((ts_frame - 1) / self.fps, 1)
                                 if second_ts >= start_time and second_ts <= end_time:
-                                    logging.info(f"Hand detected for Ts: frame={ts_frame}, time={second_ts}s")
+                                    self.logger.info(f"Hand detected for Ts: frame={ts_frame}, time={second_ts}s")
                                     break
                                 ts_frame = None
                 # Ghi log
@@ -507,7 +533,7 @@ class FrameSamplerNoTrigger:
                     log_file_handle("Off,", second_ts)
                     log_file_handle("Off,", second_te - 1)
                     log_file_handle(f"On,{qr_code}", second_te)
-                    logging.info(f"Event logged: Ts={second_ts}, Te={second_te}, QR={qr_code}")
+                    self.logger.info(f"Event logged: Ts={second_ts}, Te={second_te}, QR={qr_code}")
                 else:
                     second_ts = second_te - self.min_packing_time - 1
                     if second_ts >= start_time and second_ts >= (last_te / self.fps):
@@ -525,11 +551,11 @@ class FrameSamplerNoTrigger:
                         log_file_handle("Off,", second_ts)
                         log_file_handle("Off,", second_te - 1)
                         log_file_handle(f"On,{qr_code}", second_te)
-                        logging.info(f"Assumed Ts={second_ts} for Te={second_te}, QR={qr_code}")
+                        self.logger.info(f"Assumed Ts={second_ts} for Te={second_te}, QR={qr_code}")
                     else:
                         log_file_handle("Off,", second_te - 1)
                         log_file_handle(f"On,{qr_code}", second_te)
-                        logging.info(f"Logged only Te for QR {qr_code} at second {second_te}: assumed Ts={second_ts} invalid (out of range or too close to last_te)")
+                        self.logger.info(f"Logged only Te for QR {qr_code} at second {second_te}: assumed Ts={second_ts} invalid (out of range or too close to last_te)")
                 last_te = te_frame
                 prev_te_frame = te_frame
             video.release()
@@ -537,5 +563,5 @@ class FrameSamplerNoTrigger:
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
                     cursor.execute("UPDATE file_list SET is_processed = 1, status = ? WHERE file_path = ?", ("xong", video_file))
-            logging.info(f"Completed processing video: {video_file}")
+            self.logger.info(f"Completed processing video: {video_file}")
             return log_file

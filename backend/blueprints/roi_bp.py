@@ -102,14 +102,13 @@ def finalize_roi_endpoint():
         if not os.path.exists(video_path):
             return jsonify({"success": False, "error": "Đường dẫn video không tồn tại."}), 404
 
-        packing_roi = [0, 0, 0, 0]
+        packing_area = [0, 0, 0, 0]
         if os.path.exists("/tmp/roi.json"):
             with open("/tmp/roi.json", "r") as f:
                 roi_data = json.load(f)
                 if roi_data.get("success") and "roi" in roi_data:
-                    packing_roi = [roi_data["roi"]["x"], roi_data["roi"]["y"], roi_data["roi"]["w"], roi_data["roi"]["h"]]
-        
-        qr_mvd_area = [0, 0, 0, 0]
+                    packing_area = [roi_data["roi"]["x"], roi_data["roi"]["y"], roi_data["roi"]["w"], roi_data["roi"]["h"]]
+
         qr_trigger_area = [0, 0, 0, 0]
         table_type = None
         if os.path.exists("/tmp/qr_roi.json"):
@@ -117,9 +116,7 @@ def finalize_roi_endpoint():
                 qr_roi_data = json.load(f)
                 table_type = qr_roi_data.get("table_type")
                 for roi in rois:
-                    if roi["type"] == "mvd":
-                        qr_mvd_area = [roi["x"], roi["y"], roi["w"], roi["h"]]
-                    elif roi["type"] == "trigger" and table_type == "standard":
+                    if roi["type"] == "trigger" and table_type == "standard":
                         qr_trigger_area = [roi["x"], roi["y"], roi["w"], roi["h"]]
 
         profile_name = camera_id
@@ -127,18 +124,16 @@ def finalize_roi_endpoint():
             cursor = conn.cursor()
             cursor.execute("SELECT 1 FROM packing_profiles WHERE profile_name = ?", (profile_name,))
             exists = cursor.fetchone()
-            
+
             if exists:
                 cursor.execute('''
                     UPDATE packing_profiles
-                    SET qr_trigger_area = ?, qr_motion_area = ?, qr_mvd_area = ?, packing_area = ?,
+                    SET qr_trigger_area = ?, packing_area = ?,
                         min_packing_time = ?, jump_time_ratio = ?, scan_mode = ?, fixed_threshold = ?, margin = ?, additional_params = ?, mvd_jump_ratio = ?
                     WHERE profile_name = ?
                 ''', (
                     json.dumps(qr_trigger_area),
-                    None,  # qr_motion_area
-                    json.dumps(qr_mvd_area),
-                    json.dumps(packing_roi),
+                    json.dumps(packing_area),
                     10, 0.5, "full", 20, 60, json.dumps({}),
                     None,  # mvd_jump_ratio
                     profile_name
@@ -146,15 +141,13 @@ def finalize_roi_endpoint():
             else:
                 cursor.execute('''
                     INSERT INTO packing_profiles (
-                        profile_name, qr_trigger_area, qr_motion_area, qr_mvd_area, packing_area,
+                        profile_name, qr_trigger_area, packing_area,
                         min_packing_time, jump_time_ratio, scan_mode, fixed_threshold, margin, additional_params, mvd_jump_ratio
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     profile_name,
                     json.dumps(qr_trigger_area),
-                    None,  # qr_motion_area
-                    json.dumps(qr_mvd_area),
-                    json.dumps(packing_roi),
+                    json.dumps(packing_area),
                     10, 0.5, "full", 20, 60, json.dumps({}),
                     None   # mvd_jump_ratio
                 ))

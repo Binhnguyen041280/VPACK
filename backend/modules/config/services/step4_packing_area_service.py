@@ -30,7 +30,7 @@ class Step4PackingAreaService:
                 cursor = conn.cursor()
                 
                 cursor.execute("""
-                    SELECT profile_name, qr_trigger_area, packing_area, qr_mvd_area
+                    SELECT profile_name, qr_trigger_area, packing_area
                     FROM packing_profiles
                     ORDER BY id
                 """)
@@ -41,23 +41,20 @@ class Step4PackingAreaService:
                 configured_cameras = []
                 
                 for row in rows:
-                    profile_name, qr_trigger_area, packing_area, qr_mvd_area = row
-                    
+                    profile_name, qr_trigger_area, packing_area = row
+
                     # Parse JSON coordinates (handle null/empty values)
                     try:
                         trigger_area = json.loads(qr_trigger_area) if qr_trigger_area else [0, 0, 0, 0]
                         packing_coords = json.loads(packing_area) if packing_area else [0, 0, 0, 0]
-                        mvd_area = json.loads(qr_mvd_area) if qr_mvd_area else [0, 0, 0, 0]
                     except json.JSONDecodeError:
                         trigger_area = [0, 0, 0, 0]
                         packing_coords = [0, 0, 0, 0]
-                        mvd_area = [0, 0, 0, 0]
-                    
+
                     zone = {
                         "camera_name": profile_name,
                         "packing_area": packing_coords,
-                        "trigger_area": trigger_area,
-                        "mvd_area": mvd_area
+                        "trigger_area": trigger_area
                     }
                     
                     detection_zones.append(zone)
@@ -110,21 +107,19 @@ class Step4PackingAreaService:
                     camera_name = sanitize_input(zone.get('camera_name', ''), 100)
                     packing_area = zone.get('packing_area', [0, 0, 0, 0])
                     trigger_area = zone.get('trigger_area', [0, 0, 0, 0])
-                    mvd_area = zone.get('mvd_area', [0, 0, 0, 0])
-                    
+
                     # Check if profile exists
                     cursor.execute("SELECT 1 FROM packing_profiles WHERE profile_name = ?", (camera_name,))
                     exists = cursor.fetchone()
-                    
+
                     if exists:
                         # Update existing profile using the same pattern as roi_bp.py
                         cursor.execute('''
                             UPDATE packing_profiles
-                            SET qr_trigger_area = ?, qr_mvd_area = ?, packing_area = ?
+                            SET qr_trigger_area = ?, packing_area = ?
                             WHERE profile_name = ?
                         ''', (
                             json.dumps(trigger_area),
-                            json.dumps(mvd_area),
                             json.dumps(packing_area),
                             camera_name
                         ))
@@ -132,15 +127,13 @@ class Step4PackingAreaService:
                         # Insert new profile with default values matching roi_bp.py
                         cursor.execute('''
                             INSERT INTO packing_profiles (
-                                profile_name, qr_trigger_area, qr_motion_area, qr_mvd_area, packing_area,
-                                min_packing_time, jump_time_ratio, scan_mode, fixed_threshold, margin, 
+                                profile_name, qr_trigger_area, packing_area,
+                                min_packing_time, jump_time_ratio, scan_mode, fixed_threshold, margin,
                                 additional_params, mvd_jump_ratio
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ''', (
                             camera_name,
                             json.dumps(trigger_area),
-                            None,  # qr_motion_area
-                            json.dumps(mvd_area),
                             json.dumps(packing_area),
                             10,    # min_packing_time
                             0.5,   # jump_time_ratio
@@ -150,12 +143,11 @@ class Step4PackingAreaService:
                             json.dumps({}), # additional_params
                             None   # mvd_jump_ratio
                         ))
-                    
+
                     updated_zones.append({
                         "camera_name": camera_name,
                         "packing_area": packing_area,
                         "trigger_area": trigger_area,
-                        "mvd_area": mvd_area,
                         "action": "updated" if exists else "created"
                     })
                 
@@ -194,32 +186,29 @@ class Step4PackingAreaService:
                 cursor = conn.cursor()
                 
                 cursor.execute("""
-                    SELECT profile_name, qr_trigger_area, packing_area, qr_mvd_area,
+                    SELECT profile_name, qr_trigger_area, packing_area,
                            min_packing_time, jump_time_ratio, scan_mode, fixed_threshold, margin
                     FROM packing_profiles WHERE profile_name = ?
                 """, (camera_name,))
-                
+
                 row = cursor.fetchone()
-                
+
                 if row:
-                    profile_name, qr_trigger_area, packing_area, qr_mvd_area, \
+                    profile_name, qr_trigger_area, packing_area, \
                     min_packing_time, jump_time_ratio, scan_mode, fixed_threshold, margin = row
-                    
+
                     # Parse JSON coordinates
                     try:
                         trigger_area = json.loads(qr_trigger_area) if qr_trigger_area else [0, 0, 0, 0]
                         packing_coords = json.loads(packing_area) if packing_area else [0, 0, 0, 0]
-                        mvd_area = json.loads(qr_mvd_area) if qr_mvd_area else [0, 0, 0, 0]
                     except json.JSONDecodeError:
                         trigger_area = [0, 0, 0, 0]
                         packing_coords = [0, 0, 0, 0]
-                        mvd_area = [0, 0, 0, 0]
-                    
+
                     return {
                         "camera_name": profile_name,
                         "packing_area": packing_coords,
                         "trigger_area": trigger_area,
-                        "mvd_area": mvd_area,
                         "settings": {
                             "min_packing_time": min_packing_time,
                             "jump_time_ratio": jump_time_ratio,
@@ -234,7 +223,6 @@ class Step4PackingAreaService:
                         "camera_name": camera_name,
                         "packing_area": [0, 0, 0, 0],
                         "trigger_area": [0, 0, 0, 0],
-                        "mvd_area": [0, 0, 0, 0],
                         "settings": {},
                         "exists": False
                     }
