@@ -1,8 +1,17 @@
 import logging
 import os
 import sys
+import time
+import uuid
+import glob
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
+from collections import defaultdict
+from modules.path_utils import get_logs_dir, is_development_mode
+
+# Global session ID - unique per application run
+# Used for correlating logs from the same execution session
+_SESSION_ID = str(uuid.uuid4())[:8]  # Short 8-char unique ID
 
 class LogSizeFilter(logging.Filter):
     def __init__(self, log_file, max_size=500*1024):
@@ -25,31 +34,318 @@ class ContextAdapter(logging.LoggerAdapter):
             return f"[{context}] {msg}", kwargs
         return msg, kwargs
 
+class SessionFilter(logging.Filter):
+    """Filter that adds session ID to every log record.
+
+    Session ID allows correlating all logs from a single application run,
+    making it easy to extract logs for debugging a specific execution.
+    """
+
+    def __init__(self, session_id):
+        super().__init__()
+        self.session_id = session_id
+
+    def filter(self, record):
+        record.session_id = self.session_id
+        return True
+
+class RateLimitFilter(logging.Filter):
+    """Rate limiting filter to prevent log flooding.
+
+    Limits the number of log messages of the same type within a time window.
+    Helps prevent disk space exhaustion from error loops or retry storms.
+    """
+
+    def __init__(self, rate=100, per=60, burst=200):
+        """Initialize rate limiter.
+
+        Args:
+            rate: Maximum messages allowed per time window
+            per: Time window in seconds
+            burst: Allow short bursts above rate limit
+        """
+        super().__init__()
+        self.rate = rate
+        self.per = per
+        self.burst = burst
+        self.message_counts = defaultdict(lambda: {'count': 0, 'reset_time': time.time()})
+        self.suppressed_counts = defaultdict(int)
+
+    def filter(self, record):
+        # Create key from module + level + message template (ignore variables)
+        key = f"{record.name}:{record.levelname}:{record.msg}"
+
+        now = time.time()
+        msg_data = self.message_counts[key]
+
+        # Reset counter if time window expired
+        if now - msg_data['reset_time'] > self.per:
+            # Log suppressed count before reset
+            if self.suppressed_counts[key] > 0:
+                record.msg = f"[RATE LIMIT] Suppressed {self.suppressed_counts[key]} identical messages in last {self.per}s: {record.msg}"
+                self.suppressed_counts[key] = 0
+            msg_data['count'] = 0
+            msg_data['reset_time'] = now
+
+        # Check rate limit
+        if msg_data['count'] < self.rate or msg_data['count'] < self.burst:
+            msg_data['count'] += 1
+            return True
+        else:
+            self.suppressed_counts[key] += 1
+            return False  # Suppress this log
+
+class DeduplicationFilter(logging.Filter):
+    """Deduplication filter to remove consecutive identical log messages.
+
+    Prevents log files from being filled with repeated identical messages.
+    Useful for catching infinite loops or repetitive errors.
+    """
+
+    def __init__(self, max_duplicates=5):
+        """Initialize deduplication filter.
+
+        Args:
+            max_duplicates: Maximum consecutive identical messages to allow
+        """
+        super().__init__()
+        self.last_log = {}
+        self.duplicate_count = defaultdict(int)
+        self.max_duplicates = max_duplicates
+
+    def filter(self, record):
+        key = f"{record.name}:{record.levelname}:{record.msg}"
+
+        if key == self.last_log.get(record.name):
+            self.duplicate_count[key] += 1
+
+            # Allow first max_duplicates occurrences
+            if self.duplicate_count[key] > self.max_duplicates:
+                if self.duplicate_count[key] == self.max_duplicates + 1:
+                    # Log once that we're suppressing
+                    record.msg = f"[DUPLICATE] Message repeated, suppressing further duplicates: {record.msg}"
+                    return True
+                return False  # Suppress subsequent duplicates
+        else:
+            # New message, reset counter
+            if self.duplicate_count.get(key, 0) > self.max_duplicates:
+                # Log how many times previous message was repeated
+                record.msg = f"[DUPLICATE] Previous message repeated {self.duplicate_count[key]} times. New message: {record.msg}"
+            self.last_log[record.name] = key
+            self.duplicate_count[key] = 0
+
+        return True
+
+class SafeRotatingFileHandler(RotatingFileHandler):
+    """Enhanced RotatingFileHandler with emergency failsafe.
+
+    Adds hard size limit and graceful degradation if rotation fails.
+    Prevents runaway log files from filling the disk.
+    """
+
+    def __init__(self, *args, maxBytes=500*1024, backupCount=5,
+                 emergency_max_size=50*1024*1024, **kwargs):
+        """Initialize safe rotating handler.
+
+        Args:
+            maxBytes: Normal rotation threshold (default 500KB)
+            backupCount: Number of backup files to keep
+            emergency_max_size: Hard limit to force rotation (default 50MB)
+        """
+        super().__init__(*args, maxBytes=maxBytes, backupCount=backupCount, **kwargs)
+        self.emergency_max_size = emergency_max_size
+        self.rotation_failures = 0
+
+    def emit(self, record):
+        try:
+            # Emergency size check
+            if os.path.exists(self.baseFilename):
+                file_size = os.path.getsize(self.baseFilename)
+                if file_size > self.emergency_max_size:
+                    # Force immediate rotation
+                    self.doRollover()
+                    record.msg = f"🚨 EMERGENCY rotation at {self.emergency_max_size/1024/1024:.1f}MB: {record.msg}"
+
+            super().emit(record)
+            self.rotation_failures = 0
+
+        except Exception as e:
+            self.rotation_failures += 1
+
+            # If rotation fails 3 times, disable file logging
+            if self.rotation_failures > 3:
+                self.close()
+                print(f"🚨 LOGGING FAILURE: Disabled file logging after 3 failures. Error: {e}",
+                      file=sys.stderr)
+                # Don't raise - allow app to continue
+
+def cleanup_old_logs(log_dir, app_name, keep_count=None, keep_days=None):
+    """Auto-cleanup old log files to prevent disk space issues.
+
+    Args:
+        log_dir: Directory containing log files
+        app_name: Application name prefix for log files
+        keep_count: Number of recent files to keep (for development mode)
+        keep_days: Number of days to retain logs (for production mode)
+    """
+    try:
+        # Find all log files matching pattern (exclude symlinks)
+        pattern = os.path.join(log_dir, f"{app_name}_*.log")
+        log_files = [f for f in glob.glob(pattern) if not os.path.islink(f)]
+
+        if keep_count is not None:
+            # Development: Keep N most recent files
+            log_files.sort(key=os.path.getmtime, reverse=True)
+            files_to_delete = log_files[keep_count:]
+
+            for old_file in files_to_delete:
+                try:
+                    os.remove(old_file)
+                    # Use print instead of logger (logger may not be initialized yet)
+                    print(f"Cleaned up old log: {os.path.basename(old_file)}", file=sys.stderr)
+                except OSError:
+                    pass  # Ignore errors during cleanup
+
+        elif keep_days is not None:
+            # Production: Delete files older than N days
+            cutoff_time = time.time() - (keep_days * 86400)
+
+            for log_file in log_files:
+                try:
+                    if os.path.getmtime(log_file) < cutoff_time:
+                        os.remove(log_file)
+                        print(f"Cleaned up old log: {os.path.basename(log_file)}", file=sys.stderr)
+                except OSError:
+                    pass  # Ignore errors during cleanup
+
+    except Exception as e:
+        # Don't fail application if cleanup fails
+        print(f"Warning: Log cleanup failed: {e}", file=sys.stderr)
+
 def setup_logging(base_dir, app_name="app", log_level=logging.INFO):
-    log_dir = os.path.join(base_dir, "resources", "output_clips", "LOG")
-    os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, f"{app_name}_{datetime.now().strftime('%Y-%m-%d')}.log")
-    
-    handler = RotatingFileHandler(log_file, maxBytes=500*1024, backupCount=5)
-    handler.setFormatter(logging.Formatter(
-        '%(asctime)sZ [%(levelname)s] %(name)s: %(message)s',
+    """Setup application logging with environment-aware configuration.
+
+    Features:
+    - Development: Per-run log files with session ID + symlink to latest
+    - Production: Daily consolidated log files with session ID for filtering
+    - Rate limiting: Max 100 logs/minute per message type
+    - Deduplication: Max 5 consecutive identical messages
+    - Emergency rotation: Hard limit at 50MB
+    - Auto-cleanup: 50 files (dev) or 30 days (prod)
+
+    Args:
+        base_dir: Base directory (not used, kept for backward compatibility)
+        app_name: Application name for log file naming
+        log_level: Logging level (default: INFO)
+
+    Returns:
+        str: Path to the created log file
+    """
+    log_dir = get_logs_dir()
+    is_dev = is_development_mode()
+
+    # === ENVIRONMENT-AWARE FILENAME ===
+    if is_dev:
+        # Development: Per-run files with timestamp + session ID
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        log_file = os.path.join(log_dir, f"{app_name}_{timestamp}_s-{_SESSION_ID}.log")
+
+        # Create/update 'latest.log' symlink to current run
+        latest_link = os.path.join(log_dir, "latest.log")
+        try:
+            if os.path.exists(latest_link) or os.path.islink(latest_link):
+                os.remove(latest_link)
+            os.symlink(os.path.basename(log_file), latest_link)
+        except OSError as e:
+            print(f"Warning: Could not create latest.log symlink: {e}", file=sys.stderr)
+
+        # Auto-cleanup: Keep only 50 most recent files
+        cleanup_old_logs(log_dir, app_name, keep_count=50)
+    else:
+        # Production: Daily consolidated files
+        log_file = os.path.join(log_dir, f"{app_name}_{datetime.now().strftime('%Y-%m-%d')}.log")
+
+        # Auto-cleanup: Remove files older than 30 days
+        cleanup_old_logs(log_dir, app_name, keep_days=30)
+
+    # FIX: Clear existing handlers first (prevents basicConfig from being ignored)
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+
+    # Use SafeRotatingFileHandler with emergency protection
+    file_handler = SafeRotatingFileHandler(
+        log_file,
+        maxBytes=500*1024,           # Normal rotation at 500KB
+        backupCount=5,                # Keep 5 backup files
+        emergency_max_size=50*1024*1024  # Hard limit at 50MB
+    )
+
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)sZ [%(session_id)s] [%(levelname)s] %(name)s: %(message)s',
         datefmt='%Y-%m-%dT%H:%M:%S'
     ))
-    handler.addFilter(LogSizeFilter(log_file))
-    
-    logging.basicConfig(level=log_level, handlers=[handler])
+
+    # Add multi-layer protection filters
+    file_handler.addFilter(SessionFilter(_SESSION_ID))                     # Add session ID to all logs
+    file_handler.addFilter(RateLimitFilter(rate=100, per=60, burst=200))  # 100 msgs/min
+    file_handler.addFilter(DeduplicationFilter(max_duplicates=5))          # Max 5 duplicates
+    file_handler.addFilter(LogSizeFilter(log_file))                        # Legacy size check
+    file_handler.setLevel(log_level)
+
+    # Add file handler to root logger
+    root_logger.addHandler(file_handler)
+    root_logger.setLevel(log_level)
+
+    # Add console handler for ERROR level only (emergency fallback)
+    console_handler = logging.StreamHandler(sys.stderr)
+    console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+    console_handler.setLevel(logging.ERROR)
+    root_logger.addHandler(console_handler)
+
+    # Log initialization message with environment info
+    mode = "DEV" if is_dev else "PROD"
+    cleanup_info = "keep:50" if is_dev else "retain:30d"
+    root_logger.info(f"✅ Logging [{mode}] session:{_SESSION_ID} file:{os.path.basename(log_file)} (Rate:100/min, Dedup:5x, {cleanup_info})")
+
+    return log_file
+
+def get_session_id():
+    """Get the current session ID.
+
+    Returns:
+        str: 8-character session ID for the current application run
+    """
+    return _SESSION_ID
 
 def get_logger(module_name, context=None, separate_log=None):
+    """Get a logger with optional context and separate log file.
+
+    Args:
+        module_name: Name of the module (for context only)
+        context: Optional dict of context key-value pairs
+        separate_log: Optional separate log file name (e.g., 'cloud_sync')
+
+    Returns:
+        ContextAdapter: Configured logger adapter
+    """
     logger = logging.getLogger("app")
+
     if separate_log:
-        log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resources", "output_clips", "LOG")
-        os.makedirs(log_dir, exist_ok=True)
+        # Use /var/logs directory
+        log_dir = get_logs_dir()
         log_file = os.path.join(log_dir, f"{separate_log}_{datetime.now().strftime('%Y-%m-%d')}.log")
+
         file_handler = RotatingFileHandler(log_file, maxBytes=500*1024, backupCount=5)
         file_handler.setFormatter(logging.Formatter(
             '%(asctime)s,%(msecs)03d - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         ))
+
+        # Add protection for separate logs (lower limits than main log)
+        file_handler.addFilter(RateLimitFilter(rate=50, per=60))       # 50 msgs/min
+        file_handler.addFilter(DeduplicationFilter(max_duplicates=3))  # Max 3 duplicates
+
         file_handler.setLevel(logging.INFO)
         logger.addHandler(file_handler)
+
     return ContextAdapter(logger, context or {})

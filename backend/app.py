@@ -33,6 +33,14 @@ logging.getLogger('modules.licensing.repositories').setLevel(logging.INFO)
 
 # ==================== IMPORT CORE MODULES ====================
 from modules.config.logging_config import setup_logging, get_logger
+
+# ==================== SETUP LOGGING FIRST ====================
+# CRITICAL: Setup logging BEFORE other imports to capture all log messages
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+setup_logging(BASE_DIR, app_name="app", log_level=logging.INFO)
+logger = logging.getLogger("app")
+
+# ==================== CONTINUE IMPORTS ====================
 from modules.config.config import config_bp, init_app_and_config
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.program import program_bp, scheduler
@@ -53,26 +61,19 @@ from modules.sources.pydrive_downloader import pydrive_downloader
 try:
     from modules.license.license_checker import LicenseChecker
     LICENSE_SYSTEM_AVAILABLE = True
-    logger_temp = logging.getLogger("app")
-    logger_temp.info("✅ License system loaded")
+    logger.info("✅ License system loaded")
 except ImportError as e:
     LICENSE_SYSTEM_AVAILABLE = False
-    logger_temp = logging.getLogger("app")
-    logger_temp.warning(f"⚠️ License system not available: {e}")
+    logger.warning(f"⚠️ License system not available: {e}")
 
 # ==================== IMPORT ACCOUNT MODULE ====================
 try:
     from modules.account.account import check_user_status
     ACCOUNT_SYSTEM_AVAILABLE = True
-    logger_temp.info("✅ Account system loaded")
+    logger.info("✅ Account system loaded")
 except ImportError as e:
     ACCOUNT_SYSTEM_AVAILABLE = False
-    logger_temp.warning(f"⚠️ Account system not available: {e}")
-
-# Setup logging
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-setup_logging(BASE_DIR, app_name="app", log_level=logging.INFO)
-logger = logging.getLogger("app")
+    logger.warning(f"⚠️ Account system not available: {e}")
 
 # ==================== CLOUD FUNCTIONS INTEGRATION ====================
 # Set Cloud Function URLs
