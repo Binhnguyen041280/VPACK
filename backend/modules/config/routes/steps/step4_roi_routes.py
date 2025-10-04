@@ -379,8 +379,8 @@ def save_roi_configuration():
                 elif roi['type'] == 'qr_trigger':
                     qr_trigger_roi = roi   # This will be saved to qr_trigger_area column
             
-            # Create profile name based on camera and timestamp
-            profile_name = f"{camera_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            # Create profile name based on camera (no timestamp for consistent lookup)
+            profile_name = camera_id
             
             # Prepare additional params with full metadata
             additional_params = json.dumps({
@@ -393,7 +393,7 @@ def save_roi_configuration():
             })
             
             # Check if profile already exists for this camera
-            cursor.execute("SELECT id FROM packing_profiles WHERE profile_name LIKE ?", (f"{camera_id}_%",))
+            cursor.execute("SELECT id FROM packing_profiles WHERE profile_name = ?", (camera_id,))
             existing = cursor.fetchone()
             
             if existing:
@@ -401,20 +401,18 @@ def save_roi_configuration():
                 # packing_area column: stores movement detection area for both Traditional and QR methods
                 # qr_trigger_area column: stores QR trigger area (QR method only)
                 cursor.execute("""
-                    UPDATE packing_profiles 
+                    UPDATE packing_profiles
                     SET packing_area = ?,
                         qr_trigger_area = ?,
-                        jump_time_ratio = ?,
                         additional_params = ?
                     WHERE id = ?
                 """, (
                     # packing_area column: movement detection area (both Traditional and QR methods)
-                    json.dumps([packing_area_roi["x"], packing_area_roi["y"], 
+                    json.dumps([packing_area_roi["x"], packing_area_roi["y"],
                               packing_area_roi["w"], packing_area_roi["h"]]) if packing_area_roi else None,
                     # qr_trigger_area column: QR trigger area (QR method only)
-                    json.dumps([qr_trigger_roi["x"], qr_trigger_roi["y"], 
+                    json.dumps([qr_trigger_roi["x"], qr_trigger_roi["y"],
                               qr_trigger_roi["w"], qr_trigger_roi["h"]]) if qr_trigger_roi else None,
-                    0.5,  # Default jump_time_ratio
                     additional_params,
                     existing[0]
                 ))
