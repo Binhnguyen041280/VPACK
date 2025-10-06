@@ -85,6 +85,13 @@ def update_database():
         with safe_db_connection() as conn:
             cursor = conn.cursor()
 
+            # ==================== ENABLE WAL MODE (ONE-TIME SETUP) ====================
+            # Enable Write-Ahead Logging for better concurrent access
+            # This setting persists in the database file
+            cursor.execute("PRAGMA journal_mode = WAL")
+            cursor.execute("PRAGMA synchronous = NORMAL")
+            print("✅ WAL mode enabled for database")
+
             # ==================== CORE TABLES ====================
             
             # 1. Program Status Table

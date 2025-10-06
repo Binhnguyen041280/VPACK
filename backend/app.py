@@ -49,6 +49,18 @@ logger.info(f"   General log: {log_paths['app_log']}")
 logger.info(f"   Event log: {log_paths['event_log']}")
 logger.info(f"   Session ID: {log_paths['session_id']}")
 
+# ==================== INITIALIZE DATABASE FIRST ====================
+# CRITICAL: Database must exist before importing modules that query it
+try:
+    from database import update_database
+    logger.info("📊 Initializing database...")
+    update_database()
+    logger.info("✅ Database ready")
+except Exception as e:
+    logger.error(f"❌ Database initialization failed: {e}")
+    import sys
+    sys.exit(1)
+
 # ==================== CONTINUE IMPORTS ====================
 from modules.config.config import config_bp, init_app_and_config
 from modules.db_utils.safe_connection import safe_db_connection
@@ -839,14 +851,15 @@ def initialize_auto_sync():
 # ==================== APPLICATION STARTUP ====================
 if __name__ == "__main__":
     port = 8080
-    
+
     # Check port availability
     if is_port_in_use(port):
         logger.error(f"Port {port} is already in use!")
         sys.exit(1)
-    
+
     logger.info(f"Starting V_Track Desktop Application on port {port}")
-    
+
+    # Database already initialized at top of file
     # Initialize license system (non-blocking)
     license_ok = initialize_license_system()
     if not license_ok:
