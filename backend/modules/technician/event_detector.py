@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify
 import os
 import sqlite3
 import logging
+import ast
 from datetime import datetime, timezone, timedelta
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import db_rwlock
@@ -95,7 +96,8 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
     pending_event = cursor.fetchone()
     logger.info(f"Pending event: {pending_event}")
     ts = pending_event[1] if pending_event else None
-    pending_tracking_codes = eval(pending_event[2]) if pending_event and pending_event[2] else []
+    # 🔒 SECURITY FIX: Use ast.literal_eval() instead of eval() to prevent code injection
+    pending_tracking_codes = ast.literal_eval(pending_event[2]) if pending_event and pending_event[2] else []
     pending_video_file = pending_event[3] if pending_event else None
     event_id = pending_event[0] if pending_event else None
     segments = []
