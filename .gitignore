@@ -7,8 +7,8 @@ service/
 .serena/
 serena/
 cloud_sync/
-docs/
 flask_session/
+docs/archive/
 
 # Application runtime data (auto-managed)
 var/
