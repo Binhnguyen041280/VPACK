@@ -110,6 +110,11 @@ token.json
 ib_logfile*
 mysql-bin.*
 
+# OAuth credentials and tokens - CRITICAL SECURITY
+backend/modules/sources/credentials/
+backend/modules/sources/tokens/
+.vtrack/
+
 # Large media files
 *.mp4
 *.avi
