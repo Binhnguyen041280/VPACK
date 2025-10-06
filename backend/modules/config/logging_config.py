@@ -95,6 +95,45 @@ class RateLimitFilter(logging.Filter):
             self.suppressed_counts[key] += 1
             return False  # Suppress this log
 
+class ModuleFilter(logging.Filter):
+    """Filter logs by module name patterns.
+
+    Allows creating focused log files for specific components.
+    """
+
+    def __init__(self, include_modules=None, exclude_modules=None):
+        """Initialize module filter.
+
+        Args:
+            include_modules: List of module prefixes to INCLUDE (whitelist)
+            exclude_modules: List of module prefixes to EXCLUDE (blacklist)
+
+        Example:
+            # Only log event processing modules
+            filter = ModuleFilter(include_modules=[
+                'modules.scheduler',
+                'modules.technician.frame_sampler',
+            ])
+        """
+        super().__init__()
+        self.include_modules = include_modules or []
+        self.exclude_modules = exclude_modules or []
+
+    def filter(self, record):
+        module_name = record.name
+
+        # If include list specified, only allow matching modules
+        if self.include_modules:
+            if not any(module_name.startswith(prefix) for prefix in self.include_modules):
+                return False
+
+        # Exclude specific modules
+        if self.exclude_modules:
+            if any(module_name.startswith(prefix) for prefix in self.exclude_modules):
+                return False
+
+        return True
+
 class DeduplicationFilter(logging.Filter):
     """Deduplication filter to remove consecutive identical log messages.
 
@@ -308,6 +347,138 @@ def setup_logging(base_dir, app_name="app", log_level=logging.INFO):
     root_logger.info(f"✅ Logging [{mode}] session:{_SESSION_ID} file:{os.path.basename(log_file)} (Rate:100/min, Dedup:5x, {cleanup_info})")
 
     return log_file
+
+def setup_dual_logging(base_dir, app_name="app", general_level=logging.INFO, event_level=logging.DEBUG):
+    """Setup 2 log files riêng biệt:
+    1. app.log - Tổng quan app (all modules, configurable level)
+    2. event_processing.log - Focus event processing (filtered modules, DEBUG level)
+
+    Args:
+        base_dir: Base directory (kept for backward compatibility)
+        app_name: Application name for log file naming
+        general_level: Level cho app.log (default: INFO)
+        event_level: Level cho event_processing.log (default: DEBUG)
+
+    Returns:
+        dict: {"app_log": path1, "event_log": path2, "session_id": id}
+    """
+    log_dir = get_logs_dir()
+    is_dev = is_development_mode()
+
+    # Clear any existing handlers
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.setLevel(logging.DEBUG)  # Root logger accepts all levels
+
+    # === LOG 1: app.log (General overview) ===
+    if is_dev:
+        app_log_filename = f"{app_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{_SESSION_ID}.log"
+    else:
+        app_log_filename = f"{app_name}_{datetime.now().strftime('%Y%m%d')}.log"
+
+    app_log_path = os.path.join(log_dir, app_log_filename)
+
+    app_handler = SafeRotatingFileHandler(
+        app_log_path,
+        maxBytes=500*1024,  # 500KB
+        backupCount=50 if is_dev else 30,
+        emergency_max_size=50*1024*1024  # 50MB emergency
+    )
+    app_handler.setLevel(general_level)
+
+    app_formatter = logging.Formatter(
+        fmt='%(asctime)s [%(session_id)s] [%(levelname)s] %(name)s: %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    app_handler.setFormatter(app_formatter)
+
+    # Add filters
+    app_handler.addFilter(SessionFilter(_SESSION_ID))
+    app_handler.addFilter(RateLimitFilter(rate=100, per=60))
+    app_handler.addFilter(DeduplicationFilter(max_duplicates=5))
+
+    root_logger.addHandler(app_handler)
+
+    # === LOG 2: event_processing.log (Focus on event detection) ===
+    if is_dev:
+        event_log_filename = f"event_processing_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{_SESSION_ID}.log"
+    else:
+        event_log_filename = f"event_processing_{datetime.now().strftime('%Y%m%d')}.log"
+
+    event_log_path = os.path.join(log_dir, event_log_filename)
+
+    event_handler = SafeRotatingFileHandler(
+        event_log_path,
+        maxBytes=500*1024,  # 500KB
+        backupCount=30 if is_dev else 15,
+        emergency_max_size=50*1024*1024
+    )
+    event_handler.setLevel(event_level)
+
+    event_formatter = logging.Formatter(
+        fmt='%(asctime)s [%(session_id)s] [%(levelname)s] %(name)s:%(lineno)d: %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    event_handler.setFormatter(event_formatter)
+
+    # Add filters - ONLY log event processing modules
+    event_handler.addFilter(SessionFilter(_SESSION_ID))
+    event_handler.addFilter(ModuleFilter(include_modules=[
+        'modules.scheduler.program_runner',
+        'modules.scheduler',
+        'modules.technician.frame_sampler_trigger',
+        'modules.technician.frame_sampler_no_trigger',
+        'modules.technician.event_detector',
+        'event_detector',
+        '__main__',
+        'program_runner',
+    ]))
+    event_handler.addFilter(RateLimitFilter(rate=200, per=60))  # Higher rate for debug
+    event_handler.addFilter(DeduplicationFilter(max_duplicates=3))
+
+    root_logger.addHandler(event_handler)
+
+    # === Console Handler (WARNING+ only) ===
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.WARNING)
+    console_formatter = logging.Formatter('%(levelname)s: %(message)s')
+    console_handler.setFormatter(console_formatter)
+    root_logger.addHandler(console_handler)
+
+    # === Symlink to latest (development only) ===
+    if is_dev:
+        # Symlink app.log
+        latest_app = os.path.join(log_dir, f"{app_name}_latest.log")
+        if os.path.islink(latest_app):
+            os.unlink(latest_app)
+        try:
+            os.symlink(app_log_filename, latest_app)
+        except OSError:
+            pass
+
+        # Symlink event_processing.log
+        latest_event = os.path.join(log_dir, "event_processing_latest.log")
+        if os.path.islink(latest_event):
+            os.unlink(latest_event)
+        try:
+            os.symlink(event_log_filename, latest_event)
+        except OSError:
+            pass
+
+    # === Cleanup old logs ===
+    cleanup_old_logs(log_dir, app_name, keep_count=50 if is_dev else None, keep_days=None if is_dev else 30)
+    cleanup_old_logs(log_dir, "event_processing", keep_count=30 if is_dev else None, keep_days=None if is_dev else 15)
+
+    print(f"📋 Dual logging initialized:", file=sys.stderr)
+    print(f"   App log: {app_log_path}", file=sys.stderr)
+    print(f"   Event log: {event_log_path}", file=sys.stderr)
+    print(f"   Session ID: {_SESSION_ID}", file=sys.stderr)
+
+    return {
+        "app_log": app_log_path,
+        "event_log": event_log_path,
+        "session_id": _SESSION_ID
+    }
 
 def get_session_id():
     """Get the current session ID.

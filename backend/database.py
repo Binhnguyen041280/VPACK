@@ -305,8 +305,6 @@ def update_database():
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     profile_name TEXT NOT NULL,
                     qr_trigger_area TEXT,
-                    qr_motion_area TEXT,
-                    qr_mvd_area TEXT,
                     packing_area TEXT,
                     min_packing_time INTEGER,
                     jump_time_ratio REAL,

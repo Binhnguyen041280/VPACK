@@ -423,11 +423,10 @@ def save_files_to_db(conn: Any, video_files: List[str], file_ctimes: List[float]
         for record in insert_data:
             file_path = record[3]  # file_path is 4th element
 
-            # Check if file already exists and is pending/processing
+            # Check if file already exists (any status)
             cursor.execute("""
                 SELECT id FROM file_list
                 WHERE file_path = ?
-                AND (status IN ('pending', 'Processing', 'frame sampling...') OR is_processed = 0)
             """, (file_path,))
 
             if cursor.fetchone():

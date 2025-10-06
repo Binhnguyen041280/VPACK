@@ -181,8 +181,6 @@ def get_roi_frame():
     # ✅ IMPROVED: Handle different file naming patterns
     if file == "roi_packing.jpg":
         file_name = f"camera_{camera_id}_roi_packing.jpg"
-    elif file == "roi_MVD.jpg":
-        file_name = f"camera_{camera_id}_roi_MVD.jpg"
     elif file == "roi_trigger.jpg":
         file_name = f"camera_{camera_id}_roi_trigger.jpg"
     elif file == "original.jpg":

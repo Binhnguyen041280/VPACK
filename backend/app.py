@@ -32,13 +32,22 @@ logging.getLogger('matplotlib').setLevel(logging.WARNING)
 logging.getLogger('modules.licensing.repositories').setLevel(logging.INFO)
 
 # ==================== IMPORT CORE MODULES ====================
-from modules.config.logging_config import setup_logging, get_logger
+from modules.config.logging_config import setup_dual_logging, get_logger
 
-# ==================== SETUP LOGGING FIRST ====================
+# ==================== SETUP DUAL LOGGING FIRST ====================
 # CRITICAL: Setup logging BEFORE other imports to capture all log messages
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-setup_logging(BASE_DIR, app_name="app", log_level=logging.INFO)
+log_paths = setup_dual_logging(
+    BASE_DIR,
+    app_name="app",
+    general_level=logging.INFO,   # app.log level
+    event_level=logging.DEBUG      # event_processing.log level
+)
 logger = logging.getLogger("app")
+logger.info(f"🚀 Application started with dual logging")
+logger.info(f"   General log: {log_paths['app_log']}")
+logger.info(f"   Event log: {log_paths['event_log']}")
+logger.info(f"   Session ID: {log_paths['session_id']}")
 
 # ==================== CONTINUE IMPORTS ====================
 from modules.config.config import config_bp, init_app_and_config
