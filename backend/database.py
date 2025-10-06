@@ -351,20 +351,6 @@ def update_database():
                     "Asia/Ho_Chi_Minh", 1, current_utc_timestamp, True, current_utc_timestamp, current_utc_timestamp
                 ))
                 print("✅ Initialized timezone_metadata table")
-            
-            # 10. Camera Configs Table (for timezone-specific camera configurations)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS camera_configs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    camera_name TEXT NOT NULL UNIQUE,
-                    timezone TEXT,
-                    timezone_iana_name TEXT,
-                    timezone_validated INTEGER DEFAULT 0,
-                    config_data TEXT,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
 
             # ==================== VIDEO SOURCES & SYNC TABLES ====================
             
@@ -534,23 +520,6 @@ def update_database():
             """)
 
             # ==================== SECURITY & AUTH TABLES ====================
-            
-            # 14. User Sessions Table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS user_sessions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_token TEXT NOT NULL UNIQUE,
-                    user_email TEXT NOT NULL,
-                    provider TEXT NOT NULL,
-                    encrypted_credentials TEXT,
-                    expires_at TIMESTAMP NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_accessed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    is_active BOOLEAN DEFAULT 1,
-                    user_agent TEXT,
-                    ip_address TEXT
-                )
-            """)
 
             # 15. Auth Audit Table
             cursor.execute("""
@@ -658,21 +627,6 @@ def update_database():
                 )
             """)
 
-            # 20. Email Logs Table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS email_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    license_id INTEGER,
-                    recipient_email TEXT NOT NULL,
-                    email_type TEXT DEFAULT 'license_delivery',
-                    subject TEXT,
-                    status TEXT DEFAULT 'pending',
-                    sent_at TIMESTAMP,
-                    error_message TEXT,
-                    FOREIGN KEY (license_id) REFERENCES licenses(id)
-                )
-            """)
-
             # ==================== CREATE ALL INDEXES ====================
 
             # Core table indexes
@@ -699,12 +653,7 @@ def update_database():
             # Timezone metadata indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_timezone_metadata_migration_version ON timezone_metadata(migration_version)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_timezone_metadata_timestamp ON timezone_metadata(migration_timestamp)")
-            
-            # Camera configs indexes
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_camera_configs_name ON camera_configs(camera_name)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_camera_configs_timezone ON camera_configs(timezone_iana_name)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_camera_configs_validated ON camera_configs(timezone_validated)")
-            
+
             print("✅ Created timezone performance indexes")
             
             # ==================== MIGRATE EXISTING TIMEZONE DATA ====================
@@ -792,13 +741,6 @@ def update_database():
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_last_downloaded_source_camera ON last_downloaded_file(source_id, camera_name)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_last_downloaded_timestamp ON last_downloaded_file(last_file_timestamp)")
             
-            # Security indexes
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_token ON user_sessions(session_token)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_email ON user_sessions(user_email)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_expires ON user_sessions(expires_at)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_audit_email ON auth_audit(user_email)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_audit_created ON auth_audit(created_at)')
-            
             # License indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_email ON payment_transactions(customer_email)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_status ON payment_transactions(status)")
@@ -810,8 +752,6 @@ def update_database():
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_licenses_created ON licenses(created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_activations_license ON license_activations(license_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_activations_machine ON license_activations(machine_fingerprint)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_logs_license ON email_logs(license_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_logs_status ON email_logs(status)")
 
             # ==================== CREATE VIEWS ====================
             
@@ -939,14 +879,13 @@ def update_database():
 
             conn.commit()
             print(f"🎉 Database updated successfully at {DB_PATH}")
-            print("✅ All 23 tables created successfully")
+            print("✅ All 20 tables created successfully")
             print("✅ Platform management system implemented")
             print("   - Added platform_column_mappings table with auto-detection patterns")
             print("✅ Enhanced timezone management system implemented")
             print("   - Enhanced general_info table with 7 timezone columns")
             print("   - Enhanced events table with timezone metadata")
             print("   - Added timezone_metadata table for system configuration")
-            print("   - Added camera_configs table for camera-specific timezones")
             print("✅ All indexes created for optimal performance")
             print("   - 11 new timezone-specific indexes for query optimization")
             print("✅ All views created for efficient queries")
@@ -960,180 +899,6 @@ def update_database():
     except Exception as e:
         print(f"❌ Error updating database: {e}")
         raise
-
-# ==================== SECURITY: SESSION MANAGEMENT METHODS ====================
-
-def create_session(session_token: str, user_email: str, provider: str, 
-                  encrypted_credentials: str, expires_at: datetime, 
-                  user_agent: str = "", ip_address: str = "") -> bool:
-    """Create new user session"""
-    try:
-        with safe_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO user_sessions 
-                (session_token, user_email, provider, encrypted_credentials, 
-                 expires_at, user_agent, ip_address)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (session_token, user_email, provider, encrypted_credentials, 
-                  expires_at, user_agent or "", ip_address or ""))
-            conn.commit()
-        logger.info(f"Session created for {user_email}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to create session: {e}")
-        return False
-
-def get_session(session_token: str) -> Optional[Dict]:
-    """Get session by token"""
-    try:
-        with safe_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT * FROM user_sessions 
-                WHERE session_token = ? AND is_active = 1 AND expires_at > CURRENT_TIMESTAMP
-            ''', (session_token,))
-            row = cursor.fetchone()
-            if row:
-                cursor.execute('''
-                    UPDATE user_sessions 
-                    SET last_accessed = CURRENT_TIMESTAMP 
-                    WHERE session_token = ?
-                ''', (session_token,))
-                conn.commit()
-                columns = [description[0] for description in cursor.description]
-                result = dict(zip(columns, row))
-                return result
-        return None
-    except Exception as e:
-        logger.error(f"Failed to get session: {e}")
-        return None
-
-def update_session_credentials(session_token: str, encrypted_credentials: str) -> bool:
-    """Update session credentials (for token refresh)"""
-    try:
-        with safe_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE user_sessions 
-                SET encrypted_credentials = ?, last_accessed = CURRENT_TIMESTAMP
-                WHERE session_token = ? AND is_active = 1
-            ''', (encrypted_credentials, session_token))
-            conn.commit()
-            result = cursor.rowcount > 0
-        return result
-    except Exception as e:
-        logger.error(f"Failed to update session credentials: {e}")
-        return False
-
-def invalidate_session(session_token: str) -> bool:
-    """Invalidate a session"""
-    try:
-        with safe_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE user_sessions 
-                SET is_active = 0 
-                WHERE session_token = ?
-            ''', (session_token,))
-            conn.commit()
-            result = cursor.rowcount > 0
-        return result
-    except Exception as e:
-        logger.error(f"Failed to invalidate session: {e}")
-        return False
-
-def cleanup_expired_sessions() -> int:
-    """Clean up expired sessions"""
-    try:
-        with safe_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                DELETE FROM user_sessions 
-                WHERE expires_at < CURRENT_TIMESTAMP OR is_active = 0
-            ''')
-            conn.commit()
-            deleted_count = cursor.rowcount
-        logger.info(f"Cleaned up {deleted_count} expired sessions")
-        return deleted_count
-    except Exception as e:
-        logger.error(f"Failed to cleanup sessions: {e}")
-        return 0
-
-def get_user_sessions(user_email: str) -> List[Dict]:
-    """Get all active sessions for a user"""
-    try:
-        with safe_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT session_token, provider, created_at, last_accessed, expires_at
-                FROM user_sessions 
-                WHERE user_email = ? AND is_active = 1 AND expires_at > CURRENT_TIMESTAMP
-                ORDER BY last_accessed DESC
-            ''', (user_email,))
-            columns = [description[0] for description in cursor.description]
-            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        return results
-    except Exception as e:
-        logger.error(f"Failed to get user sessions: {e}")
-        return []
-
-# ==================== SECURITY: AUTHENTICATION AUDIT METHODS ====================
-
-def log_auth_event(event_type: str, success: bool, user_email: str = "", 
-                  session_token: str = "", provider: str = "", 
-                  ip_address: str = "", user_agent: str = "", 
-                  error_message: str = "", metadata: Optional[Dict] = None) -> bool:
-    """Log authentication event"""
-    try:
-        with safe_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO auth_audit 
-                (session_token, user_email, event_type, provider, success, 
-                 ip_address, user_agent, error_message, metadata)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                session_token or "",
-                user_email or "",
-                event_type, 
-                provider or "",
-                success,
-                ip_address or "",
-                user_agent or "",
-                error_message or "",
-                json.dumps(metadata or {})
-            ))
-            conn.commit()
-        return True
-    except Exception as e:
-        logger.error(f"Failed to log auth event: {e}")
-        return False
-
-def get_auth_audit(user_email: str = "", limit: int = 100) -> List[Dict]:
-    """Get authentication audit trail"""
-    try:
-        with safe_db_connection() as conn:
-            cursor = conn.cursor()
-            if user_email:
-                cursor.execute('''
-                    SELECT * FROM auth_audit 
-                    WHERE user_email = ?
-                    ORDER BY created_at DESC 
-                    LIMIT ?
-                ''', (user_email, limit))
-            else:
-                cursor.execute('''
-                    SELECT * FROM auth_audit 
-                    ORDER BY created_at DESC 
-                    LIMIT ?
-                ''', (limit,))
-            columns = [description[0] for description in cursor.description]
-            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        return results
-    except Exception as e:
-        logger.error(f"Failed to get auth audit: {e}")
-        return []
 
 # ==================== HELPER FUNCTIONS FOR DATABASE OPERATIONS ====================
 
