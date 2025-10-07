@@ -6,14 +6,14 @@ import { VPackIcon } from '@/components/icons/VPackIcon';
 
 interface ChatMessageProps {
   content: string;
-  type: 'user' | 'bot';
+  type: 'user' | 'bot' | 'file_processing';
   timestamp: Date;
 }
 
 const ChatMessage = ({ content, type, timestamp }: ChatMessageProps) => {
   const { currentColors } = useColorTheme();
   const textColor = useColorModeValue('navy.700', 'white');
-  const userBubbleBg = useColorModeValue(currentColors.brand500, currentColors.brand400);
+  const userBubbleBg = useColorModeValue(currentColors.brand500, currentColors.brand500);
   const botBubbleBg = useColorModeValue('gray.50', 'whiteAlpha.100');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
 

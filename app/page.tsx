@@ -22,6 +22,7 @@ import {
   useColorModeValue,
 } from '@chakra-ui/react';
 import { useEffect, useState, useContext, useRef } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { MdAutoAwesome, MdEdit, MdPerson, MdAdd, MdAttachFile, MdImage, MdVideoFile } from 'react-icons/md';
 import Bg from '../public/img/chat/bg-image.png';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
@@ -30,6 +31,7 @@ import { useUser } from '@/contexts/UserContext';
 import { useRoute } from '@/contexts/RouteContext';
 import StepNavigator from '@/components/navigation/StepNavigator';
 import CanvasMessage from '@/components/canvas/CanvasMessage';
+import { stepConfigService } from '@/services/stepConfigService';
 
 interface Message {
   id: string;
@@ -39,25 +41,26 @@ interface Message {
 }
 
 // Step mapping constants
-const STEP_NUMBER_TO_KEY: { [key: string]: 'brandname' | 'location_time' | 'file_save' | 'video_source' | 'packing_area' | 'timing' } = {
+const STEP_NUMBER_TO_KEY: { [key: string]: 'brandname' | 'location_time' | 'video_source' | 'packing_area' | 'timing' } = {
   '1': 'brandname',
   '2': 'location_time', 
-  '3': 'file_save',
-  '4': 'video_source',
-  '5': 'packing_area',
-  '6': 'timing'
+  '3': 'video_source',
+  '4': 'packing_area',
+  '5': 'timing'
 };
 
 const STEP_KEY_TO_NUMBER: { [key: string]: number } = {
   'brandname': 1,
   'location_time': 2,
-  'file_save': 3,
-  'video_source': 4,
-  'packing_area': 5,
-  'timing': 6
+  'video_source': 3,
+  'packing_area': 4,
+  'timing': 5
 };
 
-export default function Chat(props: { apiKeyApp: string }) {
+function Chat(props: { apiKeyApp: string }) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  
   // Input States
   const [inputCode, setInputCode] = useState<string>('');
   // Messages history
@@ -69,17 +72,84 @@ export default function Chat(props: { apiKeyApp: string }) {
   const [gmailError, setGmailError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [authenticatedUser, setAuthenticatedUser] = useState<string>('');
-  // Configuration state - Updated for 6-step workflow
-  const [configStep, setConfigStep] = useState<'brandname' | 'location_time' | 'file_save' | 'video_source' | 'packing_area' | 'timing'>('brandname');
+  // Auto-authentication state
+  const [authLoading, setAuthLoading] = useState<boolean>(true); // Start with true to check on mount
+  // Config check state to prevent UI flash
+  const [isCheckingConfig, setIsCheckingConfig] = useState<boolean>(true);
+  // Configuration state - Updated for 5-step workflow
+  const [configStep, setConfigStep] = useState<'brandname' | 'location_time' | 'video_source' | 'packing_area' | 'timing'>('brandname');
   const [companyName, setCompanyName] = useState<string>('');
-  // Step completion tracking for 6 steps - All start as completed with defaults
+  
+  // Chat-controlled Canvas state
+  const [canvasState, setCanvasState] = useState<{
+    brandName: string;
+    isLoading: boolean;
+    // Step 2 state
+    locationTime: {
+      country: string;
+      timezone: string;
+      language: string;
+      working_days: string[];
+      from_time: string;
+      to_time: string;
+    };
+    locationTimeLoading: boolean;
+    // Step 3 state
+    videoSource?: {
+      sourceType: 'local_storage' | 'cloud_storage';
+      inputPath?: string;
+      detectedFolders?: { name: string; path: string }[];
+      selectedCameras?: string[];
+      selectedTreeFolders?: any[];  // For cloud storage
+      currentSource?: any;  // Current active source info
+    };
+    videoSourceLoading?: boolean;
+    // Step 5 state
+    timingStorage: {
+      min_packing_time: number;
+      max_packing_time: number;
+      video_buffer: number;
+      storage_duration: number;
+      frame_rate: number;
+      frame_interval: number;
+      output_path: string;
+    };
+    timingStorageLoading: boolean;
+  }>({
+    brandName: 'Alan_go',
+    isLoading: false,
+    // Step 2 defaults (IANA timezone format)
+    locationTime: {
+      country: 'Vietnam',
+      timezone: 'Asia/Ho_Chi_Minh',
+      language: 'English (en-US)',
+      working_days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+      from_time: '07:00',
+      to_time: '23:00'
+    },
+    locationTimeLoading: false,
+    // Step 3 defaults
+    videoSource: undefined,
+    videoSourceLoading: false,
+    // Step 5 defaults - matching backend defaults
+    timingStorage: {
+      min_packing_time: 10,
+      max_packing_time: 120,
+      video_buffer: 2,
+      storage_duration: 30,
+      frame_rate: 30,
+      frame_interval: 5,
+      output_path: "/default/output"
+    },
+    timingStorageLoading: false
+  });
+  // Step completion tracking for 5 steps - Start as incomplete, mark completed when user interacts
   const [stepCompleted, setStepCompleted] = useState<{[key: string]: boolean}>({
-    brandname: true,   // Default: "Alan_go"
-    location_time: true,   // Default: Auto-detected timezone/schedule
-    file_save: true,   // Default: Storage settings
-    video_source: true,   // Default: Camera settings
-    packing_area: true,   // Default: Detection zones
-    timing: true   // Default: Performance settings
+    brandname: false,   // Will be marked true when user completes step 1
+    location_time: false,   // Will be marked true when user completes step 2
+    video_source: false,   // Will be marked true when user completes step 3
+    packing_area: false,   // Will be marked true when user completes step 4
+    timing: false   // Will be marked true when user completes step 5
   });
   // Track highest step reached for progress display
   const [highestStepReached, setHighestStepReached] = useState<number>(1);
@@ -106,6 +176,14 @@ export default function Chat(props: { apiKeyApp: string }) {
   const loadingBg = useColorModeValue('gray.50', 'whiteAlpha.100');
   const loadingTextColor = useColorModeValue('navy.700', 'white');
   const mainBg = useColorModeValue('white', 'navy.900');
+  // Menu colors to prevent hooks order violation
+  const menuHoverBg = useColorModeValue('gray.50', 'whiteAlpha.100');
+  const menuBoxShadow = useColorModeValue(
+    '14px 17px 40px 4px rgba(112, 144, 176, 0.18)',
+    '0px 41px 75px #081132',
+  );
+  const menuBg = useColorModeValue('white', 'navy.800');
+  const menuItemHoverBg = useColorModeValue('gray.100', 'whiteAlpha.100');
   // Submit button text
   const getSubmitButtonText = (): string => {
     if (inputCode.trim() === '') {
@@ -132,7 +210,7 @@ export default function Chat(props: { apiKeyApp: string }) {
   const { currentColors } = useColorTheme();
   const { toggleSidebar } = useContext(SidebarContext);
   const { userInfo, updateUserInfo, refreshUserInfo } = useUser();
-  const { setCompanyName: setRouteCompanyName, startAnimation, stopAnimation } = useRoute();
+  const { setCompanyName: setRouteCompanyName, startAnimation, stopAnimation, setCurrentRoute } = useRoute();
 
   // Auto-scroll to bottom when new message
   useEffect(() => {
@@ -141,7 +219,112 @@ export default function Chat(props: { apiKeyApp: string }) {
     }
   }, [messages, loading]);
 
-  // Remove auto-authentication check for clean first-time experience
+  // Auto-check existing Gmail authentication on page load
+  const checkExistingGmailAuth = async () => {
+    try {
+      console.log('🔍 Checking existing Gmail authentication...');
+      setAuthLoading(true);
+      
+      const response = await fetch('http://localhost:8080/api/cloud/gmail-auth-status', {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('📡 Gmail auth status result:', result);
+        
+        if (result.success && result.authenticated) {
+          console.log('✅ Existing Gmail authentication found for:', result.user_email);
+          
+          // Set authentication state
+          setIsAuthenticated(true);
+          setAuthenticatedUser(result.user_email);
+          
+          // Update user context immediately
+          updateUserInfo({
+            name: result.user_info?.name || result.user_email.split('@')[0],
+            email: result.user_email,
+            avatar: result.user_info?.photo_url || '/img/avatars/avatar4.png',
+            authenticated: true
+          });
+          
+          // Add welcome back message
+          const welcomeBackMessage: Message = {
+            id: Date.now().toString(),
+            content: `🎉 Welcome back, ${result.user_info?.name || result.user_email}! Your Gmail authentication is still active.`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          
+          const configMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `⚙️ Continuing with your configuration setup...`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          
+          setMessages([welcomeBackMessage, configMessage]);
+          
+          // IMMEDIATE transition to configuration layout
+          setShowConfigLayout(true);
+          setCurrentRoute('/camera-config'); // Set active route to Camera Config in sidebar
+          
+          // Start company name blinking animation
+          startAnimation();
+          
+          console.log('🚀 Auto-triggered configuration layout for returning user');
+          
+        } else {
+          console.log('📭 No existing Gmail authentication found');
+          // User needs to authenticate - stay in welcome mode
+        }
+      } else {
+        console.log('❌ Failed to check Gmail auth status:', response.status);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error checking existing Gmail auth:', error);
+      // Fallback to normal flow if auto-check fails
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Auto-check authentication on component mount
+  useEffect(() => {
+    checkExistingGmailAuth();
+  }, []);
+
+  // Check if user has NOT completed configuration and show camera config page
+  useEffect(() => {
+    // Only check after component has mounted (client-side only)
+    if (typeof window !== 'undefined') {
+      const userConfigured = localStorage.getItem('userConfigured');
+      const configParam = searchParams.get('config');
+
+      // Skip redirect if user intentionally navigated to Camera Config
+      if (configParam === 'camera') {
+        console.log('🎯 User navigated to Camera Config - skipping auto-redirect');
+        setIsCheckingConfig(false); // Allow render
+        return;
+      }
+
+      // If user has NOT completed configuration, stay on camera config page (no redirect)
+      if (userConfigured !== 'true') {
+        console.log('🎯 First-time user - showing camera config page...');
+        setIsCheckingConfig(false); // Allow render
+        return;
+      }
+
+      // If user has completed configuration, redirect to trace page
+      console.log('🔄 Redirecting configured user to trace page...');
+      router.push('/trace');
+    }
+  }, [router, searchParams]);
 
   // Cleanup OAuth on component unmount
   useEffect(() => {
@@ -164,7 +347,7 @@ export default function Chat(props: { apiKeyApp: string }) {
 
   // Handle Back Command - Go to Previous Step
   const handleBackCommand = (): string => {
-    const stepOrder = ['brandname', 'location_time', 'file_save', 'video_source', 'packing_area', 'timing'];
+    const stepOrder = ['brandname', 'location_time', 'video_source', 'packing_area', 'timing'];
     const currentIndex = stepOrder.indexOf(configStep);
     
     if (currentIndex <= 0) {
@@ -181,7 +364,7 @@ export default function Chat(props: { apiKeyApp: string }) {
   const handleStepJump = (stepNumber: string): string => {
     const targetStep = STEP_NUMBER_TO_KEY[stepNumber];
     if (!targetStep) {
-      return '❌ Invalid step number. Use: step 1, step 2, step 3, step 4, step 5, or step 6';
+      return '❌ Invalid step number. Use: step 1, step 2, step 3, step 4, or step 5';
     }
     
     setConfigStep(targetStep);
@@ -203,45 +386,30 @@ export default function Chat(props: { apiKeyApp: string }) {
     // Save current defaults before transitioning
     switch (configStep) {
       case 'brandname':
-        // Save default company name if not set
-        if (!companyName.trim()) {
-          setCompanyName('Alan_go');
-          setRouteCompanyName('Alan_go');
-          stopAnimation();
-          localStorage.setItem('userConfigured', 'true');
-          setShowConfigLayout(true);
-        }
-        setConfigStep('location_time');
-        setHighestStepReached(prev => Math.max(prev, 2));
-        return '📍 Step 2: Location & Time Configuration\n\nNow we\'ll set up your timezone, work schedule, and language preferences.\n\nThe system will auto-detect your location and timezone. You can modify these settings if needed.\n\n⚡ Auto-detection is running...';
+        // For Step 1, always use async API call - return flag to trigger async handling
+        return 'ASYNC_CONTINUE_BRANDNAME_DEFAULT';
       
       case 'location_time':
-        // Save default location/time settings
-        setConfigStep('file_save');
-        setHighestStepReached(prev => Math.max(prev, 3));
-        return '💾 Step 3: File Storage Settings\n\nLet\'s configure where your videos will be stored and how long to keep them.\n\nSet up storage path, retention policies, and file organization preferences.\n\n📁 Default storage location and settings are ready for your review.';
-      
-      case 'file_save':
-        // Save default file storage settings
-        setConfigStep('video_source');
-        setHighestStepReached(prev => Math.max(prev, 4));
-        return '📹 Step 4: Video Source Configuration\n\nTime to set up your camera and video recording settings.\n\nChoose between local camera, IP camera, or cloud storage sources. Configure quality, frame rate, and recording options.\n\n🎥 Default camera settings are optimized for monitoring.';
+        // For Step 2, always use async API call - return flag to trigger async handling
+        return 'ASYNC_CONTINUE_LOCATION_TIME_DEFAULT';
       
       case 'video_source':
         // Save default video source settings
+        // Auto-advance to next step
         setConfigStep('packing_area');
-        setHighestStepReached(prev => Math.max(prev, 5));
-        return '📦 Step 5: Packing Area Detection\n\nDefine the detection zones and configure motion triggers.\n\nSet up areas to monitor, adjust sensitivity levels, and configure alert settings for when activity is detected.\n\n🎯 Detection zones and alert settings are ready for customization.';
+        setHighestStepReached(prev => Math.max(prev, 4));
+        return '📦 Step 4: Packing Area Detection\n\nDefine the detection zones for monitoring.\n\nSet up areas to monitor and configure detection zones for optimal coverage.\n\n🎯 Detection zones are ready for customization.';
       
       case 'packing_area':
         // Save default packing area settings
+        // Auto-advance to next step
         setConfigStep('timing');
-        setHighestStepReached(prev => Math.max(prev, 6));
-        return '⏱️ Step 6: Timing & Performance\n\nFinal step! Configure processing speed and performance optimization.\n\nChoose between speed vs accuracy, set buffer times, and enable performance features like GPU acceleration.\n\n🚀 Performance settings are tuned for optimal monitoring efficiency.';
+        setHighestStepReached(prev => Math.max(prev, 5));
+        return '⏱️ Step 5: Timing & File Storage\n\nFinal step! Configure timing settings and file storage.\n\nSet up buffer times, packing time limits, storage paths, and retention policies.\n\n🚀 Timing and storage settings are ready for configuration.';
       
       case 'timing':
         // Save default timing settings - Final step
-        return '✅ Step 6 completed. Timing settings saved.\n\n🎉 All configuration completed!\n\nAll 6 steps finished with your settings. Ready to start processing.';
+        return '✅ Step 5 completed. Timing & storage settings saved.\n\n🎉 All configuration completed!\n\nAll 5 steps finished with your settings. Ready to start processing.';
       
       default:
         return 'Configuration step completed.';
@@ -250,41 +418,41 @@ export default function Chat(props: { apiKeyApp: string }) {
 
   // Handle Submit Command - Confirm changes and mark step completed
   const handleSubmitCommand = (): string => {
-    // Mark current step as completed
-    setStepCompleted(prev => ({ ...prev, [configStep]: true }));
-    
     switch (configStep) {
       case 'brandname':
-        // If no company name set, use default
-        if (!companyName.trim()) {
-          setCompanyName('Alan_go');
-          setRouteCompanyName('Alan_go');
-          stopAnimation();
-          localStorage.setItem('userConfigured', 'true');
-          setShowConfigLayout(true);
-          return '✅ Changes confirmed. Using default: "Alan_go"\n\nType "continue" to proceed to next step.';
-        } else {
-          setShowConfigLayout(true);
-          return `✅ Changes confirmed: "${companyName}"\n\nType "continue" to proceed to next step.`;
-        }
+        // Mark step as completed for navigation sync
+        setStepCompleted(prev => ({ ...prev, brandname: true }));
+        // For Step 1, always use async API call - return flag to trigger async handling
+        return 'ASYNC_SUBMIT_BRANDNAME_DEFAULT';
       
       case 'location_time':
-        return '✅ Location & Time settings confirmed.\n\nType "continue" to proceed to next step.';
-      
-      case 'file_save':
-        return '✅ File storage settings confirmed.\n\nType "continue" to proceed to next step.';
+        // Mark step as completed for navigation sync
+        setStepCompleted(prev => ({ ...prev, location_time: true }));
+        // For Step 2, always use async API call - return flag to trigger async handling
+        return 'ASYNC_SUBMIT_LOCATION_TIME_DEFAULT';
       
       case 'video_source':
-        return '✅ Video source settings confirmed.\n\nType "continue" to proceed to next step.';
+        // Mark step as completed for navigation sync (same as other steps)
+        setStepCompleted(prev => ({ ...prev, video_source: true }));
+        // For Step 3, always use async API call - return flag to trigger async handling
+        return 'ASYNC_SUBMIT_VIDEO_SOURCE_DEFAULT';
       
       case 'packing_area':
-        return '✅ Packing area settings confirmed.\n\nType "continue" to proceed to next step.';
+        // Mark step as completed for navigation sync
+        setStepCompleted(prev => ({ ...prev, packing_area: true }));
+        // Auto-advance to next step
+        setConfigStep('timing');
+        setHighestStepReached(prev => Math.max(prev, 5));
+        return '⏱️ Step 5: Timing & File Storage\n\nFinal step! Configure timing settings and file storage.\n\nSet up buffer times, packing time limits, storage paths, and retention policies.\n\n🚀 Timing and storage settings are ready for configuration.';
       
       case 'timing':
-        return '✅ Timing settings confirmed.\n\nConfiguration completed!';
+        // Mark step as completed for navigation sync
+        setStepCompleted(prev => ({ ...prev, timing: true }));
+        // For Step 5, always use async API call - return flag to trigger async handling
+        return 'ASYNC_SUBMIT_TIMING_DEFAULT';
       
       default:
-        return '✅ Settings confirmed.\n\nType "continue" to proceed.';
+        return 'Configuration step completed.';
     }
   };
 
@@ -295,7 +463,7 @@ export default function Chat(props: { apiKeyApp: string }) {
     }
 
     switch (configStep) {
-      case 'company':
+      case 'brandname':
       case 'location_time':
         // Edit company name
         setCompanyName(newValue);
@@ -362,34 +530,19 @@ export default function Chat(props: { apiKeyApp: string }) {
     
     // Handle help command
     if (input === 'help') {
-      return 'Available commands:\n• "continue" or "next" - Proceed to next step\n• "back" - Go to previous step\n• "step X" - Jump to specific step (1-6)\n• "edit" - Modify current step settings\n• "help" - Show this help\n\nOr enter data to configure the current step.';
+      return 'Available commands:\n• "continue" or "next" - Proceed to next step\n• "back" - Go to previous step\n• "step X" - Jump to specific step (1-5)\n• "edit" - Modify current step settings\n• "help" - Show this help\n\nOr enter data to configure the current step.';
     }
     
-    // Handle company name input when in brandname step - Direct Submit (no intermediate step)
+    // Handle company name input when in brandname step - Direct Submit with auto-advance
     if (configStep === 'brandname' && userInput.trim().length > 0) {
-      setCompanyName(userInput.trim());
-      
-      // Update sidebar route name (replaces "Alan_go")
-      setRouteCompanyName(userInput.trim());
-      
-      // Stop company name blinking animation
-      stopAnimation();
-      
-      // Mark user as configured (allow future database operations)
-      localStorage.setItem('userConfigured', 'true');
-      setShowConfigLayout(true);
-      
-      // Mark step as completed immediately (direct submit pattern)
-      setStepCompleted(prev => ({ ...prev, brandname: true }));
-      
-      // Direct submit result - no intermediate confirmation
-      return `✅ Changes confirmed: "${userInput.trim()}"\n\nType "continue" to proceed to next step.`;
+      // This will be handled asynchronously by handleBrandnameSubmit
+      return 'ASYNC_BRANDNAME_SUBMIT';
     }
     
     // Handle empty submit for brandname (use default) - this is covered by handleSubmitCommand now
     
     // Default response for unrecognized input
-    return 'Available commands:\n• "continue" or "next" - Proceed to next step\n• "back" - Go to previous step\n• "step X" - Jump to specific step (1-6)\n• "edit" - Modify current step settings\n• "help" - Show this help\n\nOr enter data to configure the current step.';
+    return 'Available commands:\n• "continue" or "next" - Proceed to next step\n• "back" - Go to previous step\n• "step X" - Jump to specific step (1-5)\n• "edit" - Modify current step settings\n• "help" - Show this help\n\nOr enter data to configure the current step.';
   };
 
   const handleTranslate = () => {
@@ -399,11 +552,63 @@ export default function Chat(props: { apiKeyApp: string }) {
       return;
     }
 
-    // Add user message (only if not empty)
-    if (inputCode.trim()) {
+    // Add user message with auto-response if input is empty but action taken
+    let userMessageContent = inputCode.trim();
+    
+    // Special case: if user entered company name, show it in user message
+    if (userMessageContent && configStep === 'brandname') {
+      userMessageContent = `Tôi thiết lập tên công ty: "${userMessageContent}"`;
+    }
+    
+    // If empty input but step completed, show auto-response based on current step
+    if (!inputCode.trim() && stepCompleted[configStep]) {
+      switch (configStep) {
+        case 'brandname':
+          userMessageContent = 'I agree with Step 1 setup content';
+          break;
+        case 'location_time':
+          userMessageContent = 'I agree with Step 2 setup content';
+          break;
+        case 'video_source':
+          userMessageContent = 'I agree with Step 3 setup content';
+          break;
+        case 'packing_area':
+          userMessageContent = 'I agree with Step 4 setup content';
+          break;
+        case 'timing':
+          userMessageContent = 'I agree with Step 5 setup content';
+          break;
+        default:
+          userMessageContent = 'I agree with this setup';
+      }
+    } else if (!inputCode.trim() && !stepCompleted[configStep]) {
+      // Empty submit on incomplete step - show confirmation message
+      switch (configStep) {
+        case 'brandname':
+          userMessageContent = 'I confirm default setup';
+          break;
+        case 'location_time':
+          userMessageContent = 'I confirm Location & Time setup';
+          break;
+        case 'video_source':
+          userMessageContent = 'I confirm Video Source setup';
+          break;
+        case 'packing_area':
+          userMessageContent = 'I confirm Packing Area setup';
+          break;
+        case 'timing':
+          userMessageContent = 'I confirm Timing & Storage setup';
+          break;
+        default:
+          userMessageContent = 'I confirm this setup';
+      }
+    }
+    
+    // Add user message (always add for visual feedback)
+    if (userMessageContent) {
       const userMessage: Message = {
         id: Date.now().toString(),
-        content: inputCode.trim(),
+        content: userMessageContent,
         type: 'user',
         timestamp: new Date()
       };
@@ -411,22 +616,231 @@ export default function Chat(props: { apiKeyApp: string }) {
     }
     setLoading(true);
 
-    // Simulate processing time
-    setTimeout(() => {
-      // Get auto response - pass original input to detect empty vs content
-      const botResponse = getAutoResponse(inputCode);
+    // Get auto response first to check for async flags
+    const botResponse = getAutoResponse(inputCode);
+    
+    // Handle async brandname operations
+    if (configStep === 'brandname' && inputCode.trim().length > 0) {
+      // User entered brandname text
+      handleBrandnameSubmit(inputCode.trim())
+        .then(response => {
+          const botMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: response,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, botMessage]);
+          setLoading(false);
+        })
+        .catch(error => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ Error: ${error.message || 'Failed to process request'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setLoading(false);
+        });
+    } else if (botResponse === 'ASYNC_SUBMIT_BRANDNAME_DEFAULT') {
+      // Empty submit for brandname
+      handleBrandnameSubmitDefault()
+        .then(response => {
+          const botMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: response,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, botMessage]);
+          setLoading(false);
+        })
+        .catch(error => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ Error: ${error.message || 'Failed to process request'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setLoading(false);
+        });
+    } else if (botResponse === 'ASYNC_CONTINUE_BRANDNAME_DEFAULT') {
+      // Continue command for brandname
+      handleBrandnameContinueDefault()
+        .then(response => {
+          const botMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: response,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, botMessage]);
+          setLoading(false);
+        })
+        .catch(error => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ Error: ${error.message || 'Failed to process request'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setLoading(false);
+        });
+    } else if (botResponse === 'ASYNC_SUBMIT_LOCATION_TIME_DEFAULT') {
+      // Empty submit for location-time
+      handleLocationTimeSubmitDefault()
+        .then(response => {
+          const botMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: response,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, botMessage]);
+          setLoading(false);
+        })
+        .catch(error => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ Error: ${error.message || 'Failed to process request'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setLoading(false);
+        });
+    } else if (botResponse === 'ASYNC_CONTINUE_LOCATION_TIME_DEFAULT') {
+      // Continue command for location-time
+      handleLocationTimeContinueDefault()
+        .then(response => {
+          const botMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: response,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, botMessage]);
+          setLoading(false);
+        })
+        .catch(error => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ Error: ${error.message || 'Failed to process request'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setLoading(false);
+        });
+    } else if (botResponse === 'ASYNC_SUBMIT_VIDEO_SOURCE_DEFAULT') {
+      // Empty submit for video source - save current canvas state
+      handleVideoSourceSubmitDefault()
+        .then(response => {
+          const botMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: response,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, botMessage]);
+          setLoading(false);
+        })
+        .catch(error => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ Error: ${error.message || 'Failed to save video source configuration'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setLoading(false);
+        });
+    } else if (botResponse === 'ASYNC_SUBMIT_TIMING_DEFAULT') {
+      // Empty submit for timing/storage - save current canvas state
+      handleTimingSubmitDefault()
+        .then(response => {
+          const botMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: response,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, botMessage]);
+          setLoading(false);
+        })
+        .catch(error => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ Error: ${error.message || 'Failed to save timing/storage configuration'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setLoading(false);
+        });
+    } else if (configStep === 'video_source' && inputCode.trim().length > 0) {
+      // User entered video source path - treat as input path and trigger save
+      const inputPath = inputCode.trim();
       
-      // Add bot message
-      const botMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: botResponse,
-        type: 'bot',
-        timestamp: new Date()
+      // Create video source data from input
+      const videoSourceData = {
+        sourceType: 'local_storage' as const,
+        inputPath: inputPath,
+        detectedFolders: canvasState.videoSource?.detectedFolders || [],
+        selectedCameras: canvasState.videoSource?.selectedCameras || []
       };
+      
+      handleVideoSourceSubmit(videoSourceData)
+        .then(response => {
+          const botMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: response,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, botMessage]);
+          setLoading(false);
+        })
+        .catch(error => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ Error: ${error.message || 'Failed to save video source configuration'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setLoading(false);
+        });
+    } else {
+      // Handle other responses synchronously
+      setTimeout(() => {
+        // Skip if async response
+        if (botResponse === 'ASYNC_BRANDNAME_SUBMIT' || 
+            botResponse === 'ASYNC_SUBMIT_BRANDNAME_DEFAULT' || 
+            botResponse === 'ASYNC_CONTINUE_BRANDNAME_DEFAULT' ||
+            botResponse === 'ASYNC_SUBMIT_LOCATION_TIME_DEFAULT' ||
+            botResponse === 'ASYNC_CONTINUE_LOCATION_TIME_DEFAULT' ||
+            botResponse === 'ASYNC_SUBMIT_VIDEO_SOURCE_DEFAULT' ||
+            botResponse === 'ASYNC_SUBMIT_TIMING_DEFAULT') {
+          setLoading(false);
+          return;
+        }
+        
+        // Add bot message
+        const botMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: botResponse,
+          type: 'bot',
+          timestamp: new Date()
+        };
 
-      setMessages(prev => [...prev, botMessage]);
-      setLoading(false);
-    }, 800); // Small delay for realistic feel
+        setMessages(prev => [...prev, botMessage]);
+        setLoading(false);
+      }, 800); // Small delay for realistic feel
+    }
 
     // Clear input
     setInputCode('');
@@ -563,6 +977,11 @@ export default function Chat(props: { apiKeyApp: string }) {
             authenticated: true
           });
           
+          // Refresh user info to get downloaded avatar from backend
+          setTimeout(() => {
+            refreshUserInfo();
+          }, 2000);
+          
           // Add success message to chat
           const successMessage: Message = {
             id: Date.now().toString(),
@@ -584,6 +1003,7 @@ export default function Chat(props: { apiKeyApp: string }) {
           
           // Trigger 3-panel layout immediately after OAuth
           setShowConfigLayout(true);
+          setCurrentRoute('/camera-config'); // Set active route to Camera Config in sidebar
           
           // Start company name blinking animation
           startAnimation();
@@ -660,6 +1080,11 @@ export default function Chat(props: { apiKeyApp: string }) {
                       authenticated: true
                     });
                     
+                    // Refresh user info to get downloaded avatar from backend
+                    setTimeout(() => {
+                      refreshUserInfo();
+                    }, 2000);
+                    
                     // Add success message and auto-trigger canvas
                     const successMessage: Message = {
                       id: Date.now().toString(),
@@ -680,6 +1105,7 @@ export default function Chat(props: { apiKeyApp: string }) {
                     
                     // Trigger 3-panel layout immediately after OAuth
                     setShowConfigLayout(true);
+                    setCurrentRoute('/camera-config'); // Set active route to Camera Config in sidebar
                     
                     // Start company name blinking animation
                     startAnimation();
@@ -776,20 +1202,528 @@ export default function Chat(props: { apiKeyApp: string }) {
 
   // Step Navigator click handler
   const handleStepClick = (stepKey: string) => {
+    // If user is moving back to a step they've already reached, mark current step as completed
+    const currentStepNumber = STEP_KEY_TO_NUMBER[configStep];
+    const targetStepNumber = STEP_KEY_TO_NUMBER[stepKey as keyof typeof STEP_KEY_TO_NUMBER];
+    
+    // Mark current step as completed if user has interacted with it and is moving to another step
+    if (currentStepNumber <= highestStepReached && currentStepNumber < targetStepNumber) {
+      setStepCompleted(prev => ({ ...prev, [configStep]: true }));
+    }
+    
     setConfigStep(stepKey as any);
   };
 
+  // Store canvas refresh functions (legacy - can be removed)
+  const [canvasRefreshFunctions, setCanvasRefreshFunctions] = useState<{[key: string]: any}>({});
+
+  // Load initial brandname from database (Chat controller)
+  const loadBrandnameState = async () => {
+    try {
+      setCanvasState(prev => ({ ...prev, isLoading: true }));
+      const result = await stepConfigService.fetchBrandnameState();
+      if (result.success) {
+        setCanvasState(prev => ({ 
+          ...prev, 
+          brandName: result.data.brand_name,
+          isLoading: false 
+        }));
+        setCompanyName(result.data.brand_name); // Sync with local state
+        setRouteCompanyName(result.data.brand_name); // Sync with RouteContext for sidebar
+      }
+    } catch (error) {
+      console.error('Error loading brandname:', error);
+      setCanvasState(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  // Load initial location/time from database (Chat controller)
+  const loadLocationTimeState = async () => {
+    try {
+      setCanvasState(prev => ({ ...prev, locationTimeLoading: true }));
+      const result = await stepConfigService.fetchLocationTimeState();
+      if (result.success) {
+        setCanvasState(prev => ({
+          ...prev,
+          locationTime: {
+            country: result.data.country,
+            timezone: result.data.timezone,
+            language: result.data.language,
+            working_days: result.data.working_days,
+            from_time: result.data.from_time,
+            to_time: result.data.to_time
+          },
+          locationTimeLoading: false
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading location-time:', error);
+      setCanvasState(prev => ({ ...prev, locationTimeLoading: false }));
+    }
+  };
+
+  // Load initial timing/storage from database (Chat controller)
+  const loadTimingStorageState = async () => {
+    try {
+      setCanvasState(prev => ({ ...prev, timingStorageLoading: true }));
+      const result = await stepConfigService.fetchTimingStorageState();
+      if (result.success) {
+        setCanvasState(prev => ({
+          ...prev,
+          timingStorage: {
+            min_packing_time: result.data.min_packing_time,
+            max_packing_time: result.data.max_packing_time,
+            video_buffer: result.data.video_buffer,
+            storage_duration: result.data.storage_duration,
+            frame_rate: result.data.frame_rate,
+            frame_interval: result.data.frame_interval,
+            output_path: result.data.output_path
+          },
+          timingStorageLoading: false
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading timing-storage:', error);
+      setCanvasState(prev => ({ ...prev, timingStorageLoading: false }));
+    }
+  };
+
+  // Initialize step data when component mounts
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadBrandnameState();
+      loadLocationTimeState();
+      loadTimingStorageState();
+    }
+  }, [isAuthenticated]);
+
+  // Load Step 2 data when switching to location_time step
+  useEffect(() => {
+    if (configStep === 'location_time') {
+      loadLocationTimeState();
+    }
+  }, [configStep]);
+
+  // Load Step 5 data when switching to timing step
+  useEffect(() => {
+    if (configStep === 'timing') {
+      loadTimingStorageState();
+    }
+  }, [configStep]);
+
   // Handle canvas changes - mark step incomplete for submission
   const handleStepChange = (stepName: string, data: any) => {
+    // Store refresh functions from canvas components
+    if (data && data.refreshBrandname) {
+      setCanvasRefreshFunctions(prev => ({ 
+        ...prev, 
+        [stepName]: { ...prev[stepName], refreshBrandname: data.refreshBrandname }
+      }));
+      return; // Don't mark as incomplete for refresh function registration
+    }
+
+    // Update Canvas state in real-time for Step 2 location_time
+    if (stepName === 'location_time' && data) {
+      console.log('🔄 Step 2 Canvas Change:', data);
+      setCanvasState(prev => {
+        const newLocationTime = { ...prev.locationTime };
+        
+        // Handle workDay toggle specifically
+        if (data.workDay) {
+          const dayKey = data.workDay;
+          const currentWorkingDays = [...newLocationTime.working_days];
+          const dayName = dayKey.charAt(0).toUpperCase() + dayKey.slice(1); // monday -> Monday
+          
+          if (currentWorkingDays.includes(dayName)) {
+            // Remove the day
+            newLocationTime.working_days = currentWorkingDays.filter(d => d !== dayName);
+          } else {
+            // Add the day
+            newLocationTime.working_days = [...currentWorkingDays, dayName];
+          }
+        } else {
+          // Handle other field updates with field name mapping
+          if (data.workStartTime) {
+            newLocationTime.from_time = data.workStartTime;
+          } else if (data.workEndTime) {
+            newLocationTime.to_time = data.workEndTime;
+          } else {
+            // Direct field mapping for country, timezone, language
+            Object.assign(newLocationTime, data);
+          }
+        }
+        
+        return {
+          ...prev,
+          locationTime: newLocationTime
+        };
+      });
+    }
+
+    // Update Canvas state in real-time for Step 3 video_source
+    if (stepName === 'video_source' && data) {
+      console.log('🔄 Step 3 Canvas Change:', data);
+      setCanvasState(prev => ({
+        ...prev,
+        videoSource: {
+          sourceType: data.sourceType || prev.videoSource?.sourceType || 'local_storage',
+          inputPath: data.inputPath || prev.videoSource?.inputPath || '',
+          detectedFolders: data.detectedFolders || prev.videoSource?.detectedFolders || [],
+          selectedCameras: data.selectedCameras || prev.videoSource?.selectedCameras || [],
+          selectedTreeFolders: data.selectedTreeFolders || prev.videoSource?.selectedTreeFolders || [],
+          currentSource: data.currentSource || prev.videoSource?.currentSource
+        }
+      }));
+    }
+
+    // Update Canvas state in real-time for Step 5 timing
+    if (stepName === 'timing' && data) {
+      console.log('🔄 Step 5 Canvas Change:', data);
+      setCanvasState(prev => ({
+        ...prev,
+        timingStorage: {
+          ...prev.timingStorage,
+          ...data // Direct field mapping for timing fields
+        }
+      }));
+    }
+
     // Mark step as incomplete when modified - requires Submit
     // No intermediate message - user will Submit directly
     setStepCompleted(prev => ({ ...prev, [stepName]: false }));
   };
 
+  // Handle brandname submission with API call (for user input)
+  const handleBrandnameSubmit = async (brandName: string): Promise<string> => {
+    try {
+      // Show loading state on Canvas
+      setCanvasState(prev => ({ ...prev, isLoading: true }));
+      
+      const result = await stepConfigService.updateBrandnameState(brandName);
+      
+      if (result.success) {
+        // Update Canvas state (Chat controls Canvas)
+        setCanvasState(prev => ({ 
+          ...prev, 
+          brandName: result.data.brand_name,
+          isLoading: false 
+        }));
+        
+        // Update local state
+        setCompanyName(result.data.brand_name);
+        setRouteCompanyName(result.data.brand_name);
+        stopAnimation();
+        localStorage.setItem('userConfigured', 'true');
+        setShowConfigLayout(true);
+        setStepCompleted(prev => ({ ...prev, brandname: true }));
+        setConfigStep('location_time');
+        setHighestStepReached(prev => Math.max(prev, 2));
+
+        // Show different message based on whether brand name was changed
+        if (result.data.changed) {
+          return `✅ Brand name updated to: "${result.data.brand_name}"\n\n📍 Step 2: Location & Time Configuration\n\nNow we'll set up your timezone, work schedule, and language preferences.\n\nThe system will auto-detect your location and timezone. You can modify these settings if needed.\n\n⚡ Auto-detection is running...`;
+        } else {
+          return `✅ Brand name confirmed: "${result.data.brand_name}" (no changes)\n\n📍 Step 2: Location & Time Configuration\n\nNow we'll set up your timezone, work schedule, and language preferences.\n\nThe system will auto-detect your location and timezone. You can modify these settings if needed.\n\n⚡ Auto-detection is running...`;
+        }
+      } else {
+        // Hide loading state on error
+        setCanvasState(prev => ({ ...prev, isLoading: false }));
+        return `❌ Failed to update brand name: ${result.error || result.message || 'Unknown error'}`;
+      }
+    } catch (error) {
+      // Hide loading state on error
+      setCanvasState(prev => ({ ...prev, isLoading: false }));
+      console.error('Error submitting brand name:', error);
+      return `❌ Failed to update brand name: ${error instanceof Error ? error.message : 'Network error'}`;
+    }
+  };
+
+  // Handle brandname Submit with default value (empty submit)
+  const handleBrandnameSubmitDefault = async (): Promise<string> => {
+    const brandNameToUse = companyName.trim() || 'Alan_go';
+    return await handleBrandnameSubmit(brandNameToUse);
+  };
+
+  // Handle brandname Continue with default value
+  const handleBrandnameContinueDefault = async (): Promise<string> => {
+    const brandNameToUse = companyName.trim() || 'Alan_go';
+    return await handleBrandnameSubmit(brandNameToUse);
+  };
+
+  // Handle Step 2 location/time submission with API call
+  const handleLocationTimeSubmit = async (locationTimeData?: {
+    country: string;
+    timezone: string;
+    language: string;
+    working_days: string[];
+    from_time: string;
+    to_time: string;
+  }): Promise<string> => {
+    try {
+      // Show loading state on Canvas
+      setCanvasState(prev => ({ ...prev, locationTimeLoading: true }));
+      
+      // Use provided data or current Canvas state
+      const dataToSubmit = locationTimeData || canvasState.locationTime;
+      
+      console.log('🔄 Step 2 Submit - Data to submit:', dataToSubmit);
+      
+      const result = await stepConfigService.updateLocationTimeState(dataToSubmit);
+      
+      console.log('✅ Step 2 Submit - API Result:', result);
+      
+      if (result.success) {
+        // Update Canvas state (Chat controls Canvas)
+        setCanvasState(prev => ({
+          ...prev,
+          locationTime: {
+            country: result.data.country,
+            timezone: result.data.timezone,
+            language: result.data.language,
+            working_days: result.data.working_days,
+            from_time: result.data.from_time,
+            to_time: result.data.to_time
+          },
+          locationTimeLoading: false
+        }));
+        
+        // Update step completion and advance
+        setStepCompleted(prev => ({ ...prev, location_time: true }));
+        setConfigStep('video_source');
+        setHighestStepReached(prev => Math.max(prev, 3));
+
+        // Show different message based on whether data was changed
+        if (result.data.changed) {
+          return `✅ Location & Time configuration updated\n\n📹 Step 3: Video Source Configuration\n\nChoose where your video files are located for processing.\n\nSelect between local storage (PC, external drive, network mount) or cloud storage (Google Drive). Configure video quality and frame rate settings.\n\n📁 Choose the source that best fits your video storage setup.`;
+        } else {
+          return `✅ Location & Time configuration confirmed (no changes)\n\n📹 Step 3: Video Source Configuration\n\nChoose where your video files are located for processing.\n\nSelect between local storage (PC, external drive, network mount) or cloud storage (Google Drive). Configure video quality and frame rate settings.\n\n📁 Choose the source that best fits your video storage setup.`;
+        }
+      } else {
+        // Hide loading state on error
+        setCanvasState(prev => ({ ...prev, locationTimeLoading: false }));
+        return `❌ Failed to update location/time configuration: ${result.error || result.message || 'Unknown error'}`;
+      }
+    } catch (error) {
+      // Hide loading state on error
+      setCanvasState(prev => ({ ...prev, locationTimeLoading: false }));
+      console.error('Error submitting location/time:', error);
+      return `❌ Failed to update location/time configuration: ${error instanceof Error ? error.message : 'Network error'}`;
+    }
+  };
+
+  // Handle Step 2 Submit with default value (empty submit)
+  const handleLocationTimeSubmitDefault = async (): Promise<string> => {
+    return await handleLocationTimeSubmit();
+  };
+
+  // Handle Step 2 Continue with default value
+  const handleLocationTimeContinueDefault = async (): Promise<string> => {
+    return await handleLocationTimeSubmit();
+  };
+
+  // Step 3: Video Source Submit Handler
+  const handleVideoSourceSubmit = async (videoSourceData?: {
+    sourceType: 'local_storage' | 'cloud_storage';
+    inputPath?: string;
+    detectedFolders?: { name: string; path: string }[];
+    selectedCameras?: string[];
+    selectedTreeFolders?: any[];  // For cloud storage
+    currentSource?: any;  // Current active source info
+  }): Promise<string> => {
+    try {
+      // Show loading state on Canvas
+      setCanvasState(prev => ({ ...prev, videoSourceLoading: true }));
+      
+      // Use provided data or current Canvas state
+      const dataToSubmit = videoSourceData || canvasState.videoSource;
+      
+      console.log('🔄 Step 3 Submit - Data to submit:', dataToSubmit);
+      
+      // Handle case where no video source data is configured yet
+      if (!dataToSubmit || !dataToSubmit.sourceType) {
+        // No configuration yet - just advance to next step with defaults
+        setConfigStep('packing_area');
+        setHighestStepReached(prev => Math.max(prev, 4));
+        setCanvasState(prev => ({ ...prev, videoSourceLoading: false }));
+        return '📦 Step 4: Packing Area Detection\n\nDefine the detection zones for monitoring.\n\nSet up areas to monitor and configure detection zones for optimal coverage.\n\n🎯 Detection zones are ready for customization.';
+      }
+      
+      // Validate required data for local storage
+      if (dataToSubmit.sourceType === 'local_storage' && !dataToSubmit.inputPath) {
+        throw new Error('Input path is required for local storage');
+      }
+      
+      // Build payload with all required fields for UPSERT
+      const payloadToSend = {
+        sourceType: dataToSubmit.sourceType,
+        inputPath: dataToSubmit.inputPath || '',
+        detectedFolders: dataToSubmit.detectedFolders || [],
+        selectedCameras: dataToSubmit.selectedCameras || [],
+        selected_tree_folders: dataToSubmit.selectedTreeFolders || []  // For cloud storage
+      };
+      
+      console.log('🔍 Step 3 Submit - Full payload:', JSON.stringify(payloadToSend, null, 2));
+      
+      // Call the step config service
+      const result = await stepConfigService.updateVideoSourceState(payloadToSend);
+      
+      console.log('✅ Step 3 Submit - API Result:', result);
+      
+      if (result.success) {
+        // Update Canvas state (Chat controls Canvas)
+        setCanvasState(prev => ({
+          ...prev,
+          videoSource: {
+            sourceType: dataToSubmit.sourceType,
+            inputPath: dataToSubmit.inputPath || '',
+            detectedFolders: dataToSubmit.detectedFolders || [],
+            selectedCameras: dataToSubmit.selectedCameras || [],
+            selectedTreeFolders: dataToSubmit.selectedTreeFolders || [],
+            currentSource: dataToSubmit.currentSource
+          },
+          videoSourceLoading: false
+        }));
+        
+        // Mark step as completed and advance to next step
+        setStepCompleted(prev => ({ ...prev, video_source: true }));
+        setConfigStep('packing_area');
+        setHighestStepReached(prev => Math.max(prev, 4));
+        
+        if (result.data.changed) {
+          // Build success message based on source type
+          let successMessage = `✅ Video source configuration updated successfully\n\n📂 Source Type: ${dataToSubmit.sourceType}`;
+          
+          if (dataToSubmit.sourceType === 'local_storage') {
+            successMessage += `\n📁 Input Path: ${dataToSubmit.inputPath || 'Not specified'}`;
+            successMessage += `\n📷 Selected Cameras: ${dataToSubmit.selectedCameras?.join(', ') || 'None'}`;
+          } else if (dataToSubmit.sourceType === 'cloud_storage') {
+            const folderCount = dataToSubmit.selectedTreeFolders?.length || 0;
+            successMessage += `\n☁️ Google Drive Folders: ${folderCount} selected`;
+            successMessage += `\n📁 Sync Path: ${result.data.defaultSyncPath || 'Default'}`;
+          }
+          
+          successMessage += `\n\n🎯 Configuration saved to database ✓`;
+          if (result.data.upsert_operation) {
+            successMessage += `\n🔄 Single Source Mode: Active (ID: ${result.data.videoSourceId})`;
+          }
+          
+          successMessage += `\n\n📦 Step 4: Packing Area Detection\n\nDefine the detection zones for monitoring.\n\nSet up areas to monitor and configure detection zones for optimal coverage.\n\n🎯 Detection zones are ready for customization.`;
+          
+          return successMessage;
+        } else {
+          return `✅ Video source configuration confirmed (no changes)\n\n📂 Current settings validated ✓\n\n📦 Step 4: Packing Area Detection\n\nDefine the detection zones for monitoring.\n\nSet up areas to monitor and configure detection zones for optimal coverage.\n\n🎯 Detection zones are ready for customization.`;
+        }
+      } else {
+        throw new Error(result.error || 'Failed to save video source configuration');
+      }
+      
+    } catch (error) {
+      console.error('❌ Step 3 Submit Error:', error);
+      setCanvasState(prev => ({ ...prev, videoSourceLoading: false }));
+      return `❌ Error saving video source configuration: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease check your settings and try again.`;
+    }
+  };
+
+  const handleVideoSourceSubmitDefault = async (): Promise<string> => {
+    return await handleVideoSourceSubmit();
+  };
+
+  // Step 5: Timing/Storage Submit Handler
+  const handleTimingSubmit = async (timingData?: {
+    min_packing_time?: number;
+    max_packing_time?: number;
+    video_buffer?: number;
+    storage_duration?: number;
+    frame_rate?: number;
+    frame_interval?: number;
+    output_path?: string;
+  }): Promise<string> => {
+    try {
+      // Show loading state on Canvas
+      setCanvasState(prev => ({ ...prev, timingStorageLoading: true }));
+      
+      // Use provided data or current Canvas state
+      const dataToSubmit = timingData || canvasState.timingStorage;
+      
+      console.log('🔄 Step 5 Submit - Data to submit:', dataToSubmit);
+      
+      const result = await stepConfigService.updateTimingStorageState(dataToSubmit);
+      
+      console.log('✅ Step 5 Submit - API Result:', result);
+      
+      if (result.success) {
+        // Update Canvas state (Chat controls Canvas)
+        setCanvasState(prev => ({
+          ...prev,
+          timingStorage: {
+            min_packing_time: result.data.min_packing_time,
+            max_packing_time: result.data.max_packing_time,
+            video_buffer: result.data.video_buffer,
+            storage_duration: result.data.storage_duration,
+            frame_rate: result.data.frame_rate,
+            frame_interval: result.data.frame_interval,
+            output_path: result.data.output_path
+          },
+          timingStorageLoading: false
+        }));
+        
+        // Update step completion - FINAL STEP!
+        setStepCompleted(prev => ({ ...prev, timing: true }));
+        
+        // Redirect to Trace page sau khi hoàn thành configuration
+        setTimeout(() => {
+          window.location.href = '/trace';
+        }, 1500);
+
+        // Show different message based on whether data was changed
+        if (result.data.changed) {
+          return `✅ Configuration completed successfully!\n\n🎉 Your V.PACK system is now ready.\n\nRedirecting to Trace module for video processing and monitoring...`;
+        } else {
+          return `✅ Configuration completed successfully!\n\n🎉 Your V.PACK system is now ready.\n\nRedirecting to Trace module for video processing and monitoring...`;
+        }
+      } else {
+        // Hide loading state on error
+        setCanvasState(prev => ({ ...prev, timingStorageLoading: false }));
+        return `❌ Failed to update timing/storage configuration: ${result.error || result.message || 'Unknown error'}`;
+      }
+    } catch (error) {
+      // Hide loading state on error
+      setCanvasState(prev => ({ ...prev, timingStorageLoading: false }));
+      console.error('Error submitting timing/storage:', error);
+      return `❌ Failed to update timing/storage configuration: ${error instanceof Error ? error.message : 'Network error'}`;
+    }
+  };
+
+  // Handle Step 5 Submit with default value (empty submit)
+  const handleTimingSubmitDefault = async (): Promise<string> => {
+    return await handleTimingSubmit();
+  };
+
+  // Handle Step 5 Continue with default value
+  const handleTimingContinueDefault = async (): Promise<string> => {
+    return await handleTimingSubmit();
+  };
+
+  // Show loading while checking config to prevent UI flash
+  if (isCheckingConfig) {
+    return (
+      <Flex
+        w="100%"
+        h="100vh"
+        justify="center"
+        align="center"
+        bg={mainBg}
+      >
+        <Text fontSize="sm" color={textColor}>
+          Loading...
+        </Text>
+      </Flex>
+    );
+  }
+
   return (
     <Flex
       w="100%"
-      pt={{ base: '70px', md: '0px' }}
       direction="column"
       position="relative"
       overflow="hidden"
@@ -809,187 +1743,239 @@ export default function Chat(props: { apiKeyApp: string }) {
       
       {/* Conditional Layout Rendering */}
       {showConfigLayout ? (
-        // 3-Panel Configuration Layout  
+        // 3-Panel Configuration Layout - Pure Percentage Approach
         <Flex
-          direction="column"
-          mx="auto"
-          w="100%"
-          maxW="1400px"
+          direction="row"
           h="100vh"
           p="20px"
           gap="20px"
+          position="fixed"
+          top="0"
+          left={toggleSidebar ? "95px" : "288px"}
+          w={`calc(100vw - ${toggleSidebar ? "95px" : "288px"})`}
+          minW="900px"
+          transition="left 0.2s linear"
+          overflowX="auto"
+          css={{
+            '&::-webkit-scrollbar': {
+              height: '8px',
+            },
+            '&::-webkit-scrollbar-track': {
+              background: 'var(--chakra-colors-gray-100)',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              background: 'var(--chakra-colors-gray-300)',
+              borderRadius: '4px',
+            },
+            '&::-webkit-scrollbar-thumb:hover': {
+              background: 'var(--chakra-colors-gray-400)',
+            },
+          }}
         >
-          {/* Top Row - Content Area */}
+          {/* Column 1: Chat History + Chat Input - 40% */}
           <Flex
-            flex="1"
-            direction="row"
+            flex="4"
+            direction="column"
             gap="20px"
-            overflow="hidden"
-          >
-            {/* Left: Chat History Panel - 35% */}
-            <Box
-              w="35%"
-              minW="300px"
-            >
-              {/* Chat History - Scrollable */}
-              <Flex
-                direction="column"
-                bg={chatBg}
-                borderRadius="20px"
-                border="1px solid"
-                borderColor={chatBorderColor}
-                p="20px"
-                h="100%"
-              >
-                {/* Chat Header */}
-                <Text
-                  fontSize="lg"
-                  fontWeight="700"
-                  color={chatTextColor}
-                  mb="20px"
-                  textAlign="center"
-                  flexShrink={0}
-                >
-                  💬 Chat Control
-                </Text>
-                
-                {/* Chat Messages - Scrollable */}
-                <Box
-                  flex="1"
-                  overflow="auto"
-                  mb="20px"
-                >
-                  {/* Chat Messages History */}
-                  {messages.map((message) => (
-                    message.type !== 'canvas' && (
-                      <ChatMessage
-                        key={message.id}
-                        content={message.content}
-                        type={message.type}
-                        timestamp={message.timestamp}
-                      />
-                    )
-                  ))}
-                  
-                  {/* Loading indicator */}
-                  {loading && (
-                    <Flex w="100%" mb="16px" align="flex-start">
-                      <Flex
-                        borderRadius="full"
-                        justify="center"
-                        align="center"
-                        bg={currentColors.gradient}
-                        me="12px"
-                        h="32px"
-                        minH="32px"
-                        minW="32px"
-                        flexShrink={0}
-                      >
-                        <Icon
-                          as={MdAutoAwesome}
-                          width="16px"
-                          height="16px"
-                          color="white"
-                        />
-                      </Flex>
-                      <Flex
-                        bg={loadingBg}
-                        borderRadius="16px"
-                        px="16px"
-                        py="12px"
-                        align="center"
-                      >
-                        <Text fontSize="sm" color={chatTextColor}>
-                          Typing...
-                        </Text>
-                      </Flex>
-                    </Flex>
-                  )}
-                </Box>
-              </Flex>
-            </Box>
-            
-            {/* Right: Navigator and Canvas - 65% */}
-            <Flex
-              w="65%"
-              direction="row"
-              gap="20px"
-              align="end"
-            >
-              {/* Step Navigator Panel - 30% of right side */}
-              <Box
-                w="30%"
-                minW="200px"
-                alignSelf="end"
-              >
-                <StepNavigator
-                  currentStep={configStep}
-                  completedSteps={stepCompleted}
-                  highestStepReached={highestStepReached}
-                  onStepClick={handleStepClick}
-                />
-              </Box>
-              
-              {/* Configuration Area Panel - 70% of right side */}
-              <Box
-                w="70%"
-                minW="400px"
-                alignSelf="end"
-              >
-                <Box
-                  bg={chatBg}
-                  borderRadius="20px"
-                  border="1px solid"
-                  borderColor={chatBorderColor}
-                  p="20px"
-                  h="fit-content"
-                  sx={{
-                    '& > div': {
-                      marginBottom: 0
-                    },
-                    '& > div > div:first-of-type': {
-                      display: 'none' // Hide bot avatar
-                    }
-                  }}
-                >
-                  <CanvasMessage 
-                    configStep={configStep} 
-                    onStepChange={handleStepChange}
-                  />
-                </Box>
-              </Box>
-            </Flex>
-          </Flex>
-          
-          {/* Bottom Row - Chat Input Only */}
-          <Box
-            flexShrink={0}
-            w="35%"
             minW="300px"
           >
+            {/* Top: Chat History */}
             <Box
               bg={chatBg}
               borderRadius="20px"
               border="1px solid"
               borderColor={chatBorderColor}
               p="20px"
+              flex="1"
+              overflow="auto"
+              css={{
+                '&::-webkit-scrollbar': {
+                  width: '6px',
+                },
+                '&::-webkit-scrollbar-track': {
+                  background: 'var(--chakra-colors-gray-100)',
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  background: 'var(--chakra-colors-gray-300)',
+                  borderRadius: '3px',
+                },
+                '&::-webkit-scrollbar-thumb:hover': {
+                  background: 'var(--chakra-colors-gray-400)',
+                },
+              }}
+            >
+              {/* Chat Header */}
+              <Text
+                fontSize="lg"
+                fontWeight="700"
+                color={chatTextColor}
+                mb="20px"
+                textAlign="center"
+                flexShrink={0}
+              >
+                💬 Chat Control
+              </Text>
+              
+              {/* Chat Messages - Scrollable */}
+              <Box
+                flex="1"
+                overflow="auto"
+                pt="16px"
+                css={{
+                  '&::-webkit-scrollbar': {
+                    width: '6px',
+                  },
+                  '&::-webkit-scrollbar-track': {
+                    background: 'var(--chakra-colors-gray-100)',
+                  },
+                  '&::-webkit-scrollbar-thumb': {
+                    background: 'var(--chakra-colors-gray-300)',
+                    borderRadius: '3px',
+                  },
+                  '&::-webkit-scrollbar-thumb:hover': {
+                    background: 'var(--chakra-colors-gray-400)',
+                  },
+                }}
+              >
+                {/* Chat Messages History */}
+                {messages.map((message) => (
+                  message.type !== 'canvas' && (
+                    <ChatMessage
+                      key={message.id}
+                      content={message.content}
+                      type={message.type}
+                      timestamp={message.timestamp}
+                    />
+                  )
+                ))}
+                
+                {/* Loading indicator */}
+                {loading && (
+                  <Flex w="100%" mb="16px" align="flex-start">
+                    <Flex
+                      borderRadius="full"
+                      justify="center"
+                      align="center"
+                      bg={currentColors.gradient}
+                      me="12px"
+                      h="32px"
+                      minH="32px"
+                      minW="32px"
+                      flexShrink={0}
+                    >
+                      <Icon
+                        as={MdAutoAwesome}
+                        width="16px"
+                        height="16px"
+                        color="white"
+                      />
+                    </Flex>
+                    <Flex
+                      bg={loadingBg}
+                      borderRadius="16px"
+                      px="16px"
+                      py="12px"
+                      align="center"
+                    >
+                      <Text fontSize="sm" color={chatTextColor}>
+                        Typing...
+                      </Text>
+                    </Flex>
+                  </Flex>
+                )}
+                
+                {/* Scroll anchor for auto-scroll */}
+                <div ref={messagesEndRef} />
+              </Box>
+            </Box>
+
+            {/* Bottom: Chat Input - Fixed at bottom */}
+            <Box
+              bg={chatBg}
+              borderRadius="20px"
+              border="1px solid"
+              borderColor={chatBorderColor}
+              p="20px"
+              flexShrink={0}
             >
               <HStack spacing="10px">
-                <Input
-                  h="54px"
-                  border="1px solid"
-                  borderColor={chatBorderColor}
-                  borderRadius="45px"
-                  p="15px 20px"
-                  fontSize="sm"
-                  fontWeight="500"
-                  _focus={{ borderColor: 'none' }}
-                  color={chatTextColor}
-                  _placeholder={placeholderColor}
-                  placeholder="Type command here..."
-                  value={inputCode}
-                  onChange={handleChange}
-                />
+                <Box position="relative" flex="1">
+                  <Input
+                    h="54px"
+                    border="1px solid"
+                    borderColor={chatBorderColor}
+                    borderRadius="45px"
+                    p="15px 50px 15px 20px"
+                    fontSize="sm"
+                    fontWeight="500"
+                    _focus={{ borderColor: 'none' }}
+                    color={chatTextColor}
+                    _placeholder={placeholderColor}
+                    placeholder="Type command here..."
+                    value={inputCode}
+                    onChange={handleChange}
+                  />
+                  {/* Add Button Menu - Inside Input */}
+                  <Menu>
+                    <MenuButton
+                      as={Button}
+                      position="absolute"
+                      right="10px"
+                      top="50%"
+                      transform="translateY(-50%)"
+                      variant="transparent"
+                      borderRadius="full"
+                      w="34px"
+                      h="34px"
+                      px="0px"
+                      minW="34px"
+                      maxW="34px"
+                      minH="34px"
+                      maxH="34px"
+                      justifyContent={'center'}
+                      alignItems="center"
+                      flexShrink={0}
+                      _hover={{ bg: menuHoverBg }}
+                    >
+                      <Icon as={MdAdd} width="16px" height="16px" color={chatTextColor} />
+                    </MenuButton>
+                    <MenuList
+                      boxShadow={menuBoxShadow}
+                      p="10px"
+                      borderRadius="20px"
+                      bg={menuBg}
+                      border="none"
+                    >
+                      <MenuItem
+                        onClick={handleFileUpload}
+                        _hover={{ bg: menuItemHoverBg }}
+                        borderRadius="8px"
+                        p="10px"
+                      >
+                        <Icon as={MdAttachFile} width="16px" height="16px" me="8px" />
+                        <Text fontSize="sm">Add File</Text>
+                      </MenuItem>
+                      <MenuItem
+                        onClick={handleImageUpload}
+                        _hover={{ bg: menuItemHoverBg }}
+                        borderRadius="8px"
+                        p="10px"
+                      >
+                        <Icon as={MdImage} width="16px" height="16px" me="8px" />
+                        <Text fontSize="sm">Add Image</Text>
+                      </MenuItem>
+                      <MenuItem
+                        onClick={handleVideoUpload}
+                        _hover={{ bg: menuItemHoverBg }}
+                        borderRadius="8px"
+                        p="10px"
+                      >
+                        <Icon as={MdVideoFile} width="16px" height="16px" me="8px" />
+                        <Text fontSize="sm">Add Video</Text>
+                      </MenuItem>
+                    </MenuList>
+                  </Menu>
+                </Box>
                 <Button
                   bg={currentColors.gradient}
                   color="white"
@@ -1020,7 +2006,74 @@ export default function Chat(props: { apiKeyApp: string }) {
                 </Button>
               </HStack>
             </Box>
-          </Box>
+          </Flex>
+
+          {/* Column 2: Canvas - 40% */}
+          <Flex
+            flex="4"
+            direction="column"
+            minW="400px"
+          >
+            <Box
+              bg={chatBg}
+              borderRadius="20px"
+              border="1px solid"
+              borderColor={chatBorderColor}
+              p="20px"
+              h="100%"
+              overflow="auto"
+              css={{
+                '&::-webkit-scrollbar': {
+                  width: '6px',
+                },
+                '&::-webkit-scrollbar-track': {
+                  background: 'var(--chakra-colors-gray-100)',
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  background: 'var(--chakra-colors-gray-300)',
+                  borderRadius: '3px',
+                },
+                '&::-webkit-scrollbar-thumb:hover': {
+                  background: 'var(--chakra-colors-gray-400)',
+                },
+              }}
+            >
+              <CanvasMessage 
+                configStep={configStep} 
+                onStepChange={handleStepChange}
+                brandName={canvasState.brandName}
+                isLoading={canvasState.isLoading}
+                locationTimeData={canvasState.locationTime}
+                locationTimeLoading={canvasState.locationTimeLoading}
+                timingStorageData={canvasState.timingStorage}
+                timingStorageLoading={canvasState.timingStorageLoading}
+              />
+            </Box>
+          </Flex>
+
+          {/* Column 3: Navigator - 20% */}
+          <Flex
+            flex="2"
+            direction="column"
+            minW="200px"
+          >
+            <Box
+              bg={chatBg}
+              borderRadius="20px"
+              border="1px solid"
+              borderColor={chatBorderColor}
+              p="20px"
+              h="100%"
+              overflow="auto"
+            >
+              <StepNavigator
+                currentStep={configStep}
+                completedSteps={stepCompleted}
+                highestStepReached={highestStepReached}
+                onStepClick={handleStepClick}
+              />
+            </Box>
+          </Flex>
         </Flex>
       ) : (
         // Original Single-Panel Layout
@@ -1033,7 +2086,7 @@ export default function Chat(props: { apiKeyApp: string }) {
           position="relative"
         >
           {/* Content Area */}
-          <Flex direction="column" flex="1" pb="100px" pt="20px" overflowY="auto">
+          <Flex direction="column" flex="1" pb="100px" pt="36px" overflowY="auto">
             {/* Main Box */}
             <Flex
               direction="column"
@@ -1044,8 +2097,43 @@ export default function Chat(props: { apiKeyApp: string }) {
               {/* Welcome Message */}
               <WelcomeMessage />
               
-              {/* Gmail Sign Up Button - Only show if not authenticated */}
-              {!isAuthenticated && (
+              {/* Auth Loading Indicator */}
+              {authLoading && (
+                <Flex w="100%" mb="24px" align="flex-start">
+                  <Flex
+                    borderRadius="full"
+                    justify="center"
+                    align="center"
+                    bg={currentColors.gradient}
+                    me="12px"
+                    h="32px"
+                    minH="32px"
+                    minW="32px"
+                    flexShrink={0}
+                  >
+                    <Icon
+                      as={MdAutoAwesome}
+                      width="16px"
+                      height="16px"
+                      color="white"
+                    />
+                  </Flex>
+                  <Flex
+                    bg={loadingBubbleBg}
+                    borderRadius="16px"
+                    px="16px"
+                    py="12px"
+                    align="center"
+                  >
+                    <Text fontSize="sm" color={textColor}>
+                      Checking existing authentication...
+                    </Text>
+                  </Flex>
+                </Flex>
+              )}
+
+              {/* Gmail Sign Up Button - Only show if not authenticated and not loading */}
+              {!isAuthenticated && !authLoading && (
                 <Flex w="100%" mb="24px" align="flex-start">
                   <Flex
                     borderRadius="full"
@@ -1206,23 +2294,84 @@ export default function Chat(props: { apiKeyApp: string }) {
             zIndex={10}
             transition="left 0.2s linear"
           >
-            <Input
-              minH="54px"
-              h="100%"
-              border="1px solid"
-              borderColor={chatBorderColor}
-              borderRadius="45px"
-              p="15px 20px"
-              me="10px"
-              fontSize="sm"
-              fontWeight="500"
-              _focus={{ borderColor: 'none' }}
-              color={chatTextColor}
-              _placeholder={placeholderColor}
-              placeholder="Type your message here..."
-              value={inputCode}
-              onChange={handleChange}
-            />
+            <Box position="relative" flex="1" me="10px">
+              <Input
+                minH="54px"
+                h="100%"
+                border="1px solid"
+                borderColor={chatBorderColor}
+                borderRadius="45px"
+                p="15px 50px 15px 20px"
+                fontSize="sm"
+                fontWeight="500"
+                _focus={{ borderColor: 'none' }}
+                color={chatTextColor}
+                _placeholder={placeholderColor}
+                placeholder="Type your message here..."
+                value={inputCode}
+                onChange={handleChange}
+              />
+              {/* Add Button Menu - Inside Input */}
+              <Menu>
+                <MenuButton
+                  as={Button}
+                  position="absolute"
+                  right="10px"
+                  top="50%"
+                  transform="translateY(-50%)"
+                  variant="transparent"
+                  borderRadius="full"
+                  w="34px"
+                  h="34px"
+                  px="0px"
+                  minW="34px"
+                  maxW="34px"
+                  minH="34px"
+                  maxH="34px"
+                  justifyContent={'center'}
+                  alignItems="center"
+                  flexShrink={0}
+                  _hover={{ bg: menuHoverBg }}
+                >
+                  <Icon as={MdAdd} width="16px" height="16px" color={chatTextColor} />
+                </MenuButton>
+                <MenuList
+                  boxShadow={menuBoxShadow}
+                  p="10px"
+                  borderRadius="20px"
+                  bg={menuBg}
+                  border="none"
+                >
+                  <MenuItem
+                    onClick={handleFileUpload}
+                    _hover={{ bg: menuItemHoverBg }}
+                    borderRadius="8px"
+                    p="10px"
+                  >
+                    <Icon as={MdAttachFile} width="16px" height="16px" me="8px" />
+                    <Text fontSize="sm">Add File</Text>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={handleImageUpload}
+                    _hover={{ bg: menuItemHoverBg }}
+                    borderRadius="8px"
+                    p="10px"
+                  >
+                    <Icon as={MdImage} width="16px" height="16px" me="8px" />
+                    <Text fontSize="sm">Add Image</Text>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={handleVideoUpload}
+                    _hover={{ bg: menuItemHoverBg }}
+                    borderRadius="8px"
+                    p="10px"
+                  >
+                    <Icon as={MdVideoFile} width="16px" height="16px" me="8px" />
+                    <Text fontSize="sm">Add Video</Text>
+                  </MenuItem>
+                </MenuList>
+              </Menu>
+            </Box>
             <Button
               bg={currentColors.gradient}
               color="white"
@@ -1257,4 +2406,8 @@ export default function Chat(props: { apiKeyApp: string }) {
       )}
     </Flex>
   );
+}
+
+export default function HomePage() {
+  return <Chat apiKeyApp="" />;
 }

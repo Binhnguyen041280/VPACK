@@ -9,6 +9,8 @@ type ChakraNextImageProps = Partial<ImageProps> &
     };
 
 function parseAssetPrefix(image: string) {
+    if (!image || typeof image !== 'string') return image || '';
+    
     const alreadyHasHttp = image.match('http');
     if (alreadyHasHttp) return image;
 
@@ -24,13 +26,34 @@ export function Image(props: ChakraNextImageProps) {
 
     const imageUrl =
         typeof src === 'string' ? src : ((src as any)?.src as string);
+    
+    // Handle empty or null sources
+    const processedSrc = parseAssetPrefix(imageUrl);
+    if (!processedSrc || processedSrc === '') {
+        return (
+            <Box 
+                overflow={'hidden'} 
+                position="relative" 
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                bg="gray.200"
+                color="gray.500"
+                fontSize="xl"
+                {...rest}
+            >
+                👤
+            </Box>
+        );
+    }
+    
     return (
         <Box overflow={'hidden'} position="relative" {...rest}>
             <NextImage
                 fill
                 style={{ objectFit: 'fill' }}
-                src={parseAssetPrefix(imageUrl)}
-                alt={alt}
+                src={processedSrc}
+                alt={alt || ''}
                 {...nextProps}
             />
         </Box>
