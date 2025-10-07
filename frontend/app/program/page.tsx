@@ -30,9 +30,9 @@ import { useProgramProgress } from '@/hooks/useProgramProgress';
 import { createToastError } from '@/utils/errorHandler';
 
 interface ProgramStatus {
-  current_running: string;
-  custom_path: string | null;
-  days: number | null;
+  current_running: string | null;
+  custom_path?: string | null;
+  days?: number | null;
 }
 
 interface ProgramCard {

@@ -304,7 +304,7 @@ const GoogleDriveFolderTree: React.FC<GoogleDriveFolderTreeProps> = ({
       }
 
       // Process folders with depth limit
-      const processedFolders: DriveFolder[] = (data.folders || []).map(folder => ({
+      const processedFolders: DriveFolder[] = (data.folders || []).map((folder: any) => ({
         ...folder,
         depth: parentDepth + 1,
         // No subfolders beyond max depth

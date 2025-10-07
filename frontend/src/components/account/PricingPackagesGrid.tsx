@@ -40,7 +40,7 @@ const PricingPackagesGrid: React.FC<PricingPackagesGridProps> = ({
   // Order packages for display
   const packageOrder = ['personal_1y', 'personal_1m', 'business_1y', 'business_1m', 'trial_24h'];
   const orderedPackages = packageOrder
-    .map(code => ({ code, ...packages[code] }))
+    .map(code => ({ ...packages[code], code }))
     .filter(pkg => pkg.name); // Only include packages that exist
 
   // Check if user can purchase/upgrade to this package

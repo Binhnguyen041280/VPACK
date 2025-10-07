@@ -32,7 +32,7 @@ New developer? Start here:
 **[Architecture Overview](architecture/overview.md)** - Complete technical reference
 
 **Key Components**:
-- **Frontend**: Next.js 15.1.6 + Chakra UI + TypeScript
+- **Frontend**: Next.js 15.1.6 + React 19.2.0 (Stable) + Chakra UI 2.8.2 + TypeScript 4.9.5
 - **Backend**: Flask 3.0.0 + Python 3.8+
 - **Database**: SQLite with WAL mode
 - **Computer Vision**: MediaPipe, OpenCV, pyzbar

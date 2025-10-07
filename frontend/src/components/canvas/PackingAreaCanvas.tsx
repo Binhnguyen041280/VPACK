@@ -378,8 +378,8 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
     
     // Get the appropriate video path based on selected method
     const videoPath = selectedPackingMethod === 'traditional' ? traditionalInputPath : qrInputPath;
-    
-    if (!videoPath || videoPath === getDefaultInputPath()) {
+
+    if (!videoPath) {
       console.warn('No valid video path selected');
       return;
     }
@@ -548,10 +548,11 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
         }
       }}
     >
-      {/* Header */}
-      <Text fontSize={adaptiveConfig.fontSize.header} fontWeight="700" color={textColor} mb={adaptiveConfig.spacing.section}>
-        📦 Step 4: Packing Area Detection
-      </Text>
+      <>
+        {/* Header */}
+        <Text fontSize={adaptiveConfig.fontSize.header} fontWeight="700" color={textColor} mb={adaptiveConfig.spacing.section}>
+          📦 Step 4: Packing Area Detection
+        </Text>
 
       <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
         {/* Camera Selection */}
@@ -1195,7 +1196,7 @@ function PackingAreaCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
           onError={handleROIConfigError}
         />
       )}
-
+      </>
     </Box>
   );
 }

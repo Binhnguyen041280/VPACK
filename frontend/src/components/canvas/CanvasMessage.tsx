@@ -146,7 +146,7 @@ export default function CanvasMessage({
       case 'brandname':
         return <BrandnameCanvas {...commonProps} brandName={brandName} isLoading={isLoading} />;
       case 'location_time':
-        return <LocationTimeCanvas {...commonProps} locationTimeData={locationTimeData} locationTimeLoading={locationTimeLoading} />;
+        return <LocationTimeCanvas {...commonProps} locationTimeData={locationTimeData} isLoading={locationTimeLoading} />;
       case 'video_source':
         return <VideoSourceCanvas {...commonProps} />;
       case 'packing_area':

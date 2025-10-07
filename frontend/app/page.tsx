@@ -463,7 +463,7 @@ function Chat(props: { apiKeyApp: string }) {
     }
 
     switch (configStep) {
-      case 'company':
+      case 'brandname':
       case 'location_time':
         // Edit company name
         setCompanyName(newValue);
@@ -1528,6 +1528,7 @@ function Chat(props: { apiKeyApp: string }) {
     detectedFolders?: { name: string; path: string }[];
     selectedCameras?: string[];
     selectedTreeFolders?: any[];  // For cloud storage
+    currentSource?: any;  // Current active source info
   }): Promise<string> => {
     try {
       // Show loading state on Canvas

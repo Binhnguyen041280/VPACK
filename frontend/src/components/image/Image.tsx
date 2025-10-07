@@ -53,7 +53,7 @@ export function Image(props: ChakraNextImageProps) {
                 fill
                 style={{ objectFit: 'fill' }}
                 src={processedSrc}
-                alt={alt}
+                alt={alt || ''}
                 {...nextProps}
             />
         </Box>
