@@ -1,0 +1,34 @@
+/* Custom cursor for sidebar expand - Purple theme */
+.cursor-expand-right[data-color-theme="purple"] {
+  cursor: url("data:image/svg+xml,%3csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M8 6l8 6-8 6V6z' fill='%23666'/%3e%3c/svg%3e") 12 12, e-resize;
+}
+
+.cursor-expand-right[data-color-theme="purple"]:hover {
+  cursor: url("data:image/svg+xml,%3csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M8 6l8 6-8 6V6z' fill='%234A25E1'/%3e%3c/svg%3e") 12 12, e-resize;
+}
+
+/* Custom cursor for sidebar expand - Pink theme */
+.cursor-expand-right[data-color-theme="pink"] {
+  cursor: url("data:image/svg+xml,%3csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M8 6l8 6-8 6V6z' fill='%23666'/%3e%3c/svg%3e") 12 12, e-resize;
+}
+
+.cursor-expand-right[data-color-theme="pink"]:hover {
+  cursor: url("data:image/svg+xml,%3csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M8 6l8 6-8 6V6z' fill='%23E1254A'/%3e%3c/svg%3e") 12 12, e-resize;
+}
+
+/* Dark theme variants */
+.dark .cursor-expand-right[data-color-theme="purple"] {
+  cursor: url("data:image/svg+xml,%3csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M8 6l8 6-8 6V6z' fill='%23888'/%3e%3c/svg%3e") 12 12, e-resize;
+}
+
+.dark .cursor-expand-right[data-color-theme="purple"]:hover {
+  cursor: url("data:image/svg+xml,%3csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M8 6l8 6-8 6V6z' fill='%237B5AFF'/%3e%3c/svg%3e") 12 12, e-resize;
+}
+
+.dark .cursor-expand-right[data-color-theme="pink"] {
+  cursor: url("data:image/svg+xml,%3csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M8 6l8 6-8 6V6z' fill='%23888'/%3e%3c/svg%3e") 12 12, e-resize;
+}
+
+.dark .cursor-expand-right[data-color-theme="pink"]:hover {
+  cursor: url("data:image/svg+xml,%3csvg width='24' height='24' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M8 6l8 6-8 6V6z' fill='%23FF5A7B'/%3e%3c/svg%3e") 12 12, e-resize;
+}

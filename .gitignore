@@ -1,3 +1,5 @@
+# ===== V_TRACK PROJECT GITIGNORE =====
+
 # ===== FOLDERS CẦN BỎ QUA =====
 # Thư mục dữ liệu và service
 resources/
@@ -16,9 +18,15 @@ var/
 # ===== BUILD & CACHE =====
 # Node.js
 node_modules/
+/node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+package-lock.json
+yarn.lock
+/.pnp
+.pnp.js
+.pnpm-debug.log*
 
 # Python
 __pycache__/
@@ -33,7 +41,13 @@ venv/
 # Build outputs
 dist/
 build/
+/build
 *.egg-info/
+
+# testing
+/coverage
+
+# production
 
 # ===== VIDEO & MEDIA FILES =====
 *.mp4
@@ -47,83 +61,32 @@ build/
 # ===== LOG & TEMP FILES =====
 *.log
 *.tmp
-*.temp
-*.swp
-*.swo
-*~
+logs/
+
+# ===== SECURITY - OAuth & Credentials =====
+backend/modules/sources/credentials/
+backend/modules/sources/tokens/
+.vtrack/
+*.pem
 
 # ===== DATABASE FILES =====
-*.sqlite
-*.db
-
-# ===== IDE & EDITOR =====
-.vscode/
-.idea/
-*.sublime-*
-
-# ===== SYSTEM FILES =====
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# ===== FLASK/PYTHON SPECIFIC =====
-flask_session/
-instance/
-.pytest_cache/
-
-# ===== GIT & VERSION CONTROL =====
-.git/
-*.orig
-
-# ===== TEST & DEBUG FILES =====
-test_*.py
-*_test.py
-test*.py
-*test*.py
-debug_*.py
-*_debug.py
-fix_*.py
-*_fix.py
-simple_*.py
-*_simple.py
-# Test directories
-tests/
-test/
-__tests__/
-
-# ===== CREDENTIALS & SENSITIVE =====
-*.key
-*.pem
-credentials.json
-token.json
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
 *.db
 *.sqlite
 *.sqlite3
 ib_logfile*
 mysql-bin.*
 
-# OAuth credentials and tokens - CRITICAL SECURITY
-backend/modules/sources/credentials/
-backend/modules/sources/tokens/
-.vtrack/
+# ===== NEXT.JS & FRONTEND =====
+.next/
+/out/
+/.vercel
+*.tsbuildinfo
+next-env.d.ts
+.idea
 
-# Large media files
-*.mp4
-*.avi
-*.mov
-*.mkv
-*.wmv
-
-# Logs
-*.log
-logs/
-# Service directory
-service/
+# ===== ENV FILES =====
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.DS_Store
