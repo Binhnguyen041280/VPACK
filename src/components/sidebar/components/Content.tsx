@@ -20,12 +20,15 @@ import Brand from '@/components/sidebar/components/Brand';
 import Links from '@/components/sidebar/components/Links';
 import SidebarCard from '@/components/sidebar/components/SidebarCard';
 import { RoundedChart } from '@/components/icons/Icons';
-import { PropsWithChildren } from 'react';
+import { PropsWithChildren, useState } from 'react';
 import { IRoute } from '@/types/navigation';
 import { IoMdPerson } from 'react-icons/io';
 import { FiLogOut, FiSidebar } from 'react-icons/fi';
-import { MdOutlineManageAccounts, MdOutlineSettings } from 'react-icons/md';
+import { MdOutlineManageAccounts, MdOutlineSettings, MdCreditCard } from 'react-icons/md';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
+import { useUser } from '@/contexts/UserContext';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 // FUNCTIONS
 
@@ -39,6 +42,16 @@ interface SidebarContent extends PropsWithChildren {
 function SidebarContent(props: SidebarContent) {
   const { routes, collapsed = false, onToggle } = props;
   const { currentColors } = useColorTheme();
+  const { userInfo, refreshUserInfo, logout } = useUser();
+  const router = useRouter();
+  
+  // UserContext will handle refreshing user info on mount
+  // No additional refresh needed here
+  
+  // Debug userInfo
+  console.log('🎨 Sidebar userInfo:', userInfo);
+  console.log('🖼️ Avatar source:', userInfo.avatar);
+  console.log('🔗 Is cached?', userInfo.avatar.includes('/static/avatars/'));
   
   const textColor = useColorModeValue('navy.700', 'white');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.300');
@@ -89,7 +102,7 @@ function SidebarContent(props: SidebarContent) {
           <NextAvatar 
             h="27px" 
             w="27px" 
-            src={avatar4} 
+            src={userInfo.avatar || null} 
             style={{
               aspectRatio: '1',
               objectFit: 'cover',
@@ -112,7 +125,7 @@ function SidebarContent(props: SidebarContent) {
           <NextAvatar 
             h="34px" 
             w="34px" 
-            src={avatar4} 
+            src={userInfo.avatar || null} 
             me="10px" 
             style={{
               aspectRatio: '1',
@@ -121,7 +134,7 @@ function SidebarContent(props: SidebarContent) {
             }}
           />
           <Text color={textColor} fontSize="xs" fontWeight="600" me="10px">
-            Adela Parkson
+            {userInfo.name}
           </Text>
           <Menu>
             <MenuButton
@@ -166,20 +179,26 @@ function SidebarContent(props: SidebarContent) {
               bg={bgColor}
             >
               <Box mb="30px">
-                <Flex align="center" w="100%" cursor={'not-allowed'}>
+                <Flex 
+                  align="center" 
+                  w="100%" 
+                  cursor={userInfo.authenticated ? 'pointer' : 'not-allowed'}
+                  _hover={userInfo.authenticated ? { opacity: 0.8 } : {}}
+                  transition="opacity 0.2s"
+                >
                   <Icon
                     as={MdOutlineManageAccounts}
                     width="24px"
                     height="24px"
-                    color={gray}
+                    color={userInfo.authenticated ? textColor : gray}
                     me="12px"
-                    opacity={'0.4'}
+                    opacity={userInfo.authenticated ? '1' : '0.4'}
                   />
                   <Text
-                    color={gray}
+                    color={userInfo.authenticated ? textColor : gray}
                     fontWeight="500"
                     fontSize="sm"
-                    opacity={'0.4'}
+                    opacity={userInfo.authenticated ? '1' : '0.4'}
                   >
                     Profile Settings
                   </Text>
@@ -201,31 +220,47 @@ function SidebarContent(props: SidebarContent) {
                 </Flex>
               </Box>
               <Box mb="30px">
-                <Flex cursor={'not-allowed'} align="center">
+                <Flex 
+                  cursor={'pointer'} 
+                  align="center"
+                  onClick={() => router.push('/plan')}
+                  _hover={{ opacity: 0.8 }}
+                  transition="opacity 0.2s"
+                >
                   <Icon
-                    as={IoMdPerson}
+                    as={MdCreditCard}
                     width="24px"
                     height="24px"
-                    color={gray}
-                    opacity="0.4"
+                    color={textColor}
                     me="12px"
                   />
-                  <Text color={gray} fontWeight="500" fontSize="sm" opacity="0.4">
+                  <Text color={textColor} fontWeight="500" fontSize="sm">
                     My Plan
                   </Text>
                 </Flex>
               </Box>
               <Box>
-                <Flex cursor={'not-allowed'} align="center">
+                <Flex 
+                  cursor={userInfo.authenticated ? 'pointer' : 'not-allowed'} 
+                  align="center" 
+                  onClick={userInfo.authenticated ? logout : undefined}
+                  _hover={userInfo.authenticated ? { opacity: 0.8 } : {}}
+                  transition="opacity 0.2s"
+                >
                   <Icon
                     as={FiLogOut}
                     width="24px"
                     height="24px"
-                    color={gray}
-                    opacity="0.4"
+                    color={userInfo.authenticated ? textColor : gray}
+                    opacity={userInfo.authenticated ? "1" : "0.4"}
                     me="12px"
                   />
-                  <Text color={gray} fontWeight="500" fontSize="sm" opacity="0.4">
+                  <Text 
+                    color={userInfo.authenticated ? textColor : gray} 
+                    fontWeight="500" 
+                    fontSize="sm" 
+                    opacity={userInfo.authenticated ? "1" : "0.4"}
+                  >
                     Logout
                   </Text>
                 </Flex>
@@ -253,6 +288,8 @@ function SidebarContent(props: SidebarContent) {
           </Button>
         </Flex>
       )}
+      
+      {/* My Plan Modal removed - now uses routing */}
     </Flex>
   );
 }

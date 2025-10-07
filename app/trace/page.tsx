@@ -39,10 +39,13 @@ import {
 } from '@/utils/dateTimeHelpers';
 import {
   createFileUploadInput,
+  createImageUploadInput,
   fileToBase64,
   getFileType,
   formatHeadersAsText,
-  getColumnIndex
+  getColumnIndex,
+  formatPlatformsAsText,
+  detectPlatformFromText
 } from '@/utils/fileProcessing';
 
 interface EventData {
@@ -67,6 +70,8 @@ interface Message {
     fileContent: string;
     fileName: string;
     isExcel: boolean;
+    stage?: 'headers' | 'column_selected' | 'platform_named' | 'parsed' | 'results' | 'error' | 'completed';
+    waitingForInput?: 'column' | 'platform' | 'none';
     headers?: string[];
     selectedColumn?: string;
     platformName?: string;
@@ -105,7 +110,7 @@ export default function TracePage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { currentColors } = useColorTheme();
-  const { toggleSidebar } = useContext(SidebarContext);
+  const { toggleSidebar, setToggleSidebar } = useContext(SidebarContext);
   const { setCurrentRoute } = useRoute();
   
   // Color mode values - ALL at top level to prevent hooks order violation
@@ -127,10 +132,14 @@ export default function TracePage() {
   const menuBg = useColorModeValue('white', 'navy.800');
   const menuItemHoverBg = useColorModeValue('gray.100', 'whiteAlpha.100');
 
-  // Set active route to Trace when component mounts
+  // Set active route to Trace and collapse sidebar when component mounts
   useEffect(() => {
     setCurrentRoute('/trace');
-  }, [setCurrentRoute]);
+    // Collapse sidebar when entering trace page
+    if (setToggleSidebar) {
+      setToggleSidebar(true); // true means collapsed in this context
+    }
+  }, [setCurrentRoute, setToggleSidebar]);
 
   // State to track manual vs automatic time changes
   const [isManualTimeChange, setIsManualTimeChange] = useState<boolean>(false);
@@ -301,7 +310,7 @@ export default function TracePage() {
   };
 
   // Handle platform selection and data processing
-  const handlePlatformSelection = async (platformName: string, fileData: any) => {
+  const handlePlatformSelection = async (platformName: string, fileData: any): Promise<{ type: 'text' | 'events', content: string, eventData?: { searchInput: string, events: EventData[] } }> => {
     try {
       setLoading(true);
 
@@ -309,12 +318,15 @@ export default function TracePage() {
       const columnIndex = getColumnIndex(fileData.selectedColumn);
       const columnName = fileData.headers[columnIndex];
 
+      // Normalize platform name to proper case (first letter uppercase, rest lowercase)
+      const normalizedPlatformName = platformName.charAt(0).toUpperCase() + platformName.slice(1).toLowerCase();
+
       // 1. Check if platform already exists and save/update mapping
       const saveResponse = await fetch('http://localhost:8080/save-platform-preference', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          platform_name: platformName,
+          platform_name: normalizedPlatformName,
           column_letter: fileData.selectedColumn,
           headers: fileData.headers || [],
           filename: fileData.fileName,
@@ -343,25 +355,26 @@ export default function TracePage() {
       const parseData = await parseResponse.json();
       const trackingCodes = parseData.tracking_codes || [];
 
-      // Update the file processing message with platform
+      // Update the file processing message with platform and mark as completed
       setMessages(prev => prev.map(msg =>
         msg.fileProcessingData ? {
           ...msg,
           fileProcessingData: {
             ...msg.fileProcessingData,
-            platformName: platformName
+            platformName: normalizedPlatformName,
+            stage: 'completed'
           }
         } : msg
       ));
 
       // Format the response with column data listing
       let content = isUpdate
-        ? `🔄 Platform "${platformName}" updated to use column ${fileData.selectedColumn}\n\n`
-        : `✅ Platform "${platformName}" saved for column ${fileData.selectedColumn}\n\n`;
+        ? `🔄 Platform "${normalizedPlatformName}" updated to use column ${fileData.selectedColumn}\n\n`
+        : `✅ Platform "${normalizedPlatformName}" saved for column ${fileData.selectedColumn}\n\n`;
       content += `📋 Column data (${trackingCodes.length} items):\n\n`;
 
       // Show first 10 items with numbering
-      trackingCodes.slice(0, 10).forEach((code, index) => {
+      trackingCodes.slice(0, 10).forEach((code: string, index: number) => {
         content += `${index + 1}. ${code}\n`;
       });
 
@@ -369,9 +382,44 @@ export default function TracePage() {
         content += `... and ${trackingCodes.length - 10} more items`;
       }
 
+      content += `\n\n🔍 Searching for events...`;
+
+      // Add the listing message first
+      const listingMessage: Message = {
+        id: Date.now().toString(),
+        content: content,
+        type: 'bot',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, listingMessage]);
+
+      // Auto-query events using the extracted tracking codes
+      const trackingCodesString = trackingCodes.join(', ');
+      const queryResult = await handleTrackingCodes(trackingCodesString);
+
+      // Add the query result message
+      if (queryResult.eventData) {
+        const queryMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: queryResult.content,
+          type: 'bot',
+          timestamp: new Date(),
+          eventData: queryResult.eventData
+        };
+        setMessages(prev => [...prev, queryMessage]);
+      } else if (queryResult.content.trim()) {
+        const queryMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: queryResult.content,
+          type: 'bot',
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, queryMessage]);
+      }
+
       return {
         type: 'text',
-        content: content
+        content: '' // Return empty content since we've already added messages
       };
 
     } catch (error) {
@@ -385,11 +433,96 @@ export default function TracePage() {
     }
   };
 
-  const getTraceResponse = async (input: string): Promise<{ type: 'text' | 'events', content: string, eventData?: { searchInput: string, events: EventData[] } }> => {
-    const lowerInput = input.toLowerCase();
+  // Process file with auto-detected platform (Scenario 2)
+  const processFileWithPlatform = async (file: File, platformName: string) => {
+    // Normalize platform name to proper case (first letter uppercase, rest lowercase)
+    const normalizedPlatformName = platformName.charAt(0).toUpperCase() + platformName.slice(1).toLowerCase();
 
-    // Check if user is selecting a column for file processing
-    const fileProcessingMessage = messages.find(msg => msg.fileProcessingData);
+    try {
+      // Get file type
+      const { isExcel } = getFileType(file.name);
+
+      // Convert file to base64
+      const fileContent = await fileToBase64(file);
+
+      // Get file headers using correct endpoint
+      const response = await fetch('http://localhost:8080/get-csv-headers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          file_content: fileContent,
+          is_excel: isExcel
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to get headers: ${response.status}`);
+      }
+
+      const fileResult = await response.json();
+      const headers = fileResult.headers || [];
+
+      // Try to get platform's preferred column from database
+      let selectedColumn = 'A'; // Default column
+      try {
+        const platformResponse = await fetch('http://localhost:8080/get-platform-list');
+        const platformData = await platformResponse.json();
+
+        const existingPlatform = platformData.platforms?.find(
+          (p: any) => p.name.toLowerCase() === normalizedPlatformName.toLowerCase()
+        );
+
+        if (existingPlatform) {
+          selectedColumn = existingPlatform.column;
+        }
+      } catch (error) {
+        console.error('Error fetching platform data:', error);
+      }
+
+      // Prepare file data for processing
+      const fileData = {
+        fileContent,
+        fileName: file.name,
+        isExcel,
+        headers,
+        selectedColumn
+      };
+
+      // Process the file with the detected platform
+      const processResult = await handlePlatformSelection(normalizedPlatformName, fileData);
+
+      // Only add result message if there's content (handlePlatformSelection might have already added messages)
+      if (processResult.content && processResult.content.trim()) {
+        const botMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: processResult.content,
+          type: 'bot',
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, botMessage]);
+      }
+
+    } catch (error) {
+      console.error('Error in processFileWithPlatform:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: `❌ Error processing file with ${normalizedPlatformName}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        type: 'bot',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    }
+  };
+
+  const getTraceResponse = async (input: string): Promise<{ type: 'text' | 'events', content: string, eventData?: { searchInput: string, events: EventData[] } }> => {
+    // Check if user is selecting a column for file processing (only active/incomplete ones)
+    const fileProcessingMessage = messages.find(msg =>
+      msg.fileProcessingData &&
+      msg.fileProcessingData.stage !== 'completed' &&
+      (!msg.fileProcessingData.platformName) // Not yet completed
+    );
     if (fileProcessingMessage && fileProcessingMessage.fileProcessingData) {
       const fileData = fileProcessingMessage.fileProcessingData;
 
@@ -412,10 +545,25 @@ export default function TracePage() {
             } : msg
           ));
 
-          return {
-            type: 'text',
-            content: `✅ Column ${columnLetter} selected: "${headers[columnIndex]}"\n\n💡 Enter platform name (e.g., Shopee, TikTok, Lazada, Amazon, eBay)`
-          };
+          // Fetch available platforms and show selection UI
+          try {
+            const response = await fetch('http://localhost:8080/get-platform-list');
+            const data = await response.json();
+            const platforms = data.platforms || [];
+
+            const platformsText = formatPlatformsAsText(platforms);
+
+            return {
+              type: 'text',
+              content: `✅ Column ${columnLetter} selected: "${headers[columnIndex]}"\n\n${platformsText}`
+            };
+          } catch (error) {
+            // Fallback to text input if API fails
+            return {
+              type: 'text',
+              content: `✅ Column ${columnLetter} selected: "${headers[columnIndex]}"\n\n💡 Enter platform name (e.g., Shopee, TikTok, Lazada, Amazon, eBay)`
+            };
+          }
         } else {
           return {
             type: 'text',
@@ -424,52 +572,53 @@ export default function TracePage() {
         }
       }
 
-      // If column selected but no platform yet, check for platform name
-      if (fileData.selectedColumn && !fileData.platformName && input.trim().length >= 2) {
-        return await handlePlatformSelection(input.trim(), fileData);
+      // If column selected but no platform yet, check for platform selection (letter or name)
+      if (fileData.selectedColumn && !fileData.platformName) {
+        const trimmedInput = input.trim();
+
+        // Check if input is a single letter (platform selection)
+        if (/^[a-z]$/i.test(trimmedInput)) {
+          try {
+            const response = await fetch('http://localhost:8080/get-platform-list');
+            const data = await response.json();
+            const platforms = data.platforms || [];
+
+            const platformIndex = trimmedInput.toUpperCase().charCodeAt(0) - 65; // A=0, B=1, etc.
+
+            // Check if selecting existing platform
+            if (platformIndex < platforms.length) {
+              const selectedPlatform = platforms[platformIndex];
+              return await handlePlatformSelection(selectedPlatform.name, fileData);
+            }
+            // Check if selecting "Create New Platform" option
+            else if (platformIndex === platforms.length) {
+              return {
+                type: 'text',
+                content: `🆕 Creating new platform. Please enter platform name (e.g., Shopee, TikTok, Lazada):`
+              };
+            }
+            else {
+              return {
+                type: 'text',
+                content: `❌ Invalid selection ${trimmedInput.toUpperCase()}. Please select from available options shown above.`
+              };
+            }
+          } catch (error) {
+            return {
+              type: 'text',
+              content: `❌ Error loading platforms. Please try again or enter platform name directly.`
+            };
+          }
+        }
+        // If not a letter, treat as platform name input (for new platform creation)
+        else if (trimmedInput.length >= 2) {
+          return await handlePlatformSelection(trimmedInput, fileData);
+        }
       }
     }
 
-    // Check if input looks like tracking codes
-    if (/^[A-Z0-9\-,\s]+$/.test(input.trim()) && input.length > 2) {
-      return await handleTrackingCodes(input);
-    }
-
-    if (lowerInput.includes('video') || lowerInput.includes('upload')) {
-      return {
-        type: 'text',
-        content: `📹 Video Processing Available:\n\n• Drag and drop your video files\n• Supported formats: MP4, AVI, MOV\n• Real-time processing status\n• Automatic quality detection\n\nReady to process your videos!`
-      };
-    }
-
-    if (lowerInput.includes('monitor') || lowerInput.includes('tracking')) {
-      return {
-        type: 'text',
-        content: `📊 System Monitoring:\n\n• Real-time packaging events\n• Production line status\n• Quality metrics dashboard\n• Alert notifications\n\nMonitoring is active and running smoothly.`
-      };
-    }
-
-    if (lowerInput.includes('report') || lowerInput.includes('analytics')) {
-      return {
-        type: 'text',
-        content: `📈 Trace Reports:\n\n• Daily production summaries\n• Quality analysis reports\n• Performance metrics\n• Export to PDF/Excel\n\nGenerate your custom reports here.`
-      };
-    }
-
-    if (lowerInput.includes('time') || lowerInput.includes('date')) {
-      const displayFrom = fromDateTime ? new Date(fromDateTime).toLocaleString() : 'Not set';
-      const displayTo = toDateTime ? new Date(toDateTime).toLocaleString() : 'Not set';
-
-      return {
-        type: 'text',
-        content: `🕐 Time Range Settings:\n\nCurrent configuration:\n• From: ${displayFrom}\n• To: ${displayTo}\n• Default: Last ${defaultDays} days\n• Cameras: ${selectedCameras.length > 0 ? selectedCameras.join(', ') : 'All cameras'}\n\nUse the header controls to adjust your time range and camera selection.`
-      };
-    }
-
-    return {
-      type: 'text',
-      content: `✨ V.PACK Trace System:\n\nI can help you with:\n• Video processing and analysis\n• Event query with tracking codes\n• Time range and camera filtering\n• Performance reports and analytics\n\nTry entering tracking codes like: TC01, TC02\nOr ask about "time settings", "video upload", etc.`
-    };
+    // All other input is treated as tracking codes - let backend validate
+    return await handleTrackingCodes(input);
   };
 
   const handleFileUpload = () => {
@@ -477,44 +626,66 @@ export default function TracePage() {
       try {
         setLoading(true);
 
+        // Check if user typed platform text (Scenario 2)
+        if (inputCode.trim()) {
+          const detectedPlatform = detectPlatformFromText(inputCode);
+          if (detectedPlatform) {
+            // Scenario 2: Auto-process with detected platform
+            await processFileWithPlatform(file, detectedPlatform);
+            setInputCode(''); // Clear input
+            return;
+          }
+        }
+
+        // Scenario 3: Show platform selection menu
         // Get file type
         const { isExcel } = getFileType(file.name);
 
         // Convert file to base64
         const fileContent = await fileToBase64(file);
 
-        // Load file headers immediately
-        const headersResponse = await fetch('http://localhost:8080/get-csv-headers', {
+        // Send file to backend for processing
+        const response = await fetch('http://localhost:8080/get-csv-headers', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+          },
           body: JSON.stringify({
             file_content: fileContent,
             is_excel: isExcel
           })
         });
 
-        if (!headersResponse.ok) {
-          throw new Error(`Failed to load headers: ${headersResponse.status}`);
+        if (response.ok) {
+          const result = await response.json();
+          const headers = result.headers || [];
+
+          const fileMessage: Message = {
+            id: Date.now().toString(),
+            content: formatHeadersAsText(headers, file.name),
+            type: 'bot',
+            timestamp: new Date(),
+            fileProcessingData: {
+              fileContent,
+              fileName: file.name,
+              isExcel,
+              stage: 'headers',
+              waitingForInput: 'column',
+              headers: headers
+            }
+          };
+          setMessages(prev => [...prev, fileMessage]);
+        } else {
+          const result = await response.json();
+          const errorMessage: Message = {
+            id: Date.now().toString(),
+            content: `❌ Failed to process file: ${result.error || 'Unknown error'}`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          return;
         }
-
-        const headersData = await headersResponse.json();
-        const headers = headersData.headers || [];
-
-        // Create file processing message with headers text
-        const fileMessage: Message = {
-          id: Date.now().toString(),
-          content: `📄 ${file.name}\n\n${formatHeadersAsText(headers)}`,
-          type: 'bot',
-          timestamp: new Date(),
-          fileProcessingData: {
-            fileContent,
-            fileName: file.name,
-            isExcel,
-            headers
-          }
-        };
-
-        setMessages(prev => [...prev, fileMessage]);
 
       } catch (error) {
         console.error('Error processing file:', error);
@@ -532,7 +703,90 @@ export default function TracePage() {
   };
 
   const handleImageUpload = () => {
-    console.log('Image upload clicked');
+    createImageUploadInput(async (file: File) => {
+      setLoading(true);
+
+      try {
+        // Convert image to base64
+        const imageContent = await fileToBase64(file);
+
+        // Add user message for image upload
+        const userMessage: Message = {
+          id: Date.now().toString(),
+          content: `📷 Image uploaded: ${file.name}`,
+          type: 'user',
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, userMessage]);
+
+        // Call QR detection API
+        const response = await fetch('http://localhost:8080/api/qr-detection/detect-qr-image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            image_content: imageContent,
+            image_name: file.name
+          })
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.qr_detections && result.qr_detections.length > 0) {
+          // QR codes found - Auto query
+          const qrCodes = result.qr_detections;
+          const qrCodeText = qrCodes.join(', ');
+
+          // Add bot message for found QR codes
+          const qrFoundMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `✅ Found ${result.qr_count} QR codes: \`${qrCodeText}\``,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, qrFoundMessage]);
+
+          // Auto query with first QR code
+          const queryInput = qrCodes[0];
+          const botResponse = await getTraceResponse(queryInput);
+
+          // Add query results
+          if (botResponse.content.trim() || botResponse.eventData) {
+            const queryResultMessage: Message = {
+              id: (Date.now() + 2).toString(),
+              content: botResponse.content,
+              type: 'bot',
+              timestamp: new Date(),
+              eventData: botResponse.eventData
+            };
+            setMessages(prev => [...prev, queryResultMessage]);
+          }
+
+        } else {
+          // No QR codes found
+          const noQrMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `❌ No QR code found on image "${file.name}"`,
+            type: 'bot',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, noQrMessage]);
+        }
+
+      } catch (error) {
+        console.error('Error processing image:', error);
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: `❌ Image processing error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          type: 'bot',
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, errorMessage]);
+      } finally {
+        setLoading(false);
+      }
+    });
   };
 
   const handleVideoUpload = () => {

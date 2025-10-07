@@ -17,7 +17,7 @@ const WelcomeMessage = () => {
     if (!hasSeenWelcome) {
       setIsVisible(true);
       // Auto-mark as seen after showing (no close button)
-      localStorage.setItem('hasSeenWelcome', 'true');
+      // localStorage.setItem('hasSeenWelcome', 'true'); // Commented for dev convenience
     }
   }, []);
 

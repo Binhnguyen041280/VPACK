@@ -47,6 +47,7 @@ function Sidebar(props: SidebarProps) {
   let sidebarBg = useColorModeValue('white', 'navy.800');
   let sidebarRadius = '14px';
   let sidebarMargins = '0px';
+  let hoverBg = useColorModeValue('gray.50', 'whiteAlpha.50');
   // SIDEBAR
   return (
     <Box display={{ base: 'none', xl: 'block' }} position="fixed" minH="100%">
@@ -70,7 +71,7 @@ function Sidebar(props: SidebarProps) {
         data-color-theme={colorTheme}
         onClick={collapsed && onToggle ? onToggle : undefined}
         _hover={collapsed ? {
-          bg: useColorModeValue('gray.50', 'whiteAlpha.50')
+          bg: hoverBg
         } : {}}
       >
         <Scrollbars

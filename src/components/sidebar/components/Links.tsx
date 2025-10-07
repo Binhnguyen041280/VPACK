@@ -1,6 +1,8 @@
 'use client';
 /* eslint-disable */
 
+import '../../../styles/animations.css';
+
 // chakra imports
 import {
   Accordion,
@@ -24,6 +26,7 @@ import { IRoute } from '@/types/navigation';
 import { PropsWithChildren, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
+import { useRoute } from '@/contexts/RouteContext';
 
 interface SidebarLinksProps extends PropsWithChildren {
   routes: IRoute[];
@@ -34,6 +37,26 @@ export function SidebarLinks(props: SidebarLinksProps) {
   //   Chakra color mode
   const pathname = usePathname();
   const { currentColors } = useColorTheme();
+  const { companyName, isAnimating, currentRoute } = useRoute();
+  
+  // Animation class for company name
+  const getAnimationProps = (isCompanyRoute: boolean) => {
+    if (isCompanyRoute && isAnimating) {
+      return {
+        className: 'company-name-blink',
+        borderRadius: '4px',
+        px: '8px',
+        py: '2px',
+        transition: 'all 0.2s ease'
+      };
+    }
+    return {
+      borderRadius: '4px',
+      px: '0px',
+      py: '0px',
+      transition: 'all 0.2s ease'
+    };
+  };
   
   let activeColor = useColorModeValue('navy.700', 'white');
   let inactiveColor = useColorModeValue('gray.500', 'gray.500');
@@ -44,12 +67,17 @@ export function SidebarLinks(props: SidebarLinksProps) {
 
   const { routes, collapsed = false } = props;
 
-  // verifies if routeName is the one active (in browser input)
+  // verifies if routeName is the one active (in browser input or override)
   const activeRoute = useCallback(
     (routeName: string) => {
+      // If currentRoute is set, use it for active detection
+      if (currentRoute) {
+        return currentRoute.includes(routeName);
+      }
+      // Otherwise use pathname as before
       return pathname?.includes(routeName);
     },
-    [pathname],
+    [pathname, currentRoute],
   );
 
   // this function creates the links and collapses that appear in the sidebar (left menu)
@@ -120,8 +148,9 @@ export function SidebarLinks(props: SidebarLinksProps) {
                             fontWeight="500"
                             letterSpacing="0px"
                             fontSize="sm"
+                            {...getAnimationProps(route.name === 'Alan_Go')}
                           >
-                            {route.name}
+                            {route.name === 'Alan_Go' ? companyName : route.name}
                           </Text>
                         </Flex>
                       </HStack>
@@ -142,8 +171,9 @@ export function SidebarLinks(props: SidebarLinksProps) {
                           fontWeight="500"
                           letterSpacing="0px"
                           fontSize="sm"
+                          {...getAnimationProps(route.name === 'Alan_Go')}
                         >
-                          {route.name}
+                          {route.name === 'Alan_Go' ? companyName : route.name}
                         </Text>
                       </HStack>
                       <AccordionIcon
@@ -189,13 +219,16 @@ export function SidebarLinks(props: SidebarLinksProps) {
                   )}
                   justifyContent={collapsed ? "center" : "flex-start"}
                 >
-                  {route.name === 'Alan_Go' ? (
+                  {(route.name !== 'Alan_Go' && !route.disabled) ? (
                     <NavLink
                       href={
                         route.layout ? route.layout + route.path : route.path
                       }
                       key={key}
-                      styles={{ width: collapsed ? 'auto' : '100%' }}
+                      styles={{ 
+                        width: collapsed ? 'auto' : '100%',
+                        cursor: 'pointer'
+                      }}
                     >
                       <Flex
                         w={collapsed ? "auto" : "100%"}
@@ -204,9 +237,7 @@ export function SidebarLinks(props: SidebarLinksProps) {
                       >
                         <Box
                           color={
-                            route.disabled
-                              ? gray
-                              : activeRoute(route.path.toLowerCase())
+                            activeRoute(route.path.toLowerCase())
                               ? activeIcon
                               : inactiveColor
                           }
@@ -223,17 +254,16 @@ export function SidebarLinks(props: SidebarLinksProps) {
                           <Text
                             me="auto"
                             color={
-                              route.disabled
-                                ? gray
-                                : activeRoute(route.path.toLowerCase())
+                              activeRoute(route.path.toLowerCase())
                                 ? activeColor
                                 : 'gray.500'
                             }
                             fontWeight="500"
                             letterSpacing="0px"
                             fontSize="sm"
+                            {...getAnimationProps(route.name === 'Alan_Go')}
                           >
-                            {route.name}
+                            {route.name === 'Alan_Go' ? companyName : route.name}
                           </Text>
                         )}
                       </Flex>
@@ -277,8 +307,9 @@ export function SidebarLinks(props: SidebarLinksProps) {
                           fontWeight="500"
                           letterSpacing="0px"
                           fontSize="sm"
+                          {...getAnimationProps(route.name === 'Alan_Go')}
                         >
-                          {route.name}
+                          {route.name === 'Alan_Go' ? companyName : route.name}
                         </Text>
                       )}
                     </Flex>
@@ -298,8 +329,9 @@ export function SidebarLinks(props: SidebarLinksProps) {
                     }
                     fontWeight="500"
                     fontSize="xs"
+                    {...getAnimationProps(route.name === 'Alan_Go')}
                   >
-                    {route.name}
+                    {route.name === 'Alan_Go' ? companyName : route.name}
                   </Text>
                 </Flex>
               </ListItem>
@@ -340,8 +372,9 @@ export function SidebarLinks(props: SidebarLinksProps) {
               activeRoute(route.path.toLowerCase()) ? 'bold' : 'normal'
             }
             fontSize="sm"
+            {...getAnimationProps(route.name === 'Alan_Go')}
           >
-            {route.name}
+            {route.name === 'Alan_Go' ? companyName : route.name}
           </Text>
         </ListItem>
       );

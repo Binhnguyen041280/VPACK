@@ -7,6 +7,8 @@ interface RouteContextType {
   isAnimating: boolean;
   startAnimation: () => void;
   stopAnimation: () => void;
+  currentRoute: string;
+  setCurrentRoute: (route: string) => void;
 }
 
 const RouteContext = createContext<RouteContextType | undefined>(undefined);
@@ -26,6 +28,7 @@ interface RouteProviderProps {
 export const RouteProvider: React.FC<RouteProviderProps> = ({ children }) => {
   const [companyName, setCompanyName] = useState<string>('Alan_go'); // Default for first-time users
   const [isAnimating, setIsAnimating] = useState<boolean>(false);
+  const [currentRoute, setCurrentRoute] = useState<string>(''); // Track current active route
 
   const startAnimation = () => {
     setIsAnimating(true);
@@ -41,7 +44,9 @@ export const RouteProvider: React.FC<RouteProviderProps> = ({ children }) => {
       setCompanyName, 
       isAnimating, 
       startAnimation, 
-      stopAnimation 
+      stopAnimation,
+      currentRoute,
+      setCurrentRoute
     }}>
       {children}
     </RouteContext.Provider>

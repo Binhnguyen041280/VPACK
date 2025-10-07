@@ -7,12 +7,12 @@ import {
   Flex,
   Icon,
   useColorModeValue,
-  Badge
+  Badge,
+  SimpleGrid
 } from '@chakra-ui/react';
 import { 
   MdBusiness,
   MdLocationOn, 
-  MdSave,
   MdVideoLibrary,
   MdCropFree,
   MdTimer
@@ -44,30 +44,23 @@ const steps: Step[] = [
   },
   {
     id: 3,
-    key: 'file_save',
-    title: 'File Save',
-    description: 'Storage path & retention',
-    icon: MdSave
-  },
-  {
-    id: 4,
     key: 'video_source',
     title: 'Video Source',
     description: 'Camera & quality settings',
     icon: MdVideoLibrary
   },
   {
-    id: 5,
+    id: 4,
     key: 'packing_area',
     title: 'Packing Area',
-    description: 'Detection zones & triggers',
+    description: 'Detection zones',
     icon: MdCropFree
   },
   {
-    id: 6,
+    id: 5,
     key: 'timing',
-    title: 'Timing',
-    description: 'Speed & buffer settings',
+    title: 'Timing & Storage',
+    description: 'Buffer, timing & file storage',
     icon: MdTimer
   }
 ];
@@ -95,6 +88,8 @@ export default function StepNavigator({
     // Current step always has priority over completed status
     if (step.key === currentStep) return 'current';
     if (completedSteps[step.key]) return 'completed';
+    // Check if step is accessible based on highestStepReached
+    if (step.id <= highestStepReached) return 'accessible';
     return 'pending';
   };
 
@@ -114,7 +109,14 @@ export default function StepNavigator({
           iconColor: currentColors.brand500,
           textColor: textColor
         };
-      default:
+      case 'accessible':
+        return {
+          bg: 'transparent',
+          borderColor: borderColor,
+          iconColor: textColor,
+          textColor: textColor
+        };
+      default: // pending
         return {
           bg: 'transparent',
           borderColor: borderColor,
@@ -126,37 +128,49 @@ export default function StepNavigator({
 
   return (
     <Box
-      bg={bgColor}
-      borderRadius="20px"
-      border="1px solid"
-      borderColor={borderColor}
-      p="20px"
-      h="fit-content"
+      h="100%"
+      display="flex"
+      flexDirection="column"
     >
-      {/* Header */}
-      <Text
-        fontSize="lg"
-        fontWeight="700"
-        color={textColor}
-        mb="20px"
-        textAlign="center"
+      {/* Header with Progress */}
+      <Flex
+        align="center"
+        mb="12px"
+        flexShrink={0}
+        gap="8px"
       >
-        🚀 Configuration Steps
-      </Text>
+        <Text
+          fontSize="md"
+          fontWeight="700"
+          color={textColor}
+        >
+          🚀 Configuration Steps
+        </Text>
+        <Box
+          px="6px"
+          py="2px"
+          bg={useColorModeValue('gray.50', 'whiteAlpha.100')}
+          borderRadius="4px"
+        >
+          <Text fontSize="xs" color={secondaryText} fontWeight="500">
+            {highestStepReached}/5
+          </Text>
+        </Box>
+      </Flex>
 
-      {/* Steps List */}
-      <VStack spacing="12px" align="stretch">
+      {/* Steps List - 1 Column (Vertical) */}
+      <VStack spacing="6px" flex="1" align="stretch">
         {steps.map((step) => {
           const status = getStepStatus(step);
           const colors = getStepColors(status);
-          const isClickable = onStepClick && (status === 'completed' || status === 'current');
+          const isClickable = onStepClick && (status === 'completed' || status === 'current' || status === 'accessible');
 
           return (
             <Flex
               key={step.id}
               align="center"
-              p="12px"
-              borderRadius="12px"
+              p="8px"
+              borderRadius="8px"
               border="1px solid"
               borderColor={colors.borderColor}
               bg={colors.bg}
@@ -167,11 +181,13 @@ export default function StepNavigator({
                 boxShadow: 'sm'
               } : {}}
               onClick={() => isClickable && onStepClick(step.key)}
+              minH="40px"
+              h="fit-content"
             >
               {/* Step Number & Icon */}
               <Flex
-                w="32px"
-                h="32px"
+                w="20px"
+                h="20px"
                 borderRadius="full"
                 align="center"
                 justify="center"
@@ -179,33 +195,35 @@ export default function StepNavigator({
                 border={status !== 'current' ? '1px solid' : 'none'}
                 borderColor={colors.iconColor}
                 flexShrink={0}
-                me="12px"
+                me="4px"
               >
                 {status === 'completed' ? (
-                  <Text color={colors.iconColor} fontSize="sm" fontWeight="bold">✓</Text>
+                  <Text color={colors.iconColor} fontSize="xs" fontWeight="bold">✓</Text>
                 ) : status === 'current' ? (
-                  <Icon as={step.icon} w="16px" h="16px" color="white" />
+                  <Icon as={step.icon} w="10px" h="10px" color="white" />
                 ) : (
                   <Text color={colors.iconColor} fontSize="xs" fontWeight="bold">{step.id}</Text>
                 )}
               </Flex>
 
-              {/* Step Content */}
-              <Box flex="1">
-                <Flex align="center" mb="2px">
+              {/* Step Content - Text canh phải */}
+              <Box flex="1" textAlign="left">
+                <Flex align="center" justify="space-between">
                   <Text
-                    fontSize="sm"
+                    fontSize="xs"
                     fontWeight="600"
                     color={colors.textColor}
-                    me="8px"
+                    lineHeight="short"
                   >
                     {step.title}
                   </Text>
                   {status === 'current' && (
                     <Badge
                       colorScheme="brand"
-                      size="sm"
+                      size="xs"
                       borderRadius="full"
+                      fontSize="xs"
+                      ml="4px"
                     >
                       ►
                     </Badge>
@@ -215,6 +233,8 @@ export default function StepNavigator({
                   fontSize="xs"
                   color={secondaryText}
                   lineHeight="short"
+                  opacity={0.8}
+                  mt="1px"
                 >
                   {step.description}
                 </Text>
@@ -223,19 +243,6 @@ export default function StepNavigator({
           );
         })}
       </VStack>
-
-      {/* Progress Summary */}
-      <Box
-        mt="20px"
-        p="12px"
-        bg={useColorModeValue('gray.50', 'whiteAlpha.100')}
-        borderRadius="12px"
-        textAlign="center"
-      >
-        <Text fontSize="xs" color={secondaryText}>
-          Progress: {highestStepReached}/6 steps
-        </Text>
-      </Box>
     </Box>
   );
 }
