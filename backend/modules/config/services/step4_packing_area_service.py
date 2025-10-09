@@ -349,10 +349,10 @@ class Step4PackingAreaService:
                 # Map camera names to their profiles
                 camera_status = []
                 for camera_name in all_cameras:
-                    # Find matching profile (profile_name starts with camera_name)
+                    # Find matching profile (exact match - no timestamp)
                     matching_profile = None
                     for (profile_name,) in configured_profiles:
-                        if profile_name.startswith(camera_name + "_"):
+                        if profile_name == camera_name:
                             matching_profile = profile_name
                             break
 
