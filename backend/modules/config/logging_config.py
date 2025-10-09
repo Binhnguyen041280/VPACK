@@ -492,14 +492,16 @@ def get_logger(module_name, context=None, separate_log=None):
     """Get a logger with optional context and separate log file.
 
     Args:
-        module_name: Name of the module (for context only)
+        module_name: Name of the module (used for filtering and routing)
         context: Optional dict of context key-value pairs
         separate_log: Optional separate log file name (e.g., 'cloud_sync')
 
     Returns:
         ContextAdapter: Configured logger adapter
     """
-    logger = logging.getLogger("app")
+    # FIX: Use actual module name instead of hardcoded "app"
+    # This allows ModuleFilter to route logs correctly to event_processing.log
+    logger = logging.getLogger(module_name)
 
     if separate_log:
         # Use /var/logs directory
