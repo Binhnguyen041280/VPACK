@@ -187,7 +187,8 @@ export default function Program() {
         programType: programId as 'first' | 'default' | 'custom',
         action: 'run',
         days: programId === 'first' ? (typeof days === 'string' ? parseInt(days) || 7 : days) : undefined,
-        customPath: programId === 'custom' ? customPath : undefined
+        customPath: programId === 'custom' ? customPath : undefined,
+        cameraName: programId === 'custom' ? selectedCamera || undefined : undefined
       });
 
       // Update state based on backend response

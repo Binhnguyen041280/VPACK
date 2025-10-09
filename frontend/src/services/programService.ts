@@ -13,6 +13,7 @@ export interface StartProgramParams {
   action: 'run' | 'stop';
   days?: number;
   customPath?: string;
+  cameraName?: string;
 }
 
 export interface ProgramResponse {
@@ -90,7 +91,8 @@ class ProgramService {
           card: this.mapProgramType(params.programType),
           action: params.action,
           days: params.days,
-          custom_path: params.customPath
+          custom_path: params.customPath,
+          camera_name: params.cameraName
         })
       });
 

@@ -335,9 +335,9 @@ def scan_files(root_path: str, video_root: str, time_threshold: Optional[datetim
     )
     return video_files, file_ctimes
 
-def save_files_to_db(conn: Any, video_files: List[str], file_ctimes: List[float], 
-                     scan_action: str, days: Optional[int], custom_path: Optional[str], 
-                     video_root: str) -> None:
+def save_files_to_db(conn: Any, video_files: List[str], file_ctimes: List[float],
+                     scan_action: str, days: Optional[int], custom_path: Optional[str],
+                     video_root: str, override_camera_name: Optional[str] = None) -> None:
     """Save discovered video files to the database for processing.
     
     This function takes the results of file scanning and stores them in the
@@ -388,15 +388,34 @@ def save_files_to_db(conn: Any, video_files: List[str], file_ctimes: List[float]
         # Set priority (custom processing gets higher priority)
         priority = 1 if scan_action == "custom" else 0
 
-        # Extract camera name from directory structure
-        # Always use relative path from video_root for consistent camera detection
-        try:
-            relative_path = os.path.relpath(absolute_path, video_root)
-            # First level directory is camera name (e.g., Cloud_Cam1, Cam2N)
-            camera_name = relative_path.split(os.sep)[0] if relative_path != "." else os.path.basename(video_root)
-        except ValueError:
-            # If relpath fails (different drives on Windows), fallback to basename
-            camera_name = os.path.basename(os.path.dirname(absolute_path))
+        # Extract camera name - prioritize override parameter for custom mode
+        if override_camera_name:
+            camera_name = override_camera_name
+            logger.info(f"Using override camera_name from custom mode: {camera_name}")
+        else:
+            # Extract camera name from directory structure
+            # Always use relative path from video_root for consistent camera detection
+            try:
+                relative_path = os.path.relpath(absolute_path, video_root)
+                # Check if video is outside video_root
+                if relative_path.startswith(".."):
+                    # Video is outside video_root, use parent folder
+                    camera_name = os.path.basename(os.path.dirname(absolute_path))
+                    logger.info(f"Video outside video_root, using parent folder: {camera_name}")
+                elif relative_path == ".":
+                    # Video is directly in video_root
+                    camera_name = os.path.basename(video_root)
+                else:
+                    # First level directory is camera name (e.g., Cloud_Cam1, Cam2N)
+                    camera_name = relative_path.split(os.sep)[0]
+            except ValueError:
+                # If relpath fails (different drives on Windows), fallback to basename
+                camera_name = os.path.basename(os.path.dirname(absolute_path))
+
+            # Validation: reject invalid camera names
+            if camera_name in ['..', '.', 'Inputvideo', 'videos', 'resources', 'uploads']:
+                logger.warning(f"Invalid camera_name '{camera_name}' detected, using CamTest")
+                camera_name = "CamTest"
         
         # Prepare database record
         insert_data.append((
@@ -442,7 +461,7 @@ def save_files_to_db(conn: Any, video_files: List[str], file_ctimes: List[float]
 
         logger.info(f"Inserted {inserted_count} new files, skipped {skipped_count} duplicates")
 
-def list_files(video_root, scan_action, custom_path, days, db_path, default_scan_days=None, camera_ctime_map=None, is_initial_scan=False):
+def list_files(video_root, scan_action, custom_path, days, db_path, default_scan_days=None, camera_ctime_map=None, is_initial_scan=False, camera_name=None):
     try:
         # First, get configuration from database
         with db_rwlock.gen_rlock():
@@ -520,13 +539,14 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
                 raise Exception(f"Path does not exist: {custom_path}")
             if os.path.isfile(custom_path) and custom_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv')):
                 file_name = os.path.basename(custom_path)
-                # Extract camera name from custom path for timezone detection
-                custom_dir = os.path.dirname(custom_path)
-                camera_name = os.path.basename(custom_dir) if custom_dir else None
+                # Use camera_name parameter if provided, otherwise extract from path
+                if not camera_name:
+                    custom_dir = os.path.dirname(custom_path)
+                    camera_name = os.path.basename(custom_dir) if custom_dir else None
                 file_ctime = get_file_creation_time(custom_path, camera_name)
                 video_files.append(file_name)
                 file_ctimes.append(file_ctime.timestamp())
-                logger.info(f"Found file: {custom_path}")
+                logger.info(f"Found file: {custom_path}, camera_name: {camera_name}")
             else:
                 video_files, file_ctimes = scan_files(
                     custom_path, video_root, None, None, False, None,
@@ -550,7 +570,7 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
         # Finally, save files to database with a fresh connection
         with db_rwlock.gen_wlock():
             with safe_db_connection() as conn:
-                save_files_to_db(conn, video_files, file_ctimes, scan_action, days, custom_path, video_root)
+                save_files_to_db(conn, video_files, file_ctimes, scan_action, days, custom_path, video_root, camera_name)
 
                 # Handle first run completion flag
                 if scan_action == "first" and days:
@@ -599,8 +619,8 @@ def cleanup_stale_jobs() -> None:
     except Exception as e:
         logger.error(f"Error cleaning up stale jobs: {e}")
 
-def run_file_scan(scan_action: str = "default", days: Optional[int] = None, 
-                  custom_path: Optional[str] = None) -> List[str]:
+def run_file_scan(scan_action: str = "default", days: Optional[int] = None,
+                  custom_path: Optional[str] = None, camera_name: Optional[str] = None) -> List[str]:
     """Execute file scanning with the specified strategy and parameters.
     
     This is the main entry point for file scanning operations. It coordinates
@@ -652,8 +672,8 @@ def run_file_scan(scan_action: str = "default", days: Optional[int] = None,
         
         # Execute the file scanning operation
         files, _ = list_files(
-            video_root, scan_action, custom_path, days, db_path, 
-            camera_ctime_map=camera_ctime_map, is_initial_scan=is_initial_scan
+            video_root, scan_action, custom_path, days, db_path,
+            camera_ctime_map=camera_ctime_map, is_initial_scan=is_initial_scan, camera_name=camera_name
         )
         return files
         

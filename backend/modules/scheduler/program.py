@@ -152,9 +152,10 @@ def program():
     action = data.get('action')  # Action to perform ('run' or 'stop')
     custom_path = data.get('custom_path', '')  # Path for custom processing
     days = data.get('days')    # Number of days for first run
+    camera_name = data.get('camera_name')  # Camera name for custom processing
 
     # DEBUG: Log extracted values
-    logger.info(f"DEBUG: Extracted - card={card}, action={action}, custom_path={custom_path}, days={days}")
+    logger.info(f"DEBUG: Extracted - card={card}, action={action}, custom_path={custom_path}, days={days}, camera_name={camera_name}")
 
     # Validate required parameters
     if not card or not action:
@@ -237,10 +238,11 @@ def program():
                 logger.error(f"Error checking file status: {str(e)}")
                 return jsonify({"error": f"Error checking file status: {str(e)}"}), 500
             running_state["custom_path"] = abs_path
+            running_state["camera_name"] = camera_name
             running_state["days"] = None
             try:
                 scheduler.pause()
-                run_file_scan(scan_action="custom", custom_path=abs_path)
+                run_file_scan(scan_action="custom", custom_path=abs_path, camera_name=camera_name)
                 with db_rwlock:
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
