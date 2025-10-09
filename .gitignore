@@ -96,3 +96,5 @@ next-env.d.ts
 .DS_Store
 /app.backup
 /src.backup
+/public.backup
+/config.backup
