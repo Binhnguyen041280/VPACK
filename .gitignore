@@ -66,6 +66,7 @@ logs/
 # ===== SECURITY - OAuth & Credentials =====
 backend/modules/sources/credentials/
 backend/modules/sources/tokens/
+backend/keys/
 .vtrack/
 *.pem
 
@@ -73,6 +74,8 @@ backend/modules/sources/tokens/
 *.db
 *.sqlite
 *.sqlite3
+*-shm
+*-wal
 ib_logfile*
 mysql-bin.*
 
@@ -83,6 +86,7 @@ mysql-bin.*
 *.tsbuildinfo
 next-env.d.ts
 .idea
+.vscode/
 
 # ===== ENV FILES =====
 .env.local
