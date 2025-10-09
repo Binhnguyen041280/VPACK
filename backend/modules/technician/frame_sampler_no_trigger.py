@@ -268,6 +268,30 @@ class FrameSamplerNoTrigger:
                     f.flush()
             self.log_queue.task_done()
 
+    def _get_log_directory(self, video_file, camera_name):
+        """Get log directory based on program type from database.
+
+        Args:
+            video_file: Path to video file
+            camera_name: Camera name for folder fallback
+
+        Returns:
+            str: Log directory path (custom/ for custom mode, camera_name/ for others)
+        """
+        with db_rwlock.gen_rlock():
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT program_type FROM file_list WHERE file_path = ?", (video_file,))
+                result = cursor.fetchone()
+                program_type = result[0] if result and result[0] else "default"
+
+        if program_type == "custom":
+            # Custom mode: Use "custom" folder
+            return os.path.join(self.log_dir, "custom")
+        else:
+            # First Run & Default: Use camera name folder
+            return os.path.join(self.log_dir, camera_name)
+
     def _update_log_file(self, log_file, start_second, end_second, start_time, camera_name, video_file):
         timestamp = {
             'start': start_second,
@@ -344,7 +368,9 @@ class FrameSamplerNoTrigger:
             end_segment = math.ceil(end_time / segment_duration) * segment_duration
             current_start_second = start_segment
             current_end_second = min(current_start_second + segment_duration, end_segment)
-            camera_log_dir = os.path.join(self.log_dir, camera_name)
+
+            # Get log directory based on program type
+            camera_log_dir = self._get_log_directory(video_file, camera_name)
             os.makedirs(camera_log_dir, exist_ok=True)
             log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
             log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
@@ -403,7 +429,9 @@ class FrameSamplerNoTrigger:
                 if second >= current_end_second and second < end_time:
                     current_start_second = current_end_second
                     current_end_second = min(current_start_second + segment_duration, end_segment)
-                    camera_log_dir = os.path.join(self.log_dir, camera_name)
+
+                    # Get log directory based on program type
+                    camera_log_dir = self._get_log_directory(video_file, camera_name)
                     os.makedirs(camera_log_dir, exist_ok=True)
                     log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
                     log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
@@ -453,7 +481,9 @@ class FrameSamplerNoTrigger:
                 if second_te >= current_end_second or target_start_second != current_start_second:
                     current_start_second = target_start_second
                     current_end_second = min(target_start_second + segment_duration, end_segment)
-                    camera_log_dir = os.path.join(self.log_dir, camera_name)
+
+                    # Get log directory based on program type
+                    camera_log_dir = self._get_log_directory(video_file, camera_name)
                     os.makedirs(camera_log_dir, exist_ok=True)
                     log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
                     log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
@@ -530,7 +560,9 @@ class FrameSamplerNoTrigger:
                     if max(second_ts, second_te) >= current_end_second or target_start_second != current_start_second:
                         current_start_second = target_start_second
                         current_end_second = min(target_start_second + segment_duration, end_segment)
-                        camera_log_dir = os.path.join(self.log_dir, camera_name)
+
+                        # Get log directory based on program type
+                        camera_log_dir = self._get_log_directory(video_file, camera_name)
                         os.makedirs(camera_log_dir, exist_ok=True)
                         log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
                         log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
@@ -548,7 +580,9 @@ class FrameSamplerNoTrigger:
                         if max(second_ts, second_te) >= current_end_second or target_start_second != current_start_second:
                             current_start_second = target_start_second
                             current_end_second = min(target_start_second + segment_duration, end_segment)
-                            camera_log_dir = os.path.join(self.log_dir, camera_name)
+
+                            # Get log directory based on program type
+                            camera_log_dir = self._get_log_directory(video_file, camera_name)
                             os.makedirs(camera_log_dir, exist_ok=True)
                             log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
                             log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
