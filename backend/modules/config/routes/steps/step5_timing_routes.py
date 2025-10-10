@@ -134,11 +134,13 @@ def update_step_timing():
             "max_packing_time": result["max_packing_time"]
         })
 
-        # Force sync for active cloud sources after completing Step 5 configuration
+        # ✅ Trigger async sync for active cloud sources (non-blocking)
+        # Response will be returned immediately while sync runs in background
         try:
             from modules.db_utils.safe_connection import safe_db_connection
             from modules.sources.pydrive_downloader import pydrive_downloader
             import logging
+            import threading
             logger = logging.getLogger(__name__)
 
             with safe_db_connection() as conn:
@@ -150,24 +152,31 @@ def update_step_timing():
                 sources = cursor.fetchall()
 
             if sources:
-                logger.info("🚀 Step 5 completed - triggering initial sync for cloud sources...")
-                sync_results = []
-                for source_id, source_name in sources:
-                    try:
-                        logger.info(f"📥 Syncing {source_name} (ID: {source_id})...")
-                        sync_result = pydrive_downloader.force_sync_now(source_id)
-                        if sync_result.get('success'):
-                            logger.info(f"✅ Sync completed for {source_name}")
-                            sync_results.append({'source_id': source_id, 'name': source_name, 'success': True})
-                        else:
-                            logger.warning(f"⚠️ Sync failed for {source_name}: {sync_result.get('message')}")
-                            sync_results.append({'source_id': source_id, 'name': source_name, 'success': False, 'error': sync_result.get('message')})
-                    except Exception as e:
-                        logger.error(f"❌ Error syncing {source_name}: {e}")
-                        sync_results.append({'source_id': source_id, 'name': source_name, 'success': False, 'error': str(e)})
+                def trigger_async_sync():
+                    """Background sync worker - runs after response is sent"""
+                    import time
+                    time.sleep(0.1)  # Brief delay to ensure response is sent
 
+                    logger.info("🚀 Step 5 completed - triggering background sync for cloud sources...")
+                    for source_id, source_name in sources:
+                        try:
+                            logger.info(f"📥 Background syncing {source_name} (ID: {source_id})...")
+                            sync_result = pydrive_downloader.force_sync_now(source_id)
+                            if sync_result.get('success'):
+                                logger.info(f"✅ Background sync completed for {source_name}")
+                            else:
+                                logger.warning(f"⚠️ Background sync failed for {source_name}: {sync_result.get('message')}")
+                        except Exception as e:
+                            logger.error(f"❌ Error in background sync for {source_name}: {e}")
+
+                # Start background thread (daemon=True ensures it won't block app shutdown)
+                sync_thread = threading.Thread(target=trigger_async_sync, daemon=True)
+                sync_thread.start()
+
+                logger.info(f"✅ Step 5 completed - sync scheduled for {len(sources)} cloud source(s) in background")
                 response['data']['cloud_sync_triggered'] = True
-                response['data']['cloud_sync_results'] = sync_results
+                response['data']['cloud_sync_mode'] = 'async_background'
+                response['data']['cloud_sources_count'] = len(sources)
         except Exception as sync_error:
             logger.error(f"❌ Error triggering cloud sync: {sync_error}")
             response['data']['cloud_sync_triggered'] = False
