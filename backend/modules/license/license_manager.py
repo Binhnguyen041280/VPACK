@@ -195,15 +195,58 @@ class LicenseManager:
         except Exception as e:
             logger.error(f"Failed to create activation record: {e}")
     
+    def _check_table_exists(self, table_name: str = 'licenses') -> bool:
+        """
+        Check if table exists in database - SIMPLIFIED INTEGRITY CHECK
+        Protects against: User dropping licenses table (realistic attack)
+
+        Args:
+            table_name: Name of table to check (default: 'licenses')
+
+        Returns:
+            bool: True if table exists, False otherwise
+        """
+        try:
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT name FROM sqlite_master
+                    WHERE type='table' AND name=?
+                """, (table_name,))
+                result = cursor.fetchone()
+                exists = result is not None
+
+                if not exists:
+                    logger.error(f"❌ Table '{table_name}' does not exist in database")
+                else:
+                    logger.debug(f"✅ Table '{table_name}' exists")
+
+                return exists
+
+        except Exception as e:
+            logger.error(f"❌ Table existence check failed: {e}")
+            return False
+
     def get_license_status(self) -> Dict[str, Any]:
         """
         REFACTORED: Get license status using repository
         ELIMINATES: Raw database queries, duplicate validation logic
+        ENHANCED: Added table existence check for realistic attack protection
         """
         try:
+            # NEW: Check if licenses table exists (protect against DROP TABLE)
+            if not self._check_table_exists('licenses'):
+                logger.error("🔒 SECURITY: Licenses table missing - possible tampering detected")
+                return {
+                    'status': 'no_license',
+                    'has_license': False,
+                    'reason': 'table_missing',
+                    'message': 'License database is unavailable. Please reinstall or contact support.'
+                }
+
             # Get local license using repository (eliminates raw DB logic)
             local_license = self.get_local_license()
-            
+
             if not local_license:
                 logger.info("No local license found")
                 return {
@@ -211,10 +254,10 @@ class LicenseManager:
                     'has_license': False,
                     'message': 'No license found'
                 }
-            
+
             # Validate license using unified method (eliminates duplicate validation)
             validity_check = self.is_license_valid(local_license)
-            
+
             if not validity_check['valid']:
                 reason = validity_check['reason']
                 logger.warning(f"License invalid: {reason}")
@@ -224,7 +267,7 @@ class LicenseManager:
                     'reason': reason,
                     'license': local_license
                 }
-            
+
             logger.info("Valid license found")
             return {
                 'status': 'valid',
@@ -232,7 +275,7 @@ class LicenseManager:
                 'license': local_license,
                 'machine_fingerprint': self.machine_fingerprint
             }
-            
+
         except Exception as e:
             logger.error(f"Get license status failed: {e}")
             return {

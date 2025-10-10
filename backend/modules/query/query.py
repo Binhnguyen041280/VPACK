@@ -17,6 +17,8 @@ from modules.config.logging_config import get_logger
 # Removed timezone_validation - using simple validation inline
 # Removed enhanced_timezone_query import - consolidating into single file
 from modules.utils.simple_timezone import simple_validate_timezone, get_available_timezones, get_system_timezone_from_db
+# License guard for Trace page protection
+from modules.license.license_guard import require_valid_license
 
 query_bp = Blueprint('query', __name__)
 logger = get_logger(__name__)
@@ -104,6 +106,7 @@ def parse_csv():
         return jsonify({"error": f"Failed to parse CSV: {str(e)}. Ensure the file and column name are valid."}), 500
 
 @query_bp.route('/query', methods=['POST'])
+@require_valid_license
 def query_events():
     """Query events with timezone-aware filtering and conversion.
     
@@ -798,7 +801,10 @@ def get_query_performance_metrics():
 
 @query_bp.route('/get-cameras', methods=['GET'])
 def get_cameras():
-    """Get active cameras from active_cameras view - single source of truth."""
+    """Get active cameras from active_cameras view - single source of truth.
+
+    Note: No license required - camera list is needed for UI rendering
+    """
     try:
         with db_rwlock.gen_rlock():
             with safe_db_connection() as conn:
@@ -826,6 +832,7 @@ import uuid
 processing_tasks = {}
 
 @query_bp.route('/process-event', methods=['POST'])
+@require_valid_license
 def process_event():
     """Start processing an event (mock with 5s download simulation)"""
     try:
@@ -904,6 +911,7 @@ def process_event():
         return jsonify({"error": str(e)}), 500
 
 @query_bp.route('/process-status/<task_id>', methods=['GET'])
+@require_valid_license
 def get_process_status(task_id):
     """Get processing status for a task"""
     try:
@@ -918,6 +926,7 @@ def get_process_status(task_id):
         return jsonify({"error": str(e)}), 500
 
 @query_bp.route('/play-video', methods=['POST'])
+@require_valid_license
 def play_video():
     """Open video player - for demo, opens the output directory"""
     try:

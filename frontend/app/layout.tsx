@@ -18,6 +18,7 @@ import AppWrappers from './AppWrappers';
 import { ColorThemeProvider } from '@/contexts/ColorThemeContext';
 import { UserProvider } from '@/contexts/UserContext';
 import { RouteProvider } from '@/contexts/RouteContext';
+import { LicenseProvider } from '@/contexts/LicenseContext';
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -34,7 +35,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <ColorThemeProvider>
           <UserProvider>
             <RouteProvider>
-              <AppWrappers>
+              <LicenseProvider>
+                <AppWrappers>
           {/* <ChakraProvider theme={theme}> */}
           {pathname?.includes('register') || pathname?.includes('sign-in') ? (
             children
@@ -93,7 +95,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </SidebarContext.Provider>
           )}
           {/* </ChakraProvider> */}
-              </AppWrappers>
+                </AppWrappers>
+              </LicenseProvider>
             </RouteProvider>
           </UserProvider>
         </ColorThemeProvider>

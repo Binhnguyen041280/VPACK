@@ -843,22 +843,44 @@ def _database_only_activation(license_key: str, original_error: str):
 def get_license_status():
     """
     Get current active license status from local database with validation source info
-    Enhanced with offline indicators
+    Enhanced with offline indicators and table existence check
     """
     try:
+        # NEW: Check if licenses table exists first (protect against DROP TABLE)
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT name FROM sqlite_master
+                WHERE type='table' AND name='licenses'
+            """)
+            table_exists = cursor.fetchone()
+
+            if not table_exists:
+                logger.error("🔒 SECURITY: Licenses table missing in license-status endpoint")
+                return jsonify({
+                    'success': True,
+                    'license': None,
+                    'message': 'License database unavailable',
+                    'system_status': {
+                        'online': False,
+                        'source': 'table_missing',
+                        'timestamp': datetime.now().isoformat()
+                    }
+                }), 200  # Return 200 with no license instead of 500
+
         # Import license models
         try:
             from modules.licensing.license_models import License
         except ImportError:
             from backend.modules.licensing.license_models import License
-        
+
         # Get all active licenses from local database
         with safe_db_connection() as conn:
             cursor = conn.cursor()
-            
+
             cursor.execute("""
-                SELECT * FROM licenses 
-                WHERE status = 'active' 
+                SELECT * FROM licenses
+                WHERE status = 'active'
                 AND (expires_at IS NULL OR expires_at > ?)
                 ORDER BY created_at DESC
                 LIMIT 1

@@ -30,6 +30,7 @@ import { SidebarContext } from '@/contexts/SidebarContext';
 import { useRoute } from '@/contexts/RouteContext';
 import TraceHeader from '@/components/trace/TraceHeader';
 import EventSearchResults from '@/components/trace/EventSearchResults';
+import LicenseGuard from '@/components/license/LicenseGuard';
 // Removed FileProcessingCard import - using text-based processing
 import {
   formatDateTimeForAPI,
@@ -794,12 +795,13 @@ export default function TracePage() {
   };
 
   return (
-    <>
-      <Flex
-        w="100%"
-        direction="column"
-        position="relative"
-      >
+    <LicenseGuard feature="Trace">
+      <>
+        <Flex
+          w="100%"
+          direction="column"
+          position="relative"
+        >
         {/* TraceHeader - Fixed at top with auto-hide */}
         <TraceHeader
           fromDateTime={fromDateTime}
@@ -1086,6 +1088,7 @@ export default function TracePage() {
           </ModalBody>
         </ModalContent>
       </Modal>
-    </>
+      </>
+    </LicenseGuard>
   );
 }
