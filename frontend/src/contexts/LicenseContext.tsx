@@ -55,15 +55,21 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
   });
 
   /**
-   * Fetch license status from backend
+   * Fetch license status from backend with retry logic
+   * Retries up to 4 times with 3-second delay to handle async trial creation
+   * Total wait time: ~12 seconds (enough for CloudFunction trial creation)
    */
-  const refreshLicense = async () => {
+  const refreshLicense = async (attempt: number = 1) => {
+    const MAX_RETRIES = 4;
+    const RETRY_DELAY = 3000; // 3 seconds
+
     try {
       setLicense(prev => ({ ...prev, isLoading: true, error: null }));
 
       const response = await PaymentService.getLicenseStatus();
 
-      if (response.success && response.license) {
+      // Check if license exists in response
+      if (response.license) {
         const { license: licenseData, trial_status } = response;
 
         // Calculate days remaining
@@ -88,25 +94,47 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
           licenseType: licenseData.package_type || null,
           error: null
         });
+
+        console.log(`✅ License loaded successfully on attempt ${attempt}/${MAX_RETRIES}`);
       } else {
-        // No license found
-        setLicense({
-          hasValidLicense: false,
-          isTrialActive: false,
-          daysRemaining: null,
-          isExpired: false,
-          isLoading: false,
-          licenseType: null,
-          error: null
-        });
+        // No license found - retry if attempts remaining (trial might be creating)
+        if (attempt < MAX_RETRIES) {
+          console.log(`⏳ No license yet, waiting for trial creation... (attempt ${attempt}/${MAX_RETRIES}, retry in ${RETRY_DELAY/1000}s)`);
+
+          // Keep loading state during retry
+          setTimeout(() => {
+            refreshLicense(attempt + 1);
+          }, RETRY_DELAY);
+        } else {
+          // Max retries reached - no license found
+          console.log(`❌ No license found after ${MAX_RETRIES} attempts (~${(MAX_RETRIES * RETRY_DELAY)/1000}s wait)`);
+          setLicense({
+            hasValidLicense: false,
+            isTrialActive: false,
+            daysRemaining: null,
+            isExpired: false,
+            isLoading: false,
+            licenseType: null,
+            error: null
+          });
+        }
       }
     } catch (error) {
       console.error('Failed to refresh license:', error);
-      setLicense(prev => ({
-        ...prev,
-        isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to load license'
-      }));
+
+      // Retry on error if attempts remaining
+      if (attempt < MAX_RETRIES) {
+        console.log(`⚠️ Error occurred, retrying in ${RETRY_DELAY/1000}s... (attempt ${attempt}/${MAX_RETRIES})`);
+        setTimeout(() => {
+          refreshLicense(attempt + 1);
+        }, RETRY_DELAY);
+      } else {
+        setLicense(prev => ({
+          ...prev,
+          isLoading: false,
+          error: error instanceof Error ? error.message : 'Failed to load license'
+        }));
+      }
     }
   };
 
