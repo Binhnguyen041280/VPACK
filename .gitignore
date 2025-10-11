@@ -63,6 +63,11 @@ build/
 *.tmp
 logs/
 
+# ===== BACKUP FILES =====
+*.bak
+*.bak_*
+*.backup
+
 # ===== SECURITY - OAuth & Credentials =====
 backend/modules/sources/credentials/
 backend/modules/sources/tokens/
@@ -98,3 +103,4 @@ next-env.d.ts
 /src.backup
 /public.backup
 /config.backup
+docs/backup code/VPACK_all_10_11_10_28.md
