@@ -81,52 +81,57 @@ DB_PATH = get_db_path()
 logger.info(f"Using DB_PATH: {DB_PATH}")
 
 def get_file_creation_time(file_path: str, camera_name: Optional[str] = None) -> datetime:
-    """Extract video creation time with intelligent timezone detection and TimezoneManager integration.
-    
-    This function uses advanced timezone detection to extract accurate creation timestamps
-    from video metadata. It supports multiple video formats, timezone detection methods,
-    and provides intelligent fallbacks for reliability.
-    
+    """Extract video creation time with cloud source detection.
+
+    For cloud downloads: Uses mtime (preserved from Google Drive modifiedDate)
+    For local camera: Uses ctime (file system creation time)
+
     Args:
         file_path (str): Path to the video file
         camera_name (str, optional): Camera name for camera-specific timezone configuration
-        
+
     Returns:
         datetime: Timezone-aware creation time using detected or configured timezone
-        
-    Timezone Detection Process:
-        1. Extract timezone from video metadata (high confidence)
-        2. Use camera-specific timezone configuration (high confidence)
-        3. Infer timezone from camera brand/model (medium confidence)
-        4. Use user's configured timezone from TimezoneManager (medium confidence)
-        5. Fallback to default timezone (low confidence)
-        
+
+    Source Detection:
+        - Cloud source: /var/cache/cloud_downloads/ in path → use mtime
+        - Local source: other paths → use ctime
+
     Supported Formats:
         .mp4, .avi, .mov, .mkv, .flv, .wmv, .m4v, .3gp, .webm
-        
+
     Error Handling:
         Returns filesystem creation time with user's configured timezone if extraction fails.
     """
     try:
         # Check if file is a supported video format
-        # Simple video file detection (replacing complex video_timezone_detector)
         video_extensions = ('.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.m4v')
         if not os.path.isfile(file_path) or not file_path.lower().endswith(video_extensions):
             # For non-video files, use filesystem time with system timezone
             user_timezone = _get_system_tz()
             return datetime.fromtimestamp(os.path.getctime(file_path), tz=user_timezone)
 
-        # Use simple filesystem time with system timezone (fallback approach)
-        user_timezone = _get_system_tz()
-        file_stat_time = os.path.getctime(file_path)
-        timezone_aware_time = datetime.fromtimestamp(file_stat_time, tz=user_timezone)
+        # Detect source type by folder path
+        is_cloud_source = '/var/cache/cloud_downloads/' in file_path
 
-        logger.debug(f"Extracted timezone-aware creation time for {file_path}: {timezone_aware_time}")
+        user_timezone = _get_system_tz()
+
+        if is_cloud_source:
+            # Cloud download: use mtime (preserved from Google Drive)
+            file_stat_time = os.path.getmtime(file_path)
+            logger.debug(f"Cloud source detected, using mtime for {file_path}")
+        else:
+            # Local camera: use ctime (file creation)
+            file_stat_time = os.path.getctime(file_path)
+            logger.debug(f"Local source detected, using ctime for {file_path}")
+
+        timezone_aware_time = datetime.fromtimestamp(file_stat_time, tz=user_timezone)
+        logger.debug(f"Extracted creation time for {file_path}: {timezone_aware_time}")
         return timezone_aware_time
-        
+
     except Exception as e:
         logger.error(f"Error extracting timezone-aware creation time for {file_path}: {e}")
-        # Safe fallback: use filesystem time with system timezone
+        # Safe fallback: use filesystem ctime with system timezone
         try:
             user_timezone = _get_system_tz()
             return datetime.fromtimestamp(os.path.getctime(file_path), tz=user_timezone)
