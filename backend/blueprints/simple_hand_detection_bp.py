@@ -6,7 +6,6 @@ Following the simple pattern from 2hand_detection.py
 
 from flask import Blueprint, request, jsonify
 from modules.technician.hand_detection import detect_hands_at_time, preprocess_video_hands
-from modules.technician.qr_detection_simple import detect_qr_at_time
 from modules.config.logging_config import get_logger
 import time
 import threading
