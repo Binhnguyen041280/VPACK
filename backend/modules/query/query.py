@@ -831,6 +831,27 @@ import uuid
 # Store processing tasks
 processing_tasks = {}
 
+# File-level download locks to prevent duplicate downloads
+download_locks = {}
+download_locks_mutex = threading.Lock()
+
+def get_or_create_download_lock(file_path: str) -> threading.Lock:
+    """
+    Get or create a lock for a specific file path.
+    Ensures only one thread downloads the same file at a time.
+
+    Args:
+        file_path: Full path to the video file
+
+    Returns:
+        Threading lock for this file
+    """
+    with download_locks_mutex:
+        if file_path not in download_locks:
+            download_locks[file_path] = threading.Lock()
+            logger.debug(f"🔐 Created download lock for: {os.path.basename(file_path)}")
+        return download_locks[file_path]
+
 @query_bp.route('/process-event', methods=['POST'])
 @require_valid_license
 def process_event():
@@ -903,52 +924,67 @@ def process_event():
 
                     # Check if video file exists
                     if not os.path.exists(video_file):
-                        # Try to re-download if it's a cloud file
-                        logger.warning(f"⚠️ Video file missing: {video_file}")
+                        # Get file-specific lock to prevent duplicate downloads
+                        file_lock = get_or_create_download_lock(video_file)
 
-                        # Lookup file in downloaded_files table to get drive_file_id
-                        with safe_db_connection() as conn:
-                            cursor = conn.cursor()
-                            cursor.execute("""
-                                SELECT drive_file_id, source_id, camera_name
-                                FROM downloaded_files
-                                WHERE local_file_path = ?
-                            """, (video_file,))
-                            file_record = cursor.fetchone()
+                        # Acquire lock for this file
+                        with file_lock:
+                            # Double-check if file exists after acquiring lock
+                            # (another thread may have already downloaded it)
+                            if os.path.exists(video_file):
+                                logger.info(f"✅ File already downloaded by another thread: {os.path.basename(video_file)}")
+                            else:
+                                # File still missing - proceed with download
+                                logger.warning(f"⚠️ Video file missing: {video_file}")
+                                logger.info(f"🔒 Acquired download lock for: {os.path.basename(video_file)}")
 
-                        if file_record and file_record[0]:  # Has drive_file_id
-                            drive_file_id, source_id, cam_name = file_record
-                            logger.info(f"🔄 Re-downloading cloud file (force): {os.path.basename(video_file)}")
+                                # Lookup file in downloaded_files table to get drive_file_id
+                                with safe_db_connection() as conn:
+                                    cursor = conn.cursor()
+                                    cursor.execute("""
+                                        SELECT drive_file_id, source_id, camera_name
+                                        FROM downloaded_files
+                                        WHERE local_file_path = ?
+                                    """, (video_file,))
+                                    file_record = cursor.fetchone()
 
-                            processing_tasks[task_id]["status"] = "downloading"
-                            processing_tasks[task_id]["progress"] = 5
+                                if file_record and file_record[0]:  # Has drive_file_id
+                                    drive_file_id, source_id, cam_name = file_record
+                                    logger.info(f"🔄 Re-downloading cloud file (force): {os.path.basename(video_file)}")
 
-                            try:
-                                # Import pydrive_core to download
-                                from modules.sources.pydrive_core import pydrive_core
+                                    processing_tasks[task_id]["status"] = "downloading"
+                                    processing_tasks[task_id]["progress"] = 5
 
-                                # Get drive instance for this source
-                                drive = pydrive_core.get_drive_instance(source_id)
+                                    try:
+                                        # Import PyDriveCore class to download
+                                        from modules.sources.pydrive_core import PyDriveCore
 
-                                # Prepare file info for download
-                                file_info = {'id': drive_file_id, 'title': os.path.basename(video_file)}
+                                        # Create core instance and get drive client
+                                        core = PyDriveCore()
+                                        drive = core.get_drive_client(source_id)
 
-                                # Ensure parent directory exists
-                                os.makedirs(os.path.dirname(video_file), exist_ok=True)
+                                        if not drive:
+                                            raise Exception("Failed to get Drive client - check authentication")
 
-                                # Force download
-                                success = pydrive_core.download_single_file(drive, file_info, video_file)
+                                        # Prepare file info for download
+                                        file_info = {'id': drive_file_id, 'title': os.path.basename(video_file)}
 
-                                if success and os.path.exists(video_file):
-                                    logger.info(f"✅ File re-downloaded successfully: {os.path.basename(video_file)}")
+                                        # Ensure parent directory exists
+                                        os.makedirs(os.path.dirname(video_file), exist_ok=True)
+
+                                        # Force download
+                                        success = core.download_single_file(drive, file_info, video_file)
+
+                                        if success and os.path.exists(video_file):
+                                            logger.info(f"✅ File re-downloaded successfully: {os.path.basename(video_file)}")
+                                        else:
+                                            raise Exception("Download failed or file not created")
+
+                                    except Exception as download_error:
+                                        logger.error(f"❌ Re-download failed: {download_error}")
+                                        raise Exception(f"Failed to re-download cloud file: {download_error}")
                                 else:
-                                    raise Exception("Download failed or file not created")
-
-                            except Exception as download_error:
-                                logger.error(f"❌ Re-download failed: {download_error}")
-                                raise Exception(f"Failed to re-download cloud file: {download_error}")
-                        else:
-                            raise Exception(f"Video file not found and no cloud file record exists: {video_file}")
+                                    raise Exception(f"Video file not found and no cloud file record exists: {video_file}")
 
                     # Get output directory from config
                     with safe_db_connection() as conn:
