@@ -6,8 +6,11 @@ import {
   VStack,
   HStack,
   Badge,
+  Button,
+  Icon,
   useColorModeValue,
 } from '@chakra-ui/react';
+import { MdFolder } from 'react-icons/md';
 import EventCard from './EventCard';
 
 interface EventData {
@@ -32,6 +35,23 @@ const EventSearchResults: React.FC<EventSearchResultsProps> = ({
 }) => {
   const textColor = useColorModeValue('gray.700', 'gray.200');
   const accentColor = useColorModeValue('blue.600', 'blue.400');
+
+  // Handle browse output folder
+  const handleBrowseOutput = async () => {
+    try {
+      const response = await fetch('http://localhost:8080/browse-output', {
+        method: 'GET'
+      });
+
+      const data = await response.json();
+      if (!data.success) {
+        alert(`❌ Failed to open output folder: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Error browsing output folder:', error);
+      alert('❌ Failed to open output folder. Please try again.');
+    }
+  };
 
   // Parse search input
   const searchedCodes = searchInput.split(',').map(code => code.trim()).filter(code => code.length > 0);
@@ -80,9 +100,22 @@ const EventSearchResults: React.FC<EventSearchResultsProps> = ({
     <VStack spacing={4} align="stretch">
       {/* Header */}
       <VStack spacing={2} align="flex-start">
-        <Text fontSize="lg" fontWeight="bold" color={textColor}>
-          🔍 Search Results for ({searchedCodes.length} codes): {displayInput}
-        </Text>
+        <HStack justify="space-between" w="100%">
+          <Text fontSize="lg" fontWeight="bold" color={textColor}>
+            🔍 Search Results for ({searchedCodes.length} codes): {displayInput}
+          </Text>
+          {events.length > 0 && (
+            <Button
+              leftIcon={<Icon as={MdFolder} />}
+              colorScheme="blue"
+              size="sm"
+              variant="outline"
+              onClick={handleBrowseOutput}
+            >
+              BROWSE OUTPUT
+            </Button>
+          )}
+        </HStack>
         <Text fontSize="md" color={accentColor} fontWeight="medium">
           ✅ Found {events.length} event(s) for {foundCodesList.length}/{searchedCodes.length} codes
         </Text>

@@ -10,7 +10,7 @@ import {
   Button,
   useColorModeValue,
 } from '@chakra-ui/react';
-import { MdVideocam, MdSchedule, MdPlayArrow, MdFolder } from 'react-icons/md';
+import { MdVideocam, MdSchedule, MdPlayArrow } from 'react-icons/md';
 import { useState, useEffect } from 'react';
 
 interface EventData {
@@ -89,6 +89,19 @@ const EventCard: React.FC<EventCardProps> = ({ event, index, onClick, autoProces
       });
 
       const data = await response.json();
+
+      // Handle instant response (already processed)
+      if (data.instant === true && data.status === 'completed') {
+        setProcessing({
+          isProcessing: false,
+          progress: 100,
+          status: 'completed',
+          outputPath: data.output_path
+        });
+        return;
+      }
+
+      // Handle normal processing with task_id
       if (data.task_id) {
         setProcessing({
           isProcessing: true,
@@ -151,27 +164,13 @@ const EventCard: React.FC<EventCardProps> = ({ event, index, onClick, autoProces
     }
   };
 
-  // Handle browse location
-  const handleBrowseLocation = async () => {
-    if (!processing.outputPath) return;
-
-    try {
-      await fetch('http://localhost:8080/browse-location', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_path: processing.outputPath })
-      });
-    } catch (error) {
-      console.error('Error browsing location:', error);
-    }
-  };
-
   // Get status display text
   const getStatusText = () => {
     switch (processing.status) {
       case 'downloading': return 'Downloading from Google Drive...';
       case 'cutting': return 'Cutting video segment...';
-      case 'completed': return 'Processing completed!';
+      case 'finalizing': return 'Finalizing...';
+      case 'completed': return 'Ready to play!';
       case 'starting': return 'Starting process...';
       default: return 'Processing...';
     }
@@ -198,14 +197,31 @@ const EventCard: React.FC<EventCardProps> = ({ event, index, onClick, autoProces
       overflow="hidden"
     >
       <VStack align="stretch" spacing={3}>
-        {/* Header */}
-        <HStack spacing={2} align="center">
-          <Text fontSize="lg" fontWeight="bold" color={accentColor}>
-            📦 Event {index + 1}
-          </Text>
-          <Text fontSize="sm" color={textColor} fontWeight="medium">
-            {event.tracking_codes_parsed.join(', ')}
-          </Text>
+        {/* Header with PLAY button */}
+        <HStack spacing={2} align="center" justify="space-between">
+          <HStack spacing={2} flex="1">
+            <Text fontSize="lg" fontWeight="bold" color={accentColor}>
+              📦 Event {index + 1}
+            </Text>
+            <Text fontSize="sm" color={textColor} fontWeight="medium">
+              {event.tracking_codes_parsed.join(', ')}
+            </Text>
+          </HStack>
+
+          {/* PLAY button - Show only when processing is complete */}
+          {processing.status === 'completed' && processing.outputPath && (
+            <Button
+              leftIcon={<Icon as={MdPlayArrow} />}
+              colorScheme="green"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                handlePlayVideo();
+              }}
+            >
+              PLAY
+            </Button>
+          )}
         </HStack>
 
         {/* Event Details */}
@@ -228,35 +244,6 @@ const EventCard: React.FC<EventCardProps> = ({ event, index, onClick, autoProces
             📅 {startTime}
           </Text>
         </HStack>
-
-        {/* Action Buttons - Show only when processing is complete */}
-        {processing.status === 'completed' && processing.outputPath && (
-          <HStack spacing={3} justify="center" pt={2}>
-            <Button
-              leftIcon={<Icon as={MdPlayArrow} />}
-              colorScheme="green"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                handlePlayVideo();
-              }}
-            >
-              PLAY
-            </Button>
-            <Button
-              leftIcon={<Icon as={MdFolder} />}
-              colorScheme="blue"
-              size="sm"
-              variant="outline"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleBrowseLocation();
-              }}
-            >
-              BROWSE
-            </Button>
-          </HStack>
-        )}
       </VStack>
 
       {/* Processing Overlay */}

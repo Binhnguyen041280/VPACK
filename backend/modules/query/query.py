@@ -163,7 +163,7 @@ def query_events():
                 SELECT event_id, ts, te, duration, tracking_codes, video_file, packing_time_start, packing_time_end,
                        timezone_info, camera_name, created_at_utc, updated_at_utc
                 FROM events
-                WHERE is_processed = 0
+                WHERE 1=1
             """
                 params = []
                 # Only add time condition if packing_time_start is not null
@@ -519,10 +519,10 @@ def get_events():
                 
                 # Build query with limit and offset
                 query = '''
-                SELECT event_id, ts, te, duration, tracking_codes, video_file, packing_time_start, packing_time_end, 
+                SELECT event_id, ts, te, duration, tracking_codes, video_file, packing_time_start, packing_time_end,
                        timezone_info, camera_name, created_at_utc, updated_at_utc
                 FROM events
-                WHERE is_processed = 0
+                WHERE 1=1
                 '''
                 params = []
                 
@@ -633,7 +633,7 @@ def query_events_enhanced():
                 SELECT event_id, ts, te, duration, tracking_codes, video_file, packing_time_start, packing_time_end,
                        timezone_info, camera_name, created_at_utc, updated_at_utc
                 FROM events
-                WHERE is_processed = 0
+                WHERE 1=1
             """
                 params = []
 
@@ -834,7 +834,11 @@ processing_tasks = {}
 @query_bp.route('/process-event', methods=['POST'])
 @require_valid_license
 def process_event():
-    """Start processing an event (mock with 5s download simulation)"""
+    """
+    Process event video for playback
+    - Cloud source: Pre-cut available (instant)
+    - Local source: On-demand cutting (if needed)
+    """
     try:
         data = request.get_json()
         event_id = data.get('event_id')
@@ -843,68 +847,249 @@ def process_event():
         if not event_id or not tracking_code:
             return jsonify({"error": "Missing event_id or tracking_code"}), 400
 
-        # Generate unique task ID
-        task_id = str(uuid.uuid4())
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
 
-        # Initialize task
-        processing_tasks[task_id] = {
-            "status": "starting",
-            "progress": 0,
-            "event_id": event_id,
-            "tracking_code": tracking_code,
-            "output_path": None,
-            "error": None
-        }
+            # Get event info
+            cursor.execute("""
+                SELECT event_id, video_file, output_video_path, is_processed,
+                       ts, te, duration, camera_name, tracking_codes
+                FROM events
+                WHERE event_id = ?
+            """, (event_id,))
 
-        # Start background processing
-        def process_video():
-            try:
-                # Phase 1: Mock download (3 seconds, 0-60%)
-                processing_tasks[task_id]["status"] = "downloading"
-                for i in range(31):  # 0-30 steps for 60% progress
-                    processing_tasks[task_id]["progress"] = i * 2  # 0-60%
-                    time.sleep(0.1)  # 3 seconds total
+            event = cursor.fetchone()
 
-                # Phase 2: Mock cutting (2 seconds, 60-100%)
-                processing_tasks[task_id]["status"] = "cutting"
-                for i in range(21):  # 21 steps for 40% progress (60% to 100%)
-                    processing_tasks[task_id]["progress"] = 60 + (i * 2)  # 60-100%
-                    time.sleep(0.1)  # 2 seconds total
+            if not event:
+                return jsonify({"error": f"Event {event_id} not found"}), 404
 
-                # Fixed output path for demo
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                output_filename = f"demo_{tracking_code}_{timestamp}.mp4"
-                output_path = f"/Users/annhu/Movies/VTrack/Output/{output_filename}"
+            event_id, video_file, output_video_path, is_processed, ts, te, duration, camera_name, tracking_codes_str = event
 
-                # Ensure output directory exists
-                os.makedirs("/Users/annhu/Movies/VTrack/Output", exist_ok=True)
+            # Check if output file already exists (cached from previous trace)
+            if output_video_path and os.path.exists(output_video_path):
+                logger.info(f"✅ Event {event_id} already cut - using cached file: {os.path.basename(output_video_path)}")
+                return jsonify({
+                    "status": "completed",
+                    "output_path": output_video_path,
+                    "message": "Video ready (cached)",
+                    "instant": True
+                }), 200
 
-                # Create demo file for UI testing
-                with open(output_path, 'w') as f:
-                    f.write(f"Demo video file for {tracking_code} - {datetime.now()}")
+            # Need to cut video on-demand
+            logger.info(f"🎬 Starting on-demand cutting for event {event_id}")
 
-                logger.info(f"Demo video file created: {output_path}")
+            # Generate unique task ID
+            task_id = str(uuid.uuid4())
 
-                # Complete
-                processing_tasks[task_id]["status"] = "completed"
-                processing_tasks[task_id]["progress"] = 100
-                processing_tasks[task_id]["output_path"] = output_path
+            # Initialize task
+            processing_tasks[task_id] = {
+                "status": "starting",
+                "progress": 0,
+                "event_id": event_id,
+                "tracking_code": tracking_code,
+                "output_path": None,
+                "error": None
+            }
 
-            except Exception as e:
-                logger.error(f"Video processing error: {e}")
-                processing_tasks[task_id]["status"] = "error"
-                processing_tasks[task_id]["error"] = str(e)
+            # Start background processing
+            def process_video():
+                try:
+                    import subprocess
+                    import ast
 
-        # Start processing in background thread
-        thread = threading.Thread(target=process_video)
-        thread.daemon = True
-        thread.start()
+                    # Update status
+                    processing_tasks[task_id]["status"] = "checking"
+                    processing_tasks[task_id]["progress"] = 10
 
-        return jsonify({
-            "task_id": task_id,
-            "status": "started",
-            "message": f"Processing started for {tracking_code}"
-        }), 200
+                    # Check if video file exists
+                    if not os.path.exists(video_file):
+                        # Try to re-download if it's a cloud file
+                        logger.warning(f"⚠️ Video file missing: {video_file}")
+
+                        # Lookup file in downloaded_files table to get drive_file_id
+                        with safe_db_connection() as conn:
+                            cursor = conn.cursor()
+                            cursor.execute("""
+                                SELECT drive_file_id, source_id, camera_name
+                                FROM downloaded_files
+                                WHERE local_file_path = ?
+                            """, (video_file,))
+                            file_record = cursor.fetchone()
+
+                        if file_record and file_record[0]:  # Has drive_file_id
+                            drive_file_id, source_id, cam_name = file_record
+                            logger.info(f"🔄 Re-downloading cloud file (force): {os.path.basename(video_file)}")
+
+                            processing_tasks[task_id]["status"] = "downloading"
+                            processing_tasks[task_id]["progress"] = 5
+
+                            try:
+                                # Import pydrive_core to download
+                                from modules.sources.pydrive_core import pydrive_core
+
+                                # Get drive instance for this source
+                                drive = pydrive_core.get_drive_instance(source_id)
+
+                                # Prepare file info for download
+                                file_info = {'id': drive_file_id, 'title': os.path.basename(video_file)}
+
+                                # Ensure parent directory exists
+                                os.makedirs(os.path.dirname(video_file), exist_ok=True)
+
+                                # Force download
+                                success = pydrive_core.download_single_file(drive, file_info, video_file)
+
+                                if success and os.path.exists(video_file):
+                                    logger.info(f"✅ File re-downloaded successfully: {os.path.basename(video_file)}")
+                                else:
+                                    raise Exception("Download failed or file not created")
+
+                            except Exception as download_error:
+                                logger.error(f"❌ Re-download failed: {download_error}")
+                                raise Exception(f"Failed to re-download cloud file: {download_error}")
+                        else:
+                            raise Exception(f"Video file not found and no cloud file record exists: {video_file}")
+
+                    # Get output directory from config
+                    with safe_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT output_path FROM processing_config WHERE id = 1")
+                        result = cursor.fetchone()
+                        output_dir = result[0] if result else "/Users/annhu/Movies/VTrack/Output"
+
+                    # Create date-organized output directory
+                    today = datetime.now().strftime("%Y-%m-%d")
+                    date_output_dir = os.path.join(output_dir, today)
+                    os.makedirs(date_output_dir, exist_ok=True)
+
+                    # Parse tracking codes
+                    tracking_codes = ast.literal_eval(tracking_codes_str) if tracking_codes_str else []
+                    tracking_code = tracking_codes[0] if tracking_codes else f"event{event_id}"
+
+                    # Generate readable filename with timestamp
+                    timestamp = datetime.now().strftime("%H%M%S")
+                    output_filename = f"{tracking_code}_{camera_name}_{timestamp}.mp4"
+                    output_path = os.path.join(date_output_dir, output_filename)
+
+                    # Get video FPS
+                    processing_tasks[task_id]["status"] = "analyzing"
+                    processing_tasks[task_id]["progress"] = 20
+
+                    fps_cmd = [
+                        'ffprobe', '-v', 'error',
+                        '-select_streams', 'v:0',
+                        '-show_entries', 'stream=r_frame_rate',
+                        '-of', 'default=noprint_wrappers=1:nokey=1',
+                        video_file
+                    ]
+                    fps_result = subprocess.run(fps_cmd, capture_output=True, text=True, timeout=10)
+                    fps_str = fps_result.stdout.strip()
+
+                    if '/' in fps_str:
+                        num, den = fps_str.split('/')
+                        fps = float(num) / float(den)
+                    else:
+                        fps = float(fps_str) if fps_str else 30.0
+
+                    logger.info(f"Detected FPS: {fps}")
+
+                    # Convert frame indices to seconds
+                    start_time = ts / fps if fps else ts
+                    cut_duration = duration if duration else (te - ts) / fps if te else 10
+
+                    # Add buffer (2 seconds)
+                    buffer = 2
+                    start_time = max(0, start_time - buffer)
+                    cut_duration = cut_duration + (2 * buffer)
+
+                    # Cut video with ffmpeg
+                    processing_tasks[task_id]["status"] = "cutting"
+                    processing_tasks[task_id]["progress"] = 40
+
+                    logger.info(f"Cutting event {event_id}: start={start_time:.2f}s, duration={cut_duration:.2f}s")
+
+                    cmd = [
+                        'ffmpeg',
+                        '-i', video_file,
+                        '-ss', str(start_time),
+                        '-t', str(cut_duration),
+                        '-c:v', 'libx264',
+                        '-preset', 'fast',
+                        '-crf', '23',
+                        '-c:a', 'aac',
+                        '-b:a', '128k',
+                        '-y',  # Overwrite
+                        output_path
+                    ]
+
+                    # Run ffmpeg with progress tracking
+                    process = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        universal_newlines=True
+                    )
+
+                    # Monitor progress
+                    for line in process.stderr:
+                        # FFmpeg outputs progress to stderr
+                        if 'time=' in line:
+                            # Update progress (40-90%)
+                            processing_tasks[task_id]["progress"] = min(40 + int(time.time() % 50), 90)
+
+                    process.wait(timeout=120)
+
+                    if process.returncode != 0:
+                        raise Exception(f"FFmpeg failed with code {process.returncode}")
+
+                    # Verify output file exists
+                    if not os.path.exists(output_path):
+                        raise Exception("Output file not created")
+
+                    file_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
+                    logger.info(f"✅ Video cut successfully: {output_filename} ({file_size:.1f}MB)")
+
+                    # Update database
+                    processing_tasks[task_id]["status"] = "finalizing"
+                    processing_tasks[task_id]["progress"] = 95
+
+                    with safe_db_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            UPDATE events
+                            SET output_video_path = ?,
+                                is_processed = 1,
+                                processed_timestamp = ?
+                            WHERE event_id = ?
+                        """, (output_path, int(datetime.now().timestamp() * 1000), event_id))
+                        conn.commit()
+
+                    # Complete
+                    processing_tasks[task_id]["status"] = "completed"
+                    processing_tasks[task_id]["progress"] = 100
+                    processing_tasks[task_id]["output_path"] = output_path
+
+                    logger.info(f"🎉 Event {event_id} processed successfully: {output_filename}")
+
+                except subprocess.TimeoutExpired:
+                    logger.error(f"❌ Timeout cutting video for event {event_id}")
+                    processing_tasks[task_id]["status"] = "error"
+                    processing_tasks[task_id]["error"] = "Video cutting timed out (2 min limit)"
+                except Exception as e:
+                    logger.error(f"❌ Error processing event {event_id}: {e}")
+                    processing_tasks[task_id]["status"] = "error"
+                    processing_tasks[task_id]["error"] = str(e)
+
+            # Start processing in background thread
+            thread = threading.Thread(target=process_video)
+            thread.daemon = True
+            thread.start()
+
+            return jsonify({
+                "task_id": task_id,
+                "status": "started",
+                "message": f"Processing started for {tracking_code}"
+            }), 200
 
     except Exception as e:
         logger.error(f"Error starting event processing: {e}")
@@ -928,27 +1113,34 @@ def get_process_status(task_id):
 @query_bp.route('/play-video', methods=['POST'])
 @require_valid_license
 def play_video():
-    """Open video player - for demo, opens the output directory"""
+    """Play video in default video player"""
     try:
-        # For demo: open the output directory instead of specific file
-        output_dir = "/Users/annhu/Movies/VTrack/Output"
+        data = request.get_json()
+        video_path = data.get('video_path')
 
-        # Use system default file manager
+        if not video_path:
+            return jsonify({"error": "Missing video_path"}), 400
+
+        if not os.path.exists(video_path):
+            return jsonify({"error": f"Video file not found: {video_path}"}), 404
+
+        # Open video with default player
         import subprocess
         import platform
 
         system = platform.system()
         if system == "Darwin":  # macOS
-            subprocess.run(["open", output_dir])
+            subprocess.run(["open", video_path])
         elif system == "Windows":
-            subprocess.run(["explorer", output_dir])
+            subprocess.run(["start", "", video_path], shell=True)
         else:  # Linux
-            subprocess.run(["xdg-open", output_dir])
+            subprocess.run(["xdg-open", video_path])
 
-        return jsonify({"message": "Output directory opened"}), 200
+        logger.info(f"✅ Playing video: {os.path.basename(video_path)}")
+        return jsonify({"message": f"Playing video: {os.path.basename(video_path)}"}), 200
 
     except Exception as e:
-        logger.error(f"Error opening directory: {e}")
+        logger.error(f"Error playing video: {e}")
         return jsonify({"error": str(e)}), 500
 
 @query_bp.route('/get-platform-list', methods=['GET'])
@@ -1042,25 +1234,76 @@ def save_platform_preference():
 
 @query_bp.route('/browse-location', methods=['POST'])
 def browse_location():
-    """Open file explorer at output directory"""
+    """Open file explorer at the folder containing the video file"""
     try:
-        # For demo: always open the output directory
-        output_dir = "/Users/annhu/Movies/VTrack/Output"
+        data = request.get_json()
+        file_path = data.get('file_path')
 
-        # Open file explorer
+        if not file_path:
+            return jsonify({"error": "Missing file_path"}), 400
+
+        # Get the directory containing the file
+        if os.path.isfile(file_path):
+            directory = os.path.dirname(file_path)
+        elif os.path.isdir(file_path):
+            directory = file_path
+        else:
+            return jsonify({"error": f"Path not found: {file_path}"}), 404
+
+        # Open file explorer at that directory
         import subprocess
         import platform
 
         system = platform.system()
         if system == "Darwin":  # macOS
-            subprocess.run(["open", output_dir])
+            subprocess.run(["open", directory])
         elif system == "Windows":
-            subprocess.run(["explorer", output_dir])
+            subprocess.run(["explorer", directory])
         else:  # Linux
-            subprocess.run(["nautilus", output_dir])
+            subprocess.run(["nautilus", directory])
 
-        return jsonify({"message": "Output directory opened"}), 200
+        logger.info(f"✅ Opened directory: {directory}")
+        return jsonify({"message": f"Opened directory: {os.path.basename(directory)}"}), 200
 
     except Exception as e:
         logger.error(f"Error opening directory: {e}")
         return jsonify({"error": str(e)}), 500
+
+@query_bp.route('/browse-output', methods=['GET'])
+def browse_output():
+    """Open output directory in file explorer"""
+    try:
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+
+            # Get output_path from config
+            cursor.execute("SELECT output_path FROM processing_config WHERE id = 1")
+            result = cursor.fetchone()
+
+            if not result or not result[0]:
+                return jsonify({"success": False, "error": "Output path not configured"}), 500
+
+            output_dir = result[0]
+
+            # Check if directory exists
+            if not os.path.exists(output_dir):
+                return jsonify({"success": False, "error": f"Output directory not found: {output_dir}"}), 404
+
+            # Open file explorer
+            import subprocess
+            import platform
+
+            system = platform.system()
+            if system == "Darwin":  # macOS
+                subprocess.run(["open", output_dir])
+            elif system == "Windows":
+                subprocess.run(["explorer", output_dir])
+            else:  # Linux
+                subprocess.run(["nautilus", output_dir])
+
+            logger.info(f"✅ Opened output directory: {output_dir}")
+            return jsonify({"success": True, "message": f"Opened: {output_dir}"}), 200
+
+    except Exception as e:
+        logger.error(f"Error opening output directory: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
