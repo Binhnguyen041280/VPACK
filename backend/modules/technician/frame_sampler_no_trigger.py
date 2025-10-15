@@ -213,48 +213,55 @@ class FrameSamplerNoTrigger:
             return 1.0
 
     def _get_video_start_time(self, video_file, camera_name=None):
-        """Get video start time with advanced timezone detection.
-        
-        Uses enhanced video timezone detection to get accurate creation time
-        with proper timezone information from metadata when available.
-        
+        """Get video start time from metadata (ffprobe/exiftool).
+
+        Priority:
+        1. ffprobe: Read creation_time from video metadata (most accurate)
+        2. exiftool: Fallback for special video formats
+        3. ctime: Last resort - filesystem creation time
+
         Args:
             video_file (str): Path to video file
             camera_name (str, optional): Camera name for timezone detection
-            
+
         Returns:
             datetime: Timezone-aware video start time
         """
         try:
-            # Use enhanced timezone detection
-            # Simple timezone-aware creation time using file system timestamp
-            import os
-            file_timestamp = os.path.getctime(video_file)
-            timezone_aware_time = datetime.fromtimestamp(file_timestamp, tz=self.video_timezone)
-            self.logger.info(f"Video start time with timezone detection: {timezone_aware_time}")
-            return timezone_aware_time
-            
-        except Exception as e:
-            self.logger.warning(f"Enhanced timezone detection failed for {video_file}: {e}, using fallback")
-            
-            # Fallback to original method with TimezoneManager
+            # Primary: Read metadata using ffprobe
+            result = subprocess.check_output(['ffprobe', '-v', 'quiet', '-show_entries', 'format_tags=creation_time', '-of', 'default=noprint_wrappers=1:nokey=1', video_file])
+            utc_time = datetime.strptime(result.decode().strip(), '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
+            local_time = utc_time.astimezone(self.video_timezone)
+            self.logger.info(f"Video start time from metadata: {local_time}")
+            return local_time
+        except (subprocess.CalledProcessError, ValueError) as e:
+            self.logger.warning(f"ffprobe failed for {video_file}: {e}, trying exiftool")
+
+            # Fallback 1: exiftool CreateDate
             try:
-                result = subprocess.check_output(['ffprobe', '-v', 'quiet', '-show_entries', 'format_tags=creation_time', '-of', 'default=noprint_wrappers=1:nokey=1', video_file])
-                utc_time = datetime.strptime(result.decode().strip(), '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
-                return utc_time.astimezone(self.video_timezone)
-            except (subprocess.CalledProcessError, ValueError):
+                result = subprocess.check_output(['exiftool', '-CreateDate', '-d', '%Y-%m-%d %H:%M:%S', video_file])
+                naive_time = datetime.strptime(result.decode().split('CreateDate')[1].strip().split('\n')[0].strip(), '%Y-%m-%d %H:%M:%S')
+                local_time = naive_time.replace(tzinfo=self.video_timezone)
+                self.logger.info(f"Video start time from exiftool CreateDate: {local_time}")
+                return local_time
+            except (subprocess.CalledProcessError, IndexError) as e:
+                self.logger.warning(f"exiftool CreateDate failed: {e}, trying FileCreateDate")
+
+                # Fallback 2: exiftool FileCreateDate
                 try:
-                    result = subprocess.check_output(['exiftool', '-CreateDate', '-d', '%Y-%m-%d %H:%M:%S', video_file])
-                    naive_time = datetime.strptime(result.decode().split('CreateDate')[1].strip().split('\n')[0].strip(), '%Y-%m-%d %H:%M:%S')
-                    return naive_time.replace(tzinfo=self.video_timezone)
-                except (subprocess.CalledProcessError, IndexError):
-                    try:
-                        result = subprocess.check_output(['exiftool', '-FileCreateDate', '-d', '%Y-%m-%d %H:%M:%S', video_file])
-                        naive_time = datetime.strptime(result.decode().split('FileCreateDate')[1].strip().split('\n')[0].strip(), '%Y-%m-%d %H:%M:%S')
-                        return naive_time.replace(tzinfo=self.video_timezone)
-                    except (subprocess.CalledProcessError, IndexError):
-                        self.logger.warning("No metadata found, using file creation time.")
-                        return datetime.fromtimestamp(os.path.getctime(video_file), tz=self.video_timezone)
+                    result = subprocess.check_output(['exiftool', '-FileCreateDate', '-d', '%Y-%m-%d %H:%M:%S', video_file])
+                    naive_time = datetime.strptime(result.decode().split('FileCreateDate')[1].strip().split('\n')[0].strip(), '%Y-%m-%d %H:%M:%S')
+                    local_time = naive_time.replace(tzinfo=self.video_timezone)
+                    self.logger.info(f"Video start time from exiftool FileCreateDate: {local_time}")
+                    return local_time
+                except (subprocess.CalledProcessError, IndexError) as e:
+                    # Last resort: filesystem ctime
+                    import os
+                    self.logger.warning(f"All metadata methods failed: {e}, using filesystem ctime")
+                    file_timestamp = os.path.getctime(video_file)
+                    local_time = datetime.fromtimestamp(file_timestamp, tz=self.video_timezone)
+                    self.logger.info(f"Video start time from ctime (last resort): {local_time}")
+                    return local_time
 
     def _log_writer(self):
         while True:
