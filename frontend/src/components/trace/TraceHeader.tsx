@@ -57,8 +57,8 @@ const TraceHeader: React.FC<TraceHeaderProps> = ({
   const menuBg = useColorModeValue('white', 'navy.700');
   const menuItemHoverBg = useColorModeValue('gray.50', 'navy.600');
 
-  // Generate days options from 1 to 30
-  const defaultDaysOptions = Array.from({ length: 30 }, (_, i) => ({
+  // Generate days options from 1 to 365
+  const defaultDaysOptions = Array.from({ length: 365 }, (_, i) => ({
     value: i + 1,
     label: `${i + 1} ${i === 0 ? 'Day' : 'Days'}`
   }));
