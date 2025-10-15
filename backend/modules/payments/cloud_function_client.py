@@ -169,10 +169,10 @@ class VTrackCloudClient:
             for attempt in range(self.retry_attempts):
                 try:
                     logger.debug(f"🌐 Cloud validation attempt {attempt + 1}/{self.retry_attempts}")
-                    
+
                     response = requests.post(
                         self.endpoints['license_service'],
-                        json={'action': 'validate', 'license_key': license_key},
+                        json={'action': 'validate_license', 'license_key': license_key},
                         timeout=self.license_timeout,
                         headers=self.default_headers
                     )
@@ -211,7 +211,8 @@ class VTrackCloudClient:
             
             # Cloud failed - try offline fallback using repository
             logger.warning(f"⚠️ Cloud validation failed after {self.retry_attempts} attempts")
-            
+            logger.error(f"❌ Cloud errors: {cloud_errors}")  # ADD: Log detailed errors
+
             if self.offline_fallback_enabled:
                 logger.info("🔄 Falling back to repository-based validation...")
                 offline_result = self._offline_license_validation_refactored(license_key)

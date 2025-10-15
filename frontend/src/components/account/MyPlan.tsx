@@ -301,7 +301,7 @@ const MyPlan: React.FC = () => {
           <AlertIcon />
           <AlertTitle>Welcome to your upgraded V_Track!</AlertTitle>
           <AlertDescription>
-            Your {currentLicense.package_type} license is now active with all premium features.
+            Your {currentLicense.package_type || 'Unknown'} license is now active with all premium features.
           </AlertDescription>
         </Alert>
       )}
@@ -319,8 +319,8 @@ const MyPlan: React.FC = () => {
             />
             <VStack align="start" spacing={1}>
               <Text fontWeight="bold" color={textColor}>
-                {currentLicense ? 
-                  `${currentLicense.package_type.replace('_', ' ').toUpperCase()} Plan` : 
+                {currentLicense ?
+                  `${(currentLicense.package_type || 'Unknown').replace('_', ' ').toUpperCase()} Plan` :
                   'No Active License'
                 }
               </Text>
