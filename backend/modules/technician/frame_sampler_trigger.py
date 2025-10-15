@@ -215,67 +215,48 @@ class FrameSamplerTrigger:
             return "Off", ""
 
     def _get_video_start_time(self, video_file, camera_name=None):
-        """Get video start time with cloud source detection.
-
-        For cloud downloads:
-            - mtime = video END time (preserved from Google Drive)
-            - start_time = mtime - duration
-
-        For local camera:
-            - ctime = video START time (file creation)
-
+        """Get video start time with advanced timezone detection.
+        
+        Uses enhanced video timezone detection to get accurate creation time
+        with proper timezone information from metadata when available.
+        
         Args:
             video_file (str): Path to video file
             camera_name (str, optional): Camera name for timezone detection
-
+            
         Returns:
             datetime: Timezone-aware video start time
         """
         try:
+            # Use enhanced timezone detection with camera context
+            # Simple timezone-aware creation time using file system timestamp
             import os
-            stat_info = os.stat(video_file)
-
-            # Detect cloud source by folder path
-            is_cloud_source = '/var/cache/cloud_downloads/' in video_file
-
-            if is_cloud_source:
-                self.logger.info(f"Cloud source detected for {video_file}")
-
-                # Get mtime (preserved from Google Drive = video END time)
-                mtime = stat_info.st_mtime
-
-                # Get video duration
-                duration = self.get_video_duration(video_file)
-
-                if duration and duration > 0:
-                    # Calculate start time: mtime - duration
-                    start_timestamp = mtime - duration
-                    self.logger.info(
-                        f"Calculated start time: mtime={datetime.fromtimestamp(mtime, tz=self.video_timezone)} "
-                        f"- duration={duration}s = start={datetime.fromtimestamp(start_timestamp, tz=self.video_timezone)}"
-                    )
-                else:
-                    # Fallback: use mtime as-is (not ideal but safe)
-                    self.logger.warning(f"Cannot get duration for {video_file}, using mtime as fallback")
-                    start_timestamp = mtime
-            else:
-                # Local camera: use ctime (file creation = video start)
-                start_timestamp = stat_info.st_ctime
-                self.logger.info(f"Local source detected, using ctime: {datetime.fromtimestamp(start_timestamp, tz=self.video_timezone)}")
-
-            timezone_aware_time = datetime.fromtimestamp(start_timestamp, tz=self.video_timezone)
-            self.logger.info(f"Video start time: {timezone_aware_time}")
+            file_timestamp = os.path.getctime(video_file)
+            timezone_aware_time = datetime.fromtimestamp(file_timestamp, tz=self.video_timezone)
+            self.logger.info(f"Video start time with timezone detection: {timezone_aware_time}")
             return timezone_aware_time
-
+            
         except Exception as e:
             self.logger.warning(f"Enhanced timezone detection failed for {video_file}: {e}, using fallback")
-
-            # Fallback to original method with ctime
+            
+            # Fallback to original method with TimezoneManager
             try:
-                return datetime.fromtimestamp(os.path.getctime(video_file), tz=self.video_timezone)
-            except Exception as fallback_error:
-                self.logger.error(f"Fallback failed for {video_file}: {fallback_error}")
-                return datetime.fromtimestamp(os.path.getctime(video_file), tz=self.video_timezone)
+                result = subprocess.check_output(['ffprobe', '-v', 'quiet', '-show_entries', 'format_tags=creation_time', '-of', 'default=noprint_wrappers=1:nokey=1', video_file])
+                utc_time = datetime.strptime(result.decode().strip(), '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
+                return utc_time.astimezone(self.video_timezone)
+            except (subprocess.CalledProcessError, ValueError):
+                try:
+                    result = subprocess.check_output(['exiftool', '-CreateDate', '-d', '%Y-%m-%d %H:%M:%S', video_file])
+                    naive_time = datetime.strptime(result.decode().split('CreateDate')[1].strip().split('\n')[0].strip(), '%Y-%m-%d %H:%M:%S')
+                    return naive_time.replace(tzinfo=self.video_timezone)
+                except (subprocess.CalledProcessError, IndexError):
+                    try:
+                        result = subprocess.check_output(['exiftool', '-FileCreateDate', '-d', '%Y-%m-%d %H:%M:%S', video_file])
+                        naive_time = datetime.strptime(result.decode().split('FileCreateDate')[1].strip().split('\n')[0].strip(), '%Y-%m-%d %H:%M:%S')
+                        return naive_time.replace(tzinfo=self.video_timezone)
+                    except (subprocess.CalledProcessError, IndexError):
+                        self.logger.warning("No metadata found, using file creation time.")
+                        return datetime.fromtimestamp(os.path.getctime(video_file), tz=self.video_timezone)
 
     def _get_log_directory(self, video_file, camera_name):
         """Get log directory based on program type from database.

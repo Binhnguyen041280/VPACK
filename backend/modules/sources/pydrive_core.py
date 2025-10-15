@@ -368,40 +368,19 @@ class PyDriveCore:
             return []
     
     def download_single_file(self, drive, file_info: Dict, local_path: str) -> bool:
-        """Download file with Google Drive metadata preservation"""
+        """Download a single file - simple version"""
         try:
             file_name = file_info['title']
             file_size_mb = int(file_info.get('fileSize', 0)) / (1024 * 1024)
-
+            
             logger.info(f"⬇️ Downloading: {file_name} ({file_size_mb:.1f}MB)")
-
-            # Download file
+            
             file_obj = drive.CreateFile({'id': file_info['id']})
             file_obj.GetContentFile(local_path)
-
-            # Preserve Google Drive modifiedDate as file mtime
-            try:
-                modified_date = file_info.get('modifiedDate')  # ISO 8601 UTC: "2024-07-15T08:25:00.000Z"
-
-                if modified_date:
-                    # Parse ISO 8601 UTC string to datetime
-                    dt = datetime.fromisoformat(modified_date.replace('Z', '+00:00'))
-                    timestamp = dt.timestamp()
-
-                    # Set file modification time (cross-platform: Linux/macOS/Windows)
-                    os.utime(local_path, (timestamp, timestamp))
-
-                    logger.info(f"✅ Preserved metadata: modifiedDate={modified_date}")
-                else:
-                    logger.debug(f"No modifiedDate for {file_name}, using download time")
-
-            except Exception as meta_error:
-                # Don't fail download if metadata preservation fails
-                logger.warning(f"⚠️ Could not preserve metadata for {file_name}: {meta_error}")
-
+            
             logger.info(f"✅ Downloaded: {file_name} - Success")
             return True
-
+            
         except Exception as e:
             logger.error(f"❌ Download failed for {file_info.get('title')}: {e}")
             return False
