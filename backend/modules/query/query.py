@@ -1029,9 +1029,9 @@ def process_event():
 
                     logger.info(f"Detected FPS: {fps}")
 
-                    # Convert frame indices to seconds
-                    start_time = ts / fps if fps else ts
-                    cut_duration = duration if duration else (te - ts) / fps if te else 10
+                    # ts/te are already in seconds (not frame indices)
+                    start_time = ts
+                    cut_duration = duration if duration else (te - ts) if te else 10
 
                     # Add buffer (2 seconds)
                     buffer = 2
