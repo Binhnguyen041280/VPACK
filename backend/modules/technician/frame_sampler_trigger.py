@@ -97,9 +97,8 @@ class FrameSamplerTrigger:
         # Parse packing_area (main detection ROI - both Traditional & QR use this)
         packing_area_raw, qr_trigger_raw, jump_ratio = result
 
-        # Set jump_time_ratio
-        self.jump_time_ratio = float(jump_ratio) if jump_ratio is not None else 0.5
-        self.logger.info(f"Loaded jump_time_ratio: {self.jump_time_ratio}")
+        # Note: jump_time_ratio is no longer used (jump logic removed for safety)
+        # Kept here to avoid breaking database queries
 
         # Parse packing_area ROI
         packing_area = self._parse_roi(packing_area_raw, "packing_area", camera_name)
@@ -375,7 +374,7 @@ class FrameSamplerTrigger:
             mvd_list = []
             last_state = None
             last_mvd = ""
-            jump_time_ratio = getattr(self, 'jump_time_ratio', 0.5)  # Get from config or default 0.5
+            # Jump logic removed - no longer needed
             while video.isOpened() and frame_count < end_frame:
                 ret, frame = video.read()
                 if not ret:
@@ -453,13 +452,7 @@ class FrameSamplerTrigger:
                                 log_file_handle.write(log_line)
                                 self.logger.info(f"Log second {second}: {frame_states_str}: {final_state}")
                                 log_file_handle.flush()
-                                if last_state == "On" and final_state == "Off":
-                                    jump_frames = int(jump_time_ratio * self.min_packing_time * self.fps)
-                                    new_frame_count = frame_count + jump_frames
-                                    if new_frame_count < end_frame:
-                                        video.set(cv2.CAP_PROP_POS_FRAMES, new_frame_count)
-                                        frame_count = new_frame_count
-                                        self.logger.info(f"Jumped {jump_frames} frames to {frame_count} after On->Off transition")
+                                # Jump logic removed for safety - scan all frames sequentially
                                 last_state = final_state
                         else:
                             self.logger.info(f"Skipped second {second}: {frame_states_str}, on_count={on_count}, off_count={off_count}")
