@@ -12,6 +12,7 @@ import {
 } from '@chakra-ui/react';
 import { MdVideocam, MdSchedule, MdPlayArrow } from 'react-icons/md';
 import { useState, useEffect } from 'react';
+import VideoPlayerModal from './VideoPlayerModal';
 
 interface EventData {
   event_id: number;
@@ -43,6 +44,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, index, onClick, autoProces
     progress: 0,
     status: 'idle'
   });
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const cardBg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
@@ -149,19 +151,10 @@ const EventCard: React.FC<EventCardProps> = ({ event, index, onClick, autoProces
     }, 500); // Poll every 500ms
   };
 
-  // Handle play video
-  const handlePlayVideo = async () => {
+  // Handle play video - Open modal instead of external player
+  const handlePlayVideo = () => {
     if (!processing.outputPath) return;
-
-    try {
-      await fetch('http://localhost:8080/play-video', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_path: processing.outputPath })
-      });
-    } catch (error) {
-      console.error('Error playing video:', error);
-    }
+    setIsModalOpen(true);
   };
 
   // Get status display text
@@ -283,6 +276,18 @@ const EventCard: React.FC<EventCardProps> = ({ event, index, onClick, autoProces
           </VStack>
         </Box>
       )}
+
+      {/* Video Player Modal */}
+      <VideoPlayerModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        videoPath={processing.outputPath || ''}
+        eventInfo={{
+          tracking_code: event.tracking_codes_parsed[0] || 'Unknown',
+          camera_name: event.camera_name,
+          duration: event.duration
+        }}
+      />
     </Box>
   );
 };
