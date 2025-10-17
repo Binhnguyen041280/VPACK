@@ -282,6 +282,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, index, onClick, autoProces
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         videoPath={processing.outputPath || ''}
+        eventId={event.event_id}
         eventInfo={{
           tracking_code: event.tracking_codes_parsed[0] || 'Unknown',
           camera_name: event.camera_name,

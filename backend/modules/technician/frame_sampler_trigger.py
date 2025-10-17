@@ -164,25 +164,28 @@ class FrameSamplerTrigger:
             self.logger.info("No video files found with is_processed = 0 and status != 'completed'.")
         return video_files
 
-    def process_frame(self, frame_packing, frame_trigger, frame_count):
+    def process_frame(self, frame_packing, frame_trigger, frame_count, packing_area_offset=None):
         """Process 2 separate frames for MVD and TimeGo detection.
 
         Args:
             frame_packing: Frame cropped by packing_area ROI (for MVD detection)
             frame_trigger: Frame cropped by qr_trigger_area ROI (for TimeGo detection)
             frame_count: Current frame number
+            packing_area_offset: Tuple (x, y) offset of packing_area in full frame (for bbox calculation)
 
         Returns:
-            tuple: (state, mvd)
+            tuple: (state, mvd, mvd_bbox)
                 - state: "On" if TimeGo detected in trigger area, else "Off"
                 - mvd: Mã vận đơn detected in packing area (empty string if none)
+                - mvd_bbox: Bounding box (x, y, w, h) in full-frame coordinates, or None
         """
         try:
             if self.qr_detector is None:
-                return "Off", ""
+                return "Off", "", None
 
             state = "Off"
             mvd = ""
+            mvd_bbox = None
 
             # Detect TimeGo in trigger area (if provided)
             if frame_trigger is not None and frame_trigger.size > 0:
@@ -200,18 +203,46 @@ class FrameSamplerTrigger:
                 if len(frame_packing.shape) == 2:
                     frame_packing = cv2.cvtColor(frame_packing, cv2.COLOR_GRAY2BGR)
 
-                packing_texts, _ = self.qr_detector.detectAndDecode(frame_packing)
-                for text in packing_texts:
+                packing_texts, packing_points = self.qr_detector.detectAndDecode(frame_packing)
+
+                # Process each detected QR code
+                for i, text in enumerate(packing_texts):
                     # Skip TimeGo if found in packing area (should be in trigger area)
                     if text and text != "TimeGo":
                         mvd = text
+
+                        # Calculate bounding box if points available and offset provided
+                        if i < len(packing_points) and packing_area_offset is not None:
+                            box = packing_points[i]
+                            if len(box) >= 4:
+                                # Extract x, y coordinates from 4 corner points
+                                x_coords = [int(pt[0]) for pt in box]
+                                y_coords = [int(pt[1]) for pt in box]
+
+                                # Calculate bbox in ROI-local coordinates
+                                bbox_x_local = min(x_coords)
+                                bbox_y_local = min(y_coords)
+                                bbox_w = max(x_coords) - bbox_x_local
+                                bbox_h = max(y_coords) - bbox_y_local
+
+                                # Convert to full-frame coordinates by adding packing_area offset
+                                offset_x, offset_y = packing_area_offset
+                                mvd_bbox = (
+                                    bbox_x_local + offset_x,
+                                    bbox_y_local + offset_y,
+                                    bbox_w,
+                                    bbox_h
+                                )
+
+                                self.logger.debug(f"QR bbox calculated: local=({bbox_x_local},{bbox_y_local},{bbox_w},{bbox_h}), "
+                                                f"offset=({offset_x},{offset_y}), full={mvd_bbox}")
                         break
 
-            return state, mvd
+            return state, mvd, mvd_bbox
 
         except Exception as e:
             self.logger.error(f"Error processing frame {frame_count}: {str(e)}")
-            return "Off", ""
+            return "Off", "", None
 
     def _get_video_start_time(self, video_file, camera_name=None):
         """Get video start time from metadata (ffprobe/exiftool).
@@ -386,6 +417,7 @@ class FrameSamplerTrigger:
                 # Crop 2 separate regions
                 frame_packing = None
                 frame_trigger = None
+                packing_offset = None
 
                 # Crop packing area (for MVD detection)
                 if packing_area:
@@ -393,6 +425,7 @@ class FrameSamplerTrigger:
                     frame_height, frame_width = original_frame.shape[:2]
                     if w > 0 and h > 0 and y + h <= frame_height and x + w <= frame_width:
                         frame_packing = original_frame[y:y + h, x:x + w]
+                        packing_offset = (x, y)  # Store offset for bbox calculation
                     else:
                         self.logger.warning(f"Invalid packing_area for frame {frame_count}: {packing_area}, frame size: {frame_width}x{frame_height}")
 
@@ -412,8 +445,8 @@ class FrameSamplerTrigger:
                     self.logger.warning(f"Both ROI frames empty for frame {frame_count}, skipping")
                     continue
 
-                # Process both ROIs separately
-                state, mvd = process_frame_func(frame_packing, frame_trigger, frame_count)
+                # Process both ROIs separately (with packing_offset for bbox calculation)
+                state, mvd, mvd_bbox = process_frame_func(frame_packing, frame_trigger, frame_count, packing_offset)
                 second_in_video = (frame_count - 1) / self.fps
                 second = round(second_in_video)
                 if second >= current_end_second and second < end_time:
@@ -429,9 +462,16 @@ class FrameSamplerTrigger:
                 if second >= start_time and second <= end_time:
                     # Ghi MVD ngay nếu có và khác last_mvd
                     if mvd and mvd != last_mvd:
-                        log_line = f"{second},{state},{mvd}\n"
+                        # Format log line with bbox if available
+                        if mvd_bbox is not None:
+                            bbox_x, bbox_y, bbox_w, bbox_h = mvd_bbox
+                            log_line = f"{second},{state},{mvd},bbox:[{bbox_x},{bbox_y},{bbox_w},{bbox_h}]\n"
+                            self.logger.info(f"Log second {second}: state={state}, mvd={mvd}, bbox={mvd_bbox}")
+                        else:
+                            log_line = f"{second},{state},{mvd}\n"
+                            self.logger.info(f"Log second {second}: state={state}, mvd={mvd}")
+
                         log_file_handle.write(log_line)
-                        self.logger.info(f"Log second {second}: state={state}, mvd={mvd}")
                         log_file_handle.flush()
                         last_mvd = mvd
                     # Tiếp tục thu thập trạng thái cho final_state

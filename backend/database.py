@@ -322,7 +322,27 @@ def update_database():
                     additional_params TEXT
                 )
             """)
-            
+
+            # 8.1. QR Detections Table (for Magnifying Glass feature)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS qr_detections (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_id INTEGER NOT NULL,
+                    timestamp_seconds REAL NOT NULL,
+                    tracking_code TEXT NOT NULL,
+                    bbox_x INTEGER NOT NULL,
+                    bbox_y INTEGER NOT NULL,
+                    bbox_w INTEGER NOT NULL,
+                    bbox_h INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (event_id) REFERENCES events(event_id) ON DELETE CASCADE
+                )
+            """)
+
+            # Create index for QR detections
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_qr_detections_event ON qr_detections(event_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_qr_detections_timestamp ON qr_detections(event_id, timestamp_seconds)")
+
             # ==================== TIMEZONE MANAGEMENT TABLES ====================
             
             # 9. Timezone Metadata Table

@@ -3,6 +3,7 @@ import os
 import sqlite3
 import logging
 import ast
+import re
 from datetime import datetime, timezone, timedelta
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import db_rwlock
@@ -22,6 +23,56 @@ def calculate_duration(ts, te):
     if te < ts:
         return None
     return te - ts
+
+def parse_qr_detections_from_log(log_file_path, event_ts):
+    """
+    Parse QR detections with bbox from log file.
+
+    Args:
+        log_file_path: Path to log file
+        event_ts: Event start timestamp (relative seconds in video)
+
+    Returns:
+        List of tuples: (relative_timestamp, tracking_code, bbox_x, bbox_y, bbox_w, bbox_h)
+    """
+    qr_detections = []
+    # Regex pattern: timestamp,state,TRACKING_CODE,bbox:[x,y,w,h]
+    pattern = r'^(\d+),\w+,([A-Z0-9]+),bbox:\[(\d+),(\d+),(\d+),(\d+)\]'
+
+    try:
+        with open(log_file_path, 'r') as f:
+            next(f)  # Skip header
+            for line in f:
+                line_stripped = line.strip()
+                if not line_stripped or line_stripped.startswith('#'):
+                    continue
+
+                match = re.match(pattern, line_stripped)
+                if match:
+                    log_timestamp = int(match.group(1))
+                    tracking_code = match.group(2)
+                    bbox_x = int(match.group(3))
+                    bbox_y = int(match.group(4))
+                    bbox_w = int(match.group(5))
+                    bbox_h = int(match.group(6))
+
+                    # Calculate relative timestamp from event start
+                    relative_timestamp = log_timestamp - event_ts
+
+                    # Skip negative timestamps (shouldn't happen)
+                    if relative_timestamp >= 0:
+                        qr_detections.append((
+                            relative_timestamp,
+                            tracking_code,
+                            bbox_x,
+                            bbox_y,
+                            bbox_w,
+                            bbox_h
+                        ))
+
+        return qr_detections
+    except Exception as e:
+        return []
 
 def process_single_log_with_cursor(log_file_path, cursor, conn):
     """
@@ -209,15 +260,41 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
             'utc_offset_seconds': start_time_dt.utcoffset().total_seconds() if start_time_dt.utcoffset() else 0,
             'stored_as_utc': True
         }
+
+        current_event_id = None
         if segment_event_id is not None:
             cursor.execute("UPDATE events SET te=?, duration=?, tracking_codes=?, packing_time_end=?, timezone_info=? WHERE event_id=?",
                            (te, duration, str(tracking_codes), packing_time_end, str(timezone_info), segment_event_id))
             logger.info(f"Updated event_id {segment_event_id}: ts={ts}, te={te}, duration={duration}")
+            current_event_id = segment_event_id
         else:
             cursor.execute('''INSERT INTO events (ts, te, duration, tracking_codes, video_file, buffer, camera_name, packing_time_start, packing_time_end, timezone_info)
                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                            (ts, te, duration, str(tracking_codes), segment_video_path, 0, camera_name, packing_time_start, packing_time_end, str(timezone_info)))
-            logger.info(f"Inserted new event: ts={ts}, te={te}, duration={duration}")
+            current_event_id = cursor.lastrowid
+            logger.info(f"Inserted new event: event_id={current_event_id}, ts={ts}, te={te}, duration={duration}")
+
+        # Parse and insert QR detections for this event (if event is completed)
+        if current_event_id and te is not None and ts is not None:
+            qr_detections = parse_qr_detections_from_log(log_file_path, int(ts))
+
+            if qr_detections:
+                logger.info(f"Found {len(qr_detections)} QR detections for event {current_event_id}")
+
+                for rel_ts, code, bbox_x, bbox_y, bbox_w, bbox_h in qr_detections:
+                    # Only insert QR detections that match this event's tracking codes
+                    if code in tracking_codes:
+                        try:
+                            cursor.execute("""
+                                INSERT INTO qr_detections
+                                (event_id, timestamp_seconds, tracking_code, bbox_x, bbox_y, bbox_w, bbox_h)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """, (current_event_id, rel_ts, code, bbox_x, bbox_y, bbox_w, bbox_h))
+
+                            logger.debug(f"Inserted QR detection: event={current_event_id}, ts={rel_ts}s, code={code}, bbox=({bbox_x},{bbox_y},{bbox_w},{bbox_h})")
+                        except sqlite3.IntegrityError as e:
+                            logger.error(f"Error inserting QR detection for event {current_event_id}: {e}")
+                            continue
 
     cursor.execute("UPDATE processed_logs SET is_processed = 1, processed_at = ? WHERE log_file = ?", (datetime.now(timezone.utc), log_file_path))
     logger.info("Database changes committed")

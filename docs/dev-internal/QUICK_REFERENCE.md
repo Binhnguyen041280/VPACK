@@ -265,6 +265,62 @@ gcloud functions list --project=v-track-payments --region=asia-southeast1
 
 ---
 
+## 📐 ROI Coordinate Standard
+
+### ✅ UNIFIED FORMAT: `(x, y, w, h)`
+All components use **top-left corner + dimensions**:
+- `x`: Left edge (column start)
+- `y`: Top edge (row start)
+- `w`: Width
+- `h`: Height
+
+### Component Consistency
+| Component | Format | Example | Status |
+|-----------|--------|---------|--------|
+| Database | JSON array | `[29, 522, 893, 1330]` | ✅ |
+| Python tuple | 4-tuple | `(29, 522, 893, 1330)` | ✅ |
+| OpenCV slicing | Row-first | `frame[y:y+h, x:x+w]` | ✅ |
+| WeChat QR points | 4 corners | `[[x,y], [x,y], [x,y], [x,y]]` | ⚠️ Convert to bbox |
+| Canvas drawImage | Standard | `ctx.drawImage(v, x, y, w, h, ...)` | ✅ |
+
+### ⚠️ CRITICAL: OpenCV Array Slicing
+```python
+# ✅ CORRECT - Row-first indexing
+x, y, w, h = packing_area
+frame_roi = frame[y:y+h, x:x+w]  # [row, col] = [y, x]
+
+# ❌ WRONG - Will fail
+frame_roi = frame[x:x+w, y:y+h]  # Numpy uses [row, col] not [col, row]
+```
+
+**Reason**: Numpy arrays use `[row, column]` indexing = `[y-axis, x-axis]`
+
+### Offset Calculation (ROI → Full Frame)
+```python
+# QR detected in cropped ROI
+bbox_local = (qr_x, qr_y, qr_w, qr_h)
+
+# Add ROI offset for full frame coordinates
+roi_offset_x, roi_offset_y = packing_area[0], packing_area[1]
+bbox_full = (
+    qr_x + roi_offset_x,  # Add x offset
+    qr_y + roi_offset_y,  # Add y offset
+    qr_w,                 # Width unchanged
+    qr_h                  # Height unchanged
+)
+```
+
+### Verified Files Using Correct Pattern
+- `frame_sampler_trigger.py:395` → `frame[y:y+h, x:x+w]` ✅
+- `hand_detection.py:216, 381` → `frame[y:y+h, x:x+w]` ✅
+- `qr_detector.py:218, 452` → `frame[y:y+h, x:x+w]` ✅
+- `roi_preview.py:39` → `frame[y:y+h, x:x+w]` ✅
+- `IdleMonitor.py:80` → `frame[y:y+h, x:x+w]` ✅
+
+**Last verified**: 2025-10-17
+
+---
+
 **See Also**:
 - CloudFunction deployment guide: `/V_Track_CloudFunctions/QUICK_REFERENCE.md`
 - Full naming conventions: `/V_Track/docs/NAMING_CONVENTIONS.md`

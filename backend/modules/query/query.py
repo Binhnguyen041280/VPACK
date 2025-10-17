@@ -1044,16 +1044,16 @@ def process_event():
 
                     logger.info(f"Cutting event {event_id}: start={start_time:.2f}s, duration={cut_duration:.2f}s")
 
+                    # Use stream copy for ultra-fast cutting (no re-encoding)
+                    # This preserves original quality and metadata
                     cmd = [
                         'ffmpeg',
+                        '-ss', str(start_time),  # Seek BEFORE input for faster processing
                         '-i', video_file,
-                        '-ss', str(start_time),
                         '-t', str(cut_duration),
-                        '-c:v', 'libx264',
-                        '-preset', 'fast',
-                        '-crf', '23',
-                        '-c:a', 'aac',
-                        '-b:a', '128k',
+                        '-c', 'copy',  # Copy streams without re-encoding (FAST!)
+                        '-map_metadata', '0',  # Preserve all metadata (creation_time, etc.)
+                        '-avoid_negative_ts', 'make_zero',  # Fix timestamp issues
                         '-y',  # Overwrite
                         output_path
                     ]
@@ -1343,3 +1343,105 @@ def browse_output():
     except Exception as e:
         logger.error(f"Error opening output directory: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@query_bp.route('/api/trace/event/<int:event_id>/qr-timestamps', methods=['GET'])
+@require_valid_license
+def get_qr_timestamps(event_id):
+    """
+    Get QR detection timestamps with bounding boxes for Magnifying Glass feature.
+
+    Returns QR detections with:
+    - Relative timestamp (seconds from event start)
+    - Tracking code
+    - Bounding box in full-frame coordinates (x, y, w, h)
+    - Magnifier ROI with 20% margin for smooth display
+
+    Args:
+        event_id: Event ID from URL path
+
+    Returns:
+        JSON with qr_detections array
+    """
+    try:
+        logger.info(f"Fetching QR timestamps for event {event_id}")
+
+        with db_rwlock.gen_rlock():
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+
+                # Verify event exists
+                cursor.execute("SELECT event_id FROM events WHERE event_id = ?", (event_id,))
+                if not cursor.fetchone():
+                    return jsonify({"error": f"Event {event_id} not found"}), 404
+
+                # Get QR detections with bbox
+                cursor.execute("""
+                    SELECT
+                        timestamp_seconds,
+                        tracking_code,
+                        bbox_x,
+                        bbox_y,
+                        bbox_w,
+                        bbox_h
+                    FROM qr_detections
+                    WHERE event_id = ?
+                    ORDER BY timestamp_seconds ASC
+                """, (event_id,))
+
+                rows = cursor.fetchall()
+
+                if not rows:
+                    logger.info(f"No QR detections found for event {event_id}")
+                    return jsonify({
+                        "event_id": event_id,
+                        "qr_detections": []
+                    }), 200
+
+                # Process QR detections
+                qr_detections = []
+
+                # Magnifier zoom configuration
+                MAGNIFIER_SIZE = 300  # Canvas size in pixels
+                ZOOM_FACTOR = 2.5     # Balanced zoom: clear and enough context
+                CAPTURE_SIZE = MAGNIFIER_SIZE / ZOOM_FACTOR  # 120px
+
+                for row in rows:
+                    timestamp, tracking_code, bbox_x, bbox_y, bbox_w, bbox_h = row
+
+                    # Calculate QR center
+                    qr_center_x = bbox_x + bbox_w // 2
+                    qr_center_y = bbox_y + bbox_h // 2
+
+                    # Calculate magnifier ROI centered on QR code
+                    # Capture 120x120px area centered on QR → 2.5x zoom when displayed at 300x300px
+                    magnifier_roi = {
+                        'x': max(0, int(qr_center_x - CAPTURE_SIZE / 2)),
+                        'y': max(0, int(qr_center_y - CAPTURE_SIZE / 2)),
+                        'w': int(CAPTURE_SIZE),
+                        'h': int(CAPTURE_SIZE)
+                    }
+
+                    qr_detections.append({
+                        'timestamp': timestamp,
+                        'tracking_code': tracking_code,
+                        'bbox': {
+                            'x': bbox_x,
+                            'y': bbox_y,
+                            'w': bbox_w,
+                            'h': bbox_h
+                        },
+                        'magnifier_roi': magnifier_roi
+                    })
+
+                logger.info(f"Found {len(qr_detections)} QR detections for event {event_id}")
+
+                return jsonify({
+                    "event_id": event_id,
+                    "qr_detections": qr_detections,
+                    "total_count": len(qr_detections)
+                }), 200
+
+    except Exception as e:
+        logger.error(f"Error fetching QR timestamps for event {event_id}: {e}")
+        return jsonify({"error": f"Failed to fetch QR timestamps: {str(e)}"}), 500
