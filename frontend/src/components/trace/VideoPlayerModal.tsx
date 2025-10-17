@@ -20,9 +20,10 @@ import {
   Slider,
   SliderTrack,
   SliderFilledTrack,
-  SliderThumb
+  SliderThumb,
+  Button
 } from '@chakra-ui/react';
-import { MdVideocam, MdSchedule } from 'react-icons/md';
+import { MdVideocam, MdSchedule, MdFileDownload } from 'react-icons/md';
 
 interface QRDetection {
   timestamp: number;
@@ -291,6 +292,76 @@ const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     setIsDragging(false);
   }, []);
 
+  // Export zoom video handler
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
+
+  const handleExportZoomVideo = useCallback(async () => {
+    if (!activeMagnifier || !eventId) return;
+
+    setIsExporting(true);
+    setExportStatus('Exporting zoom video...');
+
+    try {
+      const bbox = activeMagnifier.bbox;
+      const MAGNIFIER_SIZE = 300;
+      const CAPTURE_SIZE = MAGNIFIER_SIZE / zoomFactor;
+
+      // Calculate ROI coordinates (same logic as canvas rendering)
+      const qr_center_x = bbox.x + bbox.w / 2;
+      const qr_center_y = bbox.y + bbox.h / 2;
+      const crop_x = Math.max(0, qr_center_x - CAPTURE_SIZE / 2 + captureOffset.x);
+      const crop_y = Math.max(0, qr_center_y - CAPTURE_SIZE / 2 + captureOffset.y);
+
+      // Prepare request payload
+      const payload = {
+        event_id: eventId,
+        crop_params: {
+          x: Math.round(crop_x),
+          y: Math.round(crop_y),
+          w: Math.round(CAPTURE_SIZE),
+          h: Math.round(CAPTURE_SIZE)
+        },
+        zoom_factor: zoomFactor,
+        qr_timestamp: activeMagnifier.timestamp  // QR detection timestamp (relative to event start)
+      };
+
+      console.log('🎬 Exporting zoom video:', payload);
+
+      // Call backend API
+      const response = await fetch('http://localhost:8080/export-zoom-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Export failed');
+      }
+
+      console.log('✅ Zoom video exported:', data);
+      setExportStatus(`Exported: ${data.filename}`);
+
+      // Clear status after 3 seconds
+      setTimeout(() => {
+        setExportStatus(null);
+      }, 3000);
+
+    } catch (error) {
+      console.error('❌ Export error:', error);
+      setExportStatus(`Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+      // Clear error after 5 seconds
+      setTimeout(() => {
+        setExportStatus(null);
+      }, 5000);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [activeMagnifier, eventId, zoomFactor, captureOffset]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -487,6 +558,34 @@ const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
                     </Slider>
                   </HStack>
                 </Box>
+
+                {/* Export Zoom Video Button */}
+                <Button
+                  leftIcon={<Icon as={MdFileDownload} />}
+                  colorScheme="blue"
+                  size="sm"
+                  w="300px"
+                  onClick={handleExportZoomVideo}
+                  isLoading={isExporting}
+                  loadingText="Exporting..."
+                  isDisabled={isExporting}
+                >
+                  Export Zoom Video ({zoomFactor.toFixed(1)}x)
+                </Button>
+
+                {/* Export Status Message */}
+                {exportStatus && (
+                  <Box
+                    bg={exportStatus.includes('failed') ? 'rgba(229, 62, 62, 0.9)' : 'rgba(72, 187, 120, 0.9)'}
+                    p={2}
+                    borderRadius="md"
+                    w="300px"
+                  >
+                    <Text color="white" fontSize="xs" textAlign="center">
+                      {exportStatus}
+                    </Text>
+                  </Box>
+                )}
               </VStack>
             )}
           </Box>

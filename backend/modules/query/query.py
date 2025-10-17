@@ -1445,3 +1445,196 @@ def get_qr_timestamps(event_id):
     except Exception as e:
         logger.error(f"Error fetching QR timestamps for event {event_id}: {e}")
         return jsonify({"error": f"Failed to fetch QR timestamps: {str(e)}"}), 500
+
+
+@query_bp.route('/export-zoom-video', methods=['POST'])
+@require_valid_license
+def export_zoom_video():
+    """
+    Export cropped/zoomed video based on magnifier settings.
+
+    Extracts the specific region that user is viewing in the magnifier,
+    applying their current zoom factor and pan offset.
+
+    Request body:
+    {
+        "event_id": 247,
+        "crop_params": {"x": 450, "y": 300, "w": 120, "h": 120},
+        "zoom_factor": 2.5
+    }
+
+    Returns:
+        JSON with output_path to the exported zoom video
+    """
+    try:
+        import subprocess
+        import ast
+
+        data = request.get_json()
+        event_id = data.get('event_id')
+        crop_params = data.get('crop_params')  # {x, y, w, h}
+        zoom_factor = data.get('zoom_factor', 1.0)
+        qr_timestamp = data.get('qr_timestamp')  # QR detection timestamp (relative to event start)
+
+        if not event_id or not crop_params:
+            return jsonify({"error": "Missing event_id or crop_params"}), 400
+
+        # Validate crop_params
+        required_keys = ['x', 'y', 'w', 'h']
+        if not all(key in crop_params for key in required_keys):
+            return jsonify({"error": "crop_params must contain x, y, w, h"}), 400
+
+        if qr_timestamp is None:
+            return jsonify({"error": "Missing qr_timestamp"}), 400
+
+        logger.info(f"🔍 Exporting zoom video for event {event_id}, crop={crop_params}, zoom={zoom_factor}x, qr_ts={qr_timestamp}s")
+
+        # Get event data from database
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT event_id, video_file, output_video_path, ts, te, duration, camera_name, tracking_codes
+                FROM events
+                WHERE event_id = ?
+            """, (event_id,))
+
+            event = cursor.fetchone()
+
+            if not event:
+                return jsonify({"error": f"Event {event_id} not found"}), 404
+
+            event_id, video_file, output_video_path, ts, te, duration, camera_name, tracking_codes_str = event
+
+        # Use the cut video (output_video_path) if available, otherwise use original video
+        source_video = output_video_path if output_video_path and os.path.exists(output_video_path) else video_file
+
+        # Check if source video exists
+        if not os.path.exists(source_video):
+            return jsonify({"error": f"Video file not found: {source_video}. Please process the event first."}), 404
+
+        logger.info(f"Using cut video as source: {os.path.basename(source_video)}")
+
+        # Get output directory from config
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT output_path FROM processing_config WHERE id = 1")
+            result = cursor.fetchone()
+            output_dir = result[0] if result else "/Users/annhu/Movies/VTrack/Output"
+
+        # Create date-organized output directory
+        today = datetime.now().strftime("%Y-%m-%d")
+        date_output_dir = os.path.join(output_dir, today)
+        os.makedirs(date_output_dir, exist_ok=True)
+
+        # Parse tracking codes
+        tracking_codes = ast.literal_eval(tracking_codes_str) if tracking_codes_str else []
+        tracking_code = tracking_codes[0] if tracking_codes else f"event{event_id}"
+
+        # Generate filename with "zoom" identifier
+        timestamp = datetime.now().strftime("%H%M%S")
+        zoom_str = f"{zoom_factor:.1f}x".replace('.', '_')  # 2.5x -> 2_5x
+        output_filename = f"{tracking_code}_{camera_name}_zoom_{zoom_str}_{timestamp}.mp4"
+        output_path = os.path.join(date_output_dir, output_filename)
+
+        # Calculate time range based on magnifier display timing
+        # Note: PRE_DISPLAY_TIME (magnifier buffer) = BUFFER (cutting buffer) = 2s
+        BUFFER = 2  # Cut video buffer AND magnifier pre-display time (same value)
+
+        # Timeline explanation:
+        # - Cut video: [0s = ts-2] ... [2s = ts (event start)] ... [qr_timestamp+2s = QR] ... [end]
+        # - qr_timestamp: relative to event start (ts), not cut video start
+        # - QR position in cut video: BUFFER + qr_timestamp
+        # - Magnifier starts: BUFFER seconds before QR = (BUFFER + qr_timestamp) - BUFFER = qr_timestamp
+        #
+        # Since magnifier buffer (2s) == cutting buffer (2s), they cancel out:
+        zoom_start_time = qr_timestamp  # Simple! Buffer cancels out
+        zoom_start_time = max(0, zoom_start_time)  # Ensure non-negative
+
+        # Get cut video duration using ffprobe
+        duration_cmd = [
+            'ffprobe', '-v', 'error',
+            '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            source_video
+        ]
+        duration_result = subprocess.run(duration_cmd, capture_output=True, text=True, timeout=10)
+        cut_video_duration = float(duration_result.stdout.strip()) if duration_result.stdout.strip() else 0
+
+        # Calculate cut duration: from zoom start to end of cut video
+        cut_duration = cut_video_duration - zoom_start_time
+
+        # Use event duration as fallback if video_duration detection fails
+        if cut_duration <= 0 or cut_video_duration == 0:
+            # Fallback: use remaining event duration
+            cut_duration = (duration if duration else 10) - zoom_start_time
+            if cut_duration <= 0:
+                cut_duration = 5  # Minimum 5 seconds
+
+        start_time = zoom_start_time
+
+        # Extract crop parameters
+        crop_x = int(crop_params['x'])
+        crop_y = int(crop_params['y'])
+        crop_w = int(crop_params['w'])
+        crop_h = int(crop_params['h'])
+
+        logger.info(f"QR detection: {qr_timestamp}s (relative to event start)")
+        logger.info(f"Cut video: {cut_video_duration:.2f}s (with 2s buffer at start/end)")
+        logger.info(f"Zoom video: start={start_time:.2f}s, duration={cut_duration:.2f}s")
+        logger.info(f"Crop region: x={crop_x}, y={crop_y}, w={crop_w}x{crop_h}")
+
+        # Build FFmpeg command with crop filter
+        # Note: Cropping requires re-encoding (cannot use -c copy)
+        cmd = [
+            'ffmpeg',
+            '-ss', str(start_time),          # Seek to start time (relative to cut video)
+            '-i', source_video,              # Input: cut video (not original)
+            '-t', str(cut_duration),         # Duration to cut
+            '-filter:v', f'crop={crop_w}:{crop_h}:{crop_x}:{crop_y}',  # Crop filter
+            '-c:v', 'libx264',               # Re-encode video (required for crop)
+            '-crf', '18',                    # High quality (visually lossless)
+            '-preset', 'fast',               # Fast encoding preset
+            '-c:a', 'copy',                  # Copy audio without re-encoding
+            '-map_metadata', '0',            # Preserve metadata
+            '-y',                            # Overwrite if exists
+            output_path
+        ]
+
+        logger.info(f"Executing FFmpeg crop command...")
+
+        # Execute FFmpeg with timeout
+        process = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=120,  # 2 minute timeout
+            universal_newlines=True
+        )
+
+        if process.returncode != 0:
+            error_msg = process.stderr if process.stderr else "Unknown FFmpeg error"
+            logger.error(f"FFmpeg failed: {error_msg}")
+            return jsonify({"error": f"Video cropping failed: {error_msg}"}), 500
+
+        # Verify output file exists
+        if not os.path.exists(output_path):
+            return jsonify({"error": "Output file not created"}), 500
+
+        file_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
+        logger.info(f"✅ Zoom video exported successfully: {output_filename} ({file_size:.1f}MB)")
+
+        return jsonify({
+            "success": True,
+            "output_path": output_path,
+            "filename": output_filename,
+            "file_size_mb": round(file_size, 2),
+            "message": f"Zoom video exported: {output_filename}"
+        }), 200
+
+    except subprocess.TimeoutExpired:
+        logger.error(f"❌ Timeout exporting zoom video for event {event_id}")
+        return jsonify({"error": "Video export timed out (2 min limit)"}), 500
+    except Exception as e:
+        logger.error(f"❌ Error exporting zoom video: {e}")
+        return jsonify({"error": f"Failed to export zoom video: {str(e)}"}), 500
