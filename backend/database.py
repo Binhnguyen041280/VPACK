@@ -323,6 +323,19 @@ def update_database():
                 )
             """)
 
+            # Add QR size columns for boundary extraction feature
+            try:
+                cursor.execute("ALTER TABLE packing_profiles ADD COLUMN expected_mvd_qr_size TEXT DEFAULT NULL")
+                print("✅ Added expected_mvd_qr_size column to packing_profiles")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+            try:
+                cursor.execute("ALTER TABLE packing_profiles ADD COLUMN expected_trigger_qr_size TEXT DEFAULT NULL")
+                print("✅ Added expected_trigger_qr_size column to packing_profiles")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
             # 8.1. QR Detections Table (for Magnifying Glass feature)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS qr_detections (
@@ -339,9 +352,17 @@ def update_database():
                 )
             """)
 
+            # Add decode_success column for boundary extraction feature
+            try:
+                cursor.execute("ALTER TABLE qr_detections ADD COLUMN decode_success INTEGER DEFAULT 1")
+                print("✅ Added decode_success column to qr_detections")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
             # Create index for QR detections
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_qr_detections_event ON qr_detections(event_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_qr_detections_timestamp ON qr_detections(event_id, timestamp_seconds)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_qr_detections_decode_success ON qr_detections(decode_success, event_id)")
 
             # ==================== TIMEZONE MANAGEMENT TABLES ====================
             
