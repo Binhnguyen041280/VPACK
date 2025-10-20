@@ -117,7 +117,22 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [handLandmarks, setHandLandmarks] = useState<HandLandmarks | null>(null);
-  
+
+  // QR Boundary Size Tracking - for Empty Event feature
+  const [detectedMVDQR, setDetectedMVDQR] = useState<{
+    text: string;
+    width: number;
+    height: number;
+    bbox: { x: number; y: number; w: number; h: number };
+  } | null>(null);
+
+  const [detectedTriggerQR, setDetectedTriggerQR] = useState<{
+    text: string;
+    width: number;
+    height: number;
+    bbox: { x: number; y: number; w: number; h: number };
+  } | null>(null);
+
   // Adaptive height detection state (copied from CanvasMessage.tsx)
   const containerRef = useRef<HTMLDivElement>(null);
   const [availableHeight, setAvailableHeight] = useState(0);
@@ -931,6 +946,41 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
         });
 
         setHandLandmarks(mergedLandmarks);
+
+        // 🆕 CAPTURE FIRST DETECTED QR FOR SIDEBAR DISPLAY
+        // For Empty Event QR Boundary Extraction feature
+        if (mergedLandmarks.qr_detections && mergedLandmarks.qr_detections.length > 0) {
+          mergedLandmarks.qr_detections.forEach((qr: any) => {
+            // Capture TimeGo (Trigger) QR - only first detection
+            if (qr.decoded_text === 'TimeGo' && !detectedTriggerQR) {
+              setDetectedTriggerQR({
+                text: qr.decoded_text,
+                width: qr.bbox.w,
+                height: qr.bbox.h,
+                bbox: qr.bbox
+              });
+              console.log('✅ TimeGo QR captured for sidebar:', {
+                text: qr.decoded_text,
+                size: `${qr.bbox.w}x${qr.bbox.h}px`,
+                bbox: qr.bbox
+              });
+            }
+            // Capture MVD (Shipping Label) QR - only first detection
+            else if (qr.decoded_text !== 'TimeGo' && !detectedMVDQR) {
+              setDetectedMVDQR({
+                text: qr.decoded_text,
+                width: qr.bbox.w,
+                height: qr.bbox.h,
+                bbox: qr.bbox
+              });
+              console.log('✅ MVD QR captured for sidebar:', {
+                text: qr.decoded_text,
+                size: `${qr.bbox.w}x${qr.bbox.h}px`,
+                bbox: qr.bbox
+              });
+            }
+          });
+        }
       } else {
         // Hand detection failed - still show QR and trigger if available
         const fallbackLandmarks = {
@@ -1358,6 +1408,25 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
         throw new Error(validationResult.error || 'ROI validation failed');
       }
 
+      // 🆕 Check QR boundary sizes and show warning if missing (QR method only)
+      if (packingMethod === 'qr') {
+        const missingQR = [];
+        if (!detectedMVDQR) missingQR.push('MVD (Shipping Label)');
+        if (!detectedTriggerQR) missingQR.push('TimeGo (Trigger)');
+
+        if (missingQR.length > 0) {
+          toast({
+            title: '⚠️ QR Detection Warning',
+            description: `Missing ${missingQR.join(', ')} QR detection. The system may not work optimally without QR sizes for Empty Event extraction.`,
+            status: 'warning',
+            duration: 6000,
+            isClosable: true,
+            position: 'top'
+          });
+          // ⚠️ WARNING ONLY - Don't block save!
+        }
+      }
+
       // Save configuration (using already-transformed coordinates from validation)
       const saveResponse = await fetch('http://localhost:8080/api/config/step4/roi/save-roi-config', {
         method: 'POST',
@@ -1366,7 +1435,16 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
           camera_id: cameraId,
           video_path: videoPath,
           roi_data: originalCoordinateROIs,
-          packing_method: packingMethod
+          packing_method: packingMethod,
+          // 🆕 QR Boundary Sizes - for Empty Event feature (NULL is OK)
+          mvd_qr_size: detectedMVDQR ? {
+            width: detectedMVDQR.width,
+            height: detectedMVDQR.height
+          } : null,
+          trigger_qr_size: detectedTriggerQR ? {
+            width: detectedTriggerQR.width,
+            height: detectedTriggerQR.height
+          } : null
         })
       });
 
@@ -1414,7 +1492,10 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     onSave,
     onClose,
     onError,
-    toast
+    toast,
+    detectedMVDQR,              // ✅ FIX: Ensure save callback has latest QR state
+    detectedTriggerQR,          // ✅ FIX: Prevent stale closure from sending NULL
+    convertToOriginalCoordinates
   ]);
 
   // Reset state when modal opens/closes
@@ -1425,6 +1506,8 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       setError(null);
       setHandLandmarks(null);
       setIsVideoPlaying(false);
+      setDetectedMVDQR(null);  // Reset QR boundary tracking
+      setDetectedTriggerQR(null);  // Reset QR boundary tracking
       setPreprocessingState({
         isProcessing: false,
         progress: 0,
@@ -1520,7 +1603,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                               <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
                                 {(() => {
                                   const original = convertToOriginalCoordinates(roi);
-                                  return `${roi.type} • Position: (${original.x}, ${original.y}) • Size: ${original.w}×${original.h}px`;
+                                  return `Position: (${original.x}, ${original.y}) • Size: ${original.w}×${original.h}px`;
                                 })()}
                               </Text>
                             </VStack>
@@ -1535,6 +1618,64 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                           </HStack>
                         </Box>
                       ))}
+                    </VStack>
+                  </Box>
+                )}
+
+                {/* 🆕 QR BOUNDARY SIZE DETECTION - for Empty Event feature */}
+                {packingMethod === 'qr' && (detectedMVDQR || detectedTriggerQR) && (
+                  <Box>
+                    <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="medium" color={textColor} mb={adaptiveConfig.spacing.item}>
+                      📦 Detected QR Codes
+                    </Text>
+                    <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
+
+                      {/* Trigger QR */}
+                      {detectedTriggerQR && (
+                        <Box
+                          p={adaptiveConfig.spacing.item}
+                          borderRadius="6px"
+                          border="1px solid"
+                          borderColor="green.300"
+                          bg="green.50"
+                        >
+                          <VStack align="start" spacing="4px">
+                            <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="medium" color="green.800">
+                              ✅ Trigger QR
+                            </Text>
+                            <Text fontSize={adaptiveConfig.fontSize.small} color="green.700">
+                              Text: {detectedTriggerQR.text}
+                            </Text>
+                            <Text fontSize={adaptiveConfig.fontSize.small} color="green.700" fontWeight="semibold">
+                              Size: {detectedTriggerQR.width} × {detectedTriggerQR.height} px
+                            </Text>
+                          </VStack>
+                        </Box>
+                      )}
+
+                      {/* Shipping Label QR */}
+                      {detectedMVDQR && (
+                        <Box
+                          p={adaptiveConfig.spacing.item}
+                          borderRadius="6px"
+                          border="1px solid"
+                          borderColor="blue.300"
+                          bg="blue.50"
+                        >
+                          <VStack align="start" spacing="4px">
+                            <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="medium" color="blue.800">
+                              ✅ Shipping Label QR
+                            </Text>
+                            <Text fontSize={adaptiveConfig.fontSize.small} color="blue.700" isTruncated maxW="200px">
+                              Text: {detectedMVDQR.text}
+                            </Text>
+                            <Text fontSize={adaptiveConfig.fontSize.small} color="blue.700" fontWeight="semibold">
+                              Size: {detectedMVDQR.width} × {detectedMVDQR.height} px
+                            </Text>
+                          </VStack>
+                        </Box>
+                      )}
+
                     </VStack>
                   </Box>
                 )}

@@ -294,7 +294,7 @@ def validate_roi_coordinates():
 def save_roi_configuration():
     """
     Save ROI configuration to processing_config table
-    
+
     POST body:
         {
             "camera_id": "camera_1",
@@ -311,21 +311,21 @@ def save_roi_configuration():
             ],
             "packing_method": "traditional"  // "traditional" or "qr"
         }
-        
+
     Returns:
         JSON with save results
     """
     try:
         if request.method == 'OPTIONS':
             return jsonify({'success': True}), 200
-        
+
         data = request.get_json()
         if not data:
             return jsonify({
                 'success': False,
                 'error': 'JSON body is required'
             }), 400
-        
+
         # Validate required fields
         is_valid, error_msg = validate_required_fields(data, ['camera_id', 'video_path', 'roi_data', 'packing_method'])
         if not is_valid:
@@ -333,12 +333,12 @@ def save_roi_configuration():
                 'success': False,
                 'error': error_msg
             }), 400
-        
+
         camera_id = data['camera_id']
         video_path = data['video_path']
         roi_data = data['roi_data']
         packing_method = data['packing_method']
-        
+
         logger.info(f"Saving ROI configuration for camera {camera_id}")
         
         # First validate the ROI data
@@ -378,7 +378,32 @@ def save_roi_configuration():
                     packing_area_roi = roi  # This will be saved to packing_area column
                 elif roi['type'] == 'qr_trigger':
                     qr_trigger_roi = roi   # This will be saved to qr_trigger_area column
-            
+
+            # Get QR boundary sizes from frontend sidebar (QR method only)
+            # Frontend displays detected QR in sidebar, user confirms before saving
+            expected_mvd_qr_size = None
+            expected_trigger_qr_size = None
+
+            if packing_method == 'qr':
+                logger.info("QR method detected - getting QR boundary sizes from frontend sidebar...")
+
+                # Frontend sends QR sizes that user saw in sidebar (may be NULL if not detected)
+                mvd_qr_size = data.get('mvd_qr_size')  # {"width": 54, "height": 56} or None
+                trigger_qr_size = data.get('trigger_qr_size')  # {"width": 175, "height": 181} or None
+
+                # Convert to JSON string for database storage (NULL is OK)
+                if mvd_qr_size and isinstance(mvd_qr_size, dict):
+                    expected_mvd_qr_size = json.dumps(mvd_qr_size)
+                    logger.info(f"✅ MVD QR boundary size: {mvd_qr_size['width']}x{mvd_qr_size['height']}px")
+                else:
+                    logger.info("ℹ️ No MVD QR detected - boundary size will be NULL (video may not show MVD QR)")
+
+                if trigger_qr_size and isinstance(trigger_qr_size, dict):
+                    expected_trigger_qr_size = json.dumps(trigger_qr_size)
+                    logger.info(f"✅ TimeGo QR boundary size: {trigger_qr_size['width']}x{trigger_qr_size['height']}px")
+                else:
+                    logger.info("ℹ️ No TimeGo QR detected - boundary size will be NULL (video may not show TimeGo QR)")
+
             # Create profile name based on camera (no timestamp for consistent lookup)
             profile_name = camera_id
             
@@ -404,6 +429,8 @@ def save_roi_configuration():
                     UPDATE packing_profiles
                     SET packing_area = ?,
                         qr_trigger_area = ?,
+                        expected_mvd_qr_size = ?,
+                        expected_trigger_qr_size = ?,
                         additional_params = ?
                     WHERE id = ?
                 """, (
@@ -413,6 +440,10 @@ def save_roi_configuration():
                     # qr_trigger_area column: QR trigger area (QR method only)
                     json.dumps([qr_trigger_roi["x"], qr_trigger_roi["y"],
                               qr_trigger_roi["w"], qr_trigger_roi["h"]]) if qr_trigger_roi else None,
+                    # expected_mvd_qr_size: Auto-detected MVD QR size for boundary filtering
+                    expected_mvd_qr_size,
+                    # expected_trigger_qr_size: Auto-detected TimeGo QR size for boundary filtering
+                    expected_trigger_qr_size,
                     additional_params,
                     existing[0]
                 ))
@@ -422,18 +453,23 @@ def save_roi_configuration():
                 # packing_area column: stores movement detection area for both Traditional and QR methods
                 # qr_trigger_area column: stores QR trigger area (QR method only)
                 cursor.execute("""
-                    INSERT INTO packing_profiles 
-                    (profile_name, packing_area, qr_trigger_area, min_packing_time, 
-                     jump_time_ratio, scan_mode, additional_params)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO packing_profiles
+                    (profile_name, packing_area, qr_trigger_area, expected_mvd_qr_size,
+                     expected_trigger_qr_size, min_packing_time, jump_time_ratio,
+                     scan_mode, additional_params)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     profile_name,
                     # packing_area column: movement detection area (both Traditional and QR methods)
-                    json.dumps([packing_area_roi["x"], packing_area_roi["y"], 
+                    json.dumps([packing_area_roi["x"], packing_area_roi["y"],
                               packing_area_roi["w"], packing_area_roi["h"]]) if packing_area_roi else None,
                     # qr_trigger_area column: QR trigger area (QR method only)
-                    json.dumps([qr_trigger_roi["x"], qr_trigger_roi["y"], 
+                    json.dumps([qr_trigger_roi["x"], qr_trigger_roi["y"],
                               qr_trigger_roi["w"], qr_trigger_roi["h"]]) if qr_trigger_roi else None,
+                    # expected_mvd_qr_size: Auto-detected MVD QR size for boundary filtering
+                    expected_mvd_qr_size,
+                    # expected_trigger_qr_size: Auto-detected TimeGo QR size for boundary filtering
+                    expected_trigger_qr_size,
                     5,  # Default min_packing_time
                     0.5,  # Default jump_time_ratio
                     packing_method,  # traditional or qr
