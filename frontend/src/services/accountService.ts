@@ -195,4 +195,156 @@ export class AccountService {
     if (daysRemaining <= 30) return 'orange';
     return 'green';
   }
+
+  // ============================================
+  // AI USAGE METHODS (for AI QR Recovery feature)
+  // ============================================
+
+  /**
+   * Get AI configuration
+   * TODO: Implement when backend /api/ai/config is ready
+   */
+  static async getAIConfig(): Promise<any> {
+    try {
+      const response = await fetch(`${API_BASE}/ai/config`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`API responded with ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to get AI config:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update AI configuration
+   * TODO: Implement when backend /api/ai/config POST is ready
+   */
+  static async updateAIConfig(config: any): Promise<any> {
+    try {
+      const response = await fetch(`${API_BASE}/ai/config`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(config)
+      });
+
+      if (!response.ok) {
+        throw new Error(`API responded with ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to update AI config:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Test AI API key
+   * TODO: Implement when backend /api/ai/test is ready
+   */
+  static async testAIApiKey(apiKey: string, provider: string): Promise<any> {
+    try {
+      const response = await fetch(`${API_BASE}/ai/test`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ api_key: apiKey, provider })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API responded with ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to test AI API key:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get AI usage statistics
+   * TODO: Implement when backend /api/ai/stats is ready
+   */
+  static async getAIStats(): Promise<any> {
+    try {
+      const response = await fetch(`${API_BASE}/ai/stats`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`API responded with ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to get AI stats:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get AI recovery logs
+   * TODO: Implement when backend /api/ai/recovery-logs is ready
+   */
+  static async getAIRecoveryLogs(limit: number = 50): Promise<any> {
+    try {
+      const response = await fetch(`${API_BASE}/ai/recovery-logs?limit=${limit}`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`API responded with ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to get AI recovery logs:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Format cost in VND
+   */
+  static formatCostVND(usdCost: number): string {
+    const vndCost = usdCost * 25000; // 1 USD ≈ 25,000 VND
+    if (vndCost < 1) {
+      return `<1đ`;
+    }
+    return `${vndCost.toLocaleString('vi-VN')}đ`;
+  }
+
+  /**
+   * Format cost in USD
+   */
+  static formatCostUSD(usdCost: number): string {
+    if (usdCost < 0.01) {
+      return `$${(usdCost * 1000).toFixed(2)}m`;
+    }
+    return `$${usdCost.toFixed(4)}`;
+  }
 }

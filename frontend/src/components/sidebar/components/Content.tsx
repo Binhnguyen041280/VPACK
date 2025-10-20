@@ -205,17 +205,22 @@ function SidebarContent(props: SidebarContent) {
                 </Flex>
               </Box>
               <Box mb="30px">
-                <Flex cursor={'not-allowed'} align="center">
+                <Flex
+                  cursor={'pointer'}
+                  align="center"
+                  onClick={() => router.push('/usage')}
+                  _hover={{ opacity: 0.8 }}
+                  transition="opacity 0.2s"
+                >
                   <Icon
                     as={RoundedChart}
                     width="24px"
                     height="24px"
-                    color={gray}
-                    opacity="0.4"
+                    color={textColor}
                     me="12px"
                   />
-                  <Text color={gray} fontWeight="500" fontSize="sm" opacity="0.4">
-                    Usage
+                  <Text color={textColor} fontWeight="500" fontSize="sm">
+                    AI Usage
                   </Text>
                 </Flex>
               </Box>
