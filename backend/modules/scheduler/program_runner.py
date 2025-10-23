@@ -38,6 +38,7 @@ from modules.technician.frame_sampler_trigger import FrameSamplerTrigger
 from modules.technician.frame_sampler_no_trigger import FrameSamplerNoTrigger
 from modules.technician.IdleMonitor import IdleMonitor
 from modules.technician.event_detector import process_single_log
+from modules.technician.retry_empty_event import start_retry_processor
 from .db_sync import db_rwlock, frame_sampler_event, event_detector_event, event_detector_done
 from .config.scheduler_config import SchedulerConfig
 import json

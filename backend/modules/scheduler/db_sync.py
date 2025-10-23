@@ -61,6 +61,18 @@ event_detector_event = threading.Event()
 event_detector_done = threading.Event()
 event_detector_done.set()  # Initially set to allow frame samplers to start
 
+# Event signaling when system is idle (no files being processed)
+# Set by: Idle monitor in batch_scheduler when all files processed
+# Waited on by: Retry processor to start empty event recovery
+# Cleared by: Idle monitor after retry completes
+system_idle_event = threading.Event()
+
+# Event signaling retry is in progress (blocks file scanner)
+# Set by: Idle monitor before starting retry
+# Checked by: File scanner to pause new file scanning
+# Cleared by: Idle monitor after retry completes
+retry_in_progress_flag = threading.Event()
+
 # Log module initialization with thread information
 logger.debug("Database sync module initialized", extra={"thread_id": threading.current_thread().ident})
 

@@ -350,15 +350,41 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
 
                 logger.info(f"Inserted {success_count} success detections and {boundary_count} boundary detections for event {current_event_id}")
 
-                # Validate: Skip event if no detections at all (noise event)
-                if success_count == 0 and boundary_count == 0 and not tracking_codes:
-                    logger.info(f"Deleting noise event {current_event_id}: no success codes, no boundaries")
-                    cursor.execute("DELETE FROM events WHERE event_id = ?", (current_event_id,))
+                # Validate: Check if event is empty (no MVD codes found)
+                if success_count == 0 and not tracking_codes:
+                    # Get duration from segment
+                    event_duration = duration if duration else 0
+
+                    if event_duration >= min_packing_time:
+                        # Event long enough → có thể có QR miss do 5fps sampling, mark retry
+                        cursor.execute("""
+                            UPDATE events
+                            SET retry_needed = 1, retry_count = 0, status = 'empty_need_retry'
+                            WHERE event_id = ?
+                        """, (current_event_id,))
+                        logger.info(f"✓ Marked event {current_event_id} for retry (duration={event_duration}s >= min={min_packing_time}s)")
+                    else:
+                        # Event quá ngắn → noise, delete
+                        logger.info(f"✗ Deleting noise event {current_event_id} (duration={event_duration}s < min={min_packing_time}s)")
+                        cursor.execute("DELETE FROM events WHERE event_id = ?", (current_event_id,))
             else:
-                # No detections found - delete if no tracking_codes (noise event)
+                # No detections found in log
                 if not tracking_codes:
-                    logger.info(f"Deleting noise event {current_event_id}: no detections found")
-                    cursor.execute("DELETE FROM events WHERE event_id = ?", (current_event_id,))
+                    # Get duration from segment
+                    event_duration = duration if duration else 0
+
+                    if event_duration >= min_packing_time:
+                        # Event long enough → mark retry
+                        cursor.execute("""
+                            UPDATE events
+                            SET retry_needed = 1, retry_count = 0, status = 'empty_need_retry'
+                            WHERE event_id = ?
+                        """, (current_event_id,))
+                        logger.info(f"✓ Marked event {current_event_id} for retry (no detections but duration={event_duration}s >= min={min_packing_time}s)")
+                    else:
+                        # Noise, delete
+                        logger.info(f"✗ Deleting noise event {current_event_id}: no detections found (duration={event_duration}s < min={min_packing_time}s)")
+                        cursor.execute("DELETE FROM events WHERE event_id = ?", (current_event_id,))
 
     cursor.execute("UPDATE processed_logs SET is_processed = 1, processed_at = ? WHERE log_file = ?", (datetime.now(timezone.utc), log_file_path))
     logger.info("Database changes committed")

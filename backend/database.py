@@ -297,6 +297,21 @@ def update_database():
                     if "duplicate column name" not in str(e).lower():
                         print(f"⚠️ Error adding {col_name}: {e}")
 
+            # Add retry mechanism columns to events table
+            events_retry_columns = [
+                ("retry_needed", "INTEGER DEFAULT 0"),
+                ("retry_count", "INTEGER DEFAULT 0"),
+                ("status", "TEXT DEFAULT 'normal'")
+            ]
+
+            for col_name, col_definition in events_retry_columns:
+                try:
+                    cursor.execute(f"ALTER TABLE events ADD COLUMN {col_name} {col_definition}")
+                    print(f"✅ Added {col_name} column to events")
+                except sqlite3.OperationalError as e:
+                    if "duplicate column name" not in str(e).lower():
+                        print(f"⚠️ Error adding {col_name}: {e}")
+
             # 7. Processed Logs Table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS processed_logs (
@@ -712,6 +727,7 @@ def update_database():
 
             # Core table indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_te_event_id ON events(te, event_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_retry_needed ON events(retry_needed, retry_count)")
 
             # Platform management indexes (simplified)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_platform_mappings_name ON platform_column_mappings(platform_name)")

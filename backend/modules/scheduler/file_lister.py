@@ -31,6 +31,7 @@ Performance Optimizations:
 import os
 import sqlite3
 import json
+import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from statistics import median
@@ -40,7 +41,7 @@ from modules.db_utils.safe_connection import safe_db_connection
 from modules.config.logging_config import get_logger
 from modules.utils.simple_timezone import get_system_timezone_from_db
 # Removed video_timezone_detector - using simple video detection
-from .db_sync import db_rwlock
+from .db_sync import db_rwlock, retry_in_progress_flag
 from .config.scheduler_config import SchedulerConfig
 import subprocess
 
@@ -622,10 +623,10 @@ def cleanup_stale_jobs() -> None:
 def run_file_scan(scan_action: str = "default", days: Optional[int] = None,
                   custom_path: Optional[str] = None, camera_name: Optional[str] = None) -> List[str]:
     """Execute file scanning with the specified strategy and parameters.
-    
+
     This is the main entry point for file scanning operations. It coordinates
     cleanup, configuration loading, and the actual scanning process.
-    
+
     Args:
         scan_action (str): Type of scan to perform:
             - 'default': Continuous scanning for new files
@@ -633,20 +634,28 @@ def run_file_scan(scan_action: str = "default", days: Optional[int] = None,
             - 'custom': Scan specific file or directory
         days (int, optional): Number of days for 'first' scan
         custom_path (str, optional): File/directory path for 'custom' scan
-        
+
     Returns:
         List[str]: List of discovered video files
-        
+
     Process Flow:
-        1. Clean up any stale processing jobs
-        2. Load video root directory from configuration
-        3. Determine if this is an initial scan (affects time filtering)
-        4. Execute file scanning with appropriate filters
-        5. Return list of discovered files
-        
+        1. Check if retry is in progress - if so, pause scanning
+        2. Clean up any stale processing jobs
+        3. Load video root directory from configuration
+        4. Determine if this is an initial scan (affects time filtering)
+        5. Execute file scanning with appropriate filters
+        6. Return list of discovered files
+
     Error Handling:
         Raises exceptions if video_root is not configured or if scanning fails.
     """
+    # Check if retry is in progress - pause if so
+    if retry_in_progress_flag.is_set():
+        logger = get_logger(__name__)
+        logger.info("⏸️ File scan paused: PASS 3 retry in progress")
+        time.sleep(5)
+        return []
+
     db_path = get_db_path()
     
     # Clean up any stale jobs before starting new scan

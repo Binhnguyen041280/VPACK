@@ -31,9 +31,9 @@ from typing import List, Tuple, Optional
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.config.logging_config import get_logger
 from modules.utils.simple_timezone import get_system_timezone_from_db
-from .db_sync import db_rwlock, frame_sampler_event, event_detector_event
+from .db_sync import db_rwlock, frame_sampler_event, event_detector_event, system_idle_event, retry_in_progress_flag
 from .file_lister import run_file_scan
-from .program_runner import start_frame_sampler_thread, start_event_detector_thread
+from .program_runner import start_frame_sampler_thread, start_event_detector_thread, start_retry_processor
 from .config.scheduler_config import SchedulerConfig
 
 logger = get_logger(__name__, {"module": "batch_scheduler"})
@@ -212,6 +212,7 @@ class BatchScheduler:
         self.queue_limit = SchedulerConfig.QUEUE_LIMIT
         self.sampler_threads = []
         self.detector_thread = None
+        self.retry_thread = None
         self.pause_event = threading.Event()
         self.pause_event.set()  # Start in unpaused state
 
@@ -319,6 +320,81 @@ class BatchScheduler:
         except Exception as e:
             logger.error(f"Error checking timeout: {e}")
 
+    def check_system_idle(self):
+        """Check if system is idle - all videos processed and no pending files.
+
+        The system is considered idle when:
+            1. file_list has no unprocessed files (is_processed=0 count = 0)
+            2. No files are currently being processed
+
+        Returns:
+            bool: True if system is idle, False otherwise
+        """
+        try:
+            with db_rwlock.gen_rlock():
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT COUNT(*) FROM file_list WHERE is_processed = 0")
+                    pending_count = cursor.fetchone()[0]
+
+            is_idle = (pending_count == 0)
+            if is_idle:
+                logger.info("✅ System IDLE: no pending files detected")
+            return is_idle
+
+        except Exception as e:
+            logger.error(f"❌ Error checking system idle: {e}")
+            return False
+
+    def monitor_system_idle(self):
+        """Monitor and signal when system becomes idle for PASS 3 retry.
+
+        Workflow:
+            1. Check every 5 seconds if system is idle
+            2. When idle: Set retry_in_progress_flag → Set system_idle_event
+            3. Wait for retry to complete (system_idle_event clears when done)
+            4. Clear retry_in_progress_flag to unblock file scanner
+            5. Resume checking
+
+        This ensures:
+            - Retry only runs when no files are being processed
+            - File scanner is blocked during retry
+            - No race conditions between file loading and retry
+        """
+        logger.info("🔍 System idle monitor started")
+
+        while self.running:
+            try:
+                if self.check_system_idle():
+                    # System is idle - set up for retry
+                    logger.info("⏳ Starting retry: blocking file scanner")
+                    retry_in_progress_flag.set()
+
+                    # Signal retry processor to start
+                    system_idle_event.set()
+                    logger.info("🚀 Idle signal set - retry processor will start")
+
+                    # Wait for retry to complete
+                    # Retry processor will clear system_idle_event when done
+                    while system_idle_event.is_set() and self.running:
+                        time.sleep(1)
+
+                    # Retry complete - unblock file scanner
+                    logger.info("✅ Retry complete: unblocking file scanner")
+                    retry_in_progress_flag.clear()
+
+                    # Wait 1 minute before checking idle again
+                    time.sleep(60)
+                else:
+                    # Still processing - check again in 5 seconds
+                    time.sleep(5)
+
+            except Exception as e:
+                logger.error(f"❌ Error in idle monitor: {e}")
+                system_idle_event.clear()
+                retry_in_progress_flag.clear()
+                time.sleep(5)
+
     def scan_files(self):
         """Scan for new files periodically (15 minutes)."""
         logger.info("Starting periodic scan")
@@ -391,8 +467,18 @@ class BatchScheduler:
 
             scan_thread = threading.Thread(target=self.scan_files)
             batch_thread = threading.Thread(target=self.run_batch)
+            idle_monitor_thread = threading.Thread(target=self.monitor_system_idle, name="IdleMonitor")
+            idle_monitor_thread.daemon = True  # Exit when main thread exits
+
             scan_thread.start()
             batch_thread.start()
+            idle_monitor_thread.start()
+
+            # Start PASS 3 retry processor (runs only when idle)
+            if not self.retry_thread or not self.retry_thread.is_alive():
+                self.retry_thread = start_retry_processor()
+                logger.info("✅ PASS 3 retry processor started")
+
             logger.info(f"BatchScheduler started, batch_size={self.batch_size}, scan_interval={self.scan_interval}")
 
     def stop(self):
