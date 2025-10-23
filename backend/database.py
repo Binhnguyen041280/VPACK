@@ -608,6 +608,46 @@ def update_database():
             except sqlite3.OperationalError:
                 pass
 
+            # ==================== AI USAGE TABLES ====================
+
+            # 20. AI Configuration Table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ai_config (
+                    user_email TEXT PRIMARY KEY,
+                    ai_enabled INTEGER DEFAULT 0,
+                    api_provider TEXT DEFAULT 'claude',
+                    encrypted_api_key TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # 21. AI Recovery Logs Table (tracking usage & cost)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ai_recovery_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_email TEXT NOT NULL,
+                    event_id TEXT,
+                    frame_path TEXT,
+                    success INTEGER DEFAULT 0,
+                    decoded_text TEXT,
+                    cost_usd REAL DEFAULT 0,
+                    input_tokens INTEGER,
+                    output_tokens INTEGER,
+                    error_message TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_email) REFERENCES ai_config(user_email)
+                )
+            """)
+
+            # Create indexes for AI tables
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_config_user ON ai_config(user_email)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_logs_user ON ai_recovery_logs(user_email)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_logs_created ON ai_recovery_logs(created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_logs_success ON ai_recovery_logs(success)")
+
+            print("✅ AI usage tables created successfully")
+
             # ==================== LICENSE MANAGEMENT TABLES ====================
             
             # 17. Payment Transactions Table

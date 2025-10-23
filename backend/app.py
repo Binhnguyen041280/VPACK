@@ -73,6 +73,7 @@ from blueprints.qr_detection_bp import qr_detection_bp
 from blueprints.roi_bp import roi_bp
 # Removed analysis_streaming_bp - replaced with simple_hand_detection_bp
 from modules.config.routes.steps.step4_roi_routes import step4_roi_bp
+from modules.config.routes.ai_routes import ai_bp
 from modules.sources.cloud_endpoints import cloud_bp
 from modules.sources.cloud_lazy_folder_routes import lazy_folder_bp
 from modules.sources.sync_endpoints import sync_bp
@@ -252,6 +253,7 @@ logger.info("🔑 Session configuration applied")
 app.register_blueprint(program_bp, url_prefix='/api')
 app.register_blueprint(config_bp, url_prefix='/api/config')
 app.register_blueprint(step4_roi_bp)  # ROI configuration endpoints
+app.register_blueprint(ai_bp)  # AI configuration endpoints
 app.register_blueprint(query_bp)
 app.register_blueprint(cutter_bp)
 app.register_blueprint(hand_detection_bp)
@@ -259,6 +261,7 @@ app.register_blueprint(simple_hand_detection_bp, url_prefix='/api/hand-detection
 app.register_blueprint(qr_detection_bp, url_prefix='/api/qr-detection')
 app.register_blueprint(roi_bp)
 # Removed complex streaming blueprint - now using simple_hand_detection_bp
+logger.info("✅ AI endpoints registered")
 
 # Cloud and sync modules
 try:

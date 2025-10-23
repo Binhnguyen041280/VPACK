@@ -79,33 +79,38 @@ const AIUsage: React.FC = () => {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        // TODO: Gọi API khi backend ready
-        // const configRes = await AIService.getConfig();
-        // const statsRes = await AIService.getStats();
-        // const logsRes = await AIService.getRecoveryLogs(10);
-
-        // Mock data for now
-        setTimeout(() => {
+        // Load AI config from backend
+        const configRes = await AccountService.getAIConfig();
+        if (configRes.success && configRes.data) {
           setAiConfig({
-            ai_enabled: false,
-            api_provider: 'claude',
-            use_vtrack_key: true,
-            has_custom_key: false,
-            customer_api_key: '',
+            ai_enabled: configRes.data.ai_enabled || false,
+            api_provider: configRes.data.api_provider || 'claude',
+            use_vtrack_key: !configRes.data.has_custom_key,
+            has_custom_key: configRes.data.has_custom_key || false,
+            customer_api_key: configRes.data.masked_key || '',
           });
+        }
 
+        // Load AI stats from backend
+        const statsRes = await AccountService.getAIStats();
+        if (statsRes.success && statsRes.data) {
           setStats({
-            total_recoveries: 0,
-            successful: 0,
-            failed: 0,
-            success_rate: 0,
-            total_cost_usd: 0,
-            avg_cost_per_recovery: 0,
+            total_recoveries: statsRes.data.total_recoveries || 0,
+            successful: statsRes.data.successful || 0,
+            failed: statsRes.data.failed || 0,
+            success_rate: statsRes.data.success_rate || 0,
+            total_cost_usd: statsRes.data.total_cost_usd || 0,
+            avg_cost_per_recovery: statsRes.data.avg_cost_per_recovery || 0,
           });
+        }
 
-          setRecoveryLogs([]);
-          setIsLoading(false);
-        }, 500);
+        // Load recent recovery logs
+        const logsRes = await AccountService.getAIRecoveryLogs(10);
+        if (logsRes.success && logsRes.data) {
+          setRecoveryLogs(logsRes.data.logs || []);
+        }
+
+        setIsLoading(false);
       } catch (error) {
         console.error('Failed to load AI usage data:', error);
         setError('Failed to load AI configuration');
@@ -122,23 +127,35 @@ const AIUsage: React.FC = () => {
     setError(null);
 
     try {
-      // TODO: Gọi API khi backend ready
-      // await AIService.updateConfig(aiConfig);
+      // Call backend to save config
+      const response = await AccountService.updateAIConfig({
+        ai_enabled: aiConfig.ai_enabled,
+        api_provider: aiConfig.api_provider,
+        customer_api_key: aiConfig.customer_api_key,
+      });
 
-      // Mock success
-      setTimeout(() => {
+      if (response.success) {
         toast({
           title: 'Configuration saved',
-          description: 'AI settings have been updated successfully',
+          description: response.message || 'AI settings have been updated successfully',
           status: 'success',
           duration: 3000,
           isClosable: true,
         });
-        setIsSaving(false);
-      }, 500);
-    } catch (error) {
+      } else {
+        throw new Error(response.message || 'Failed to save configuration');
+      }
+      setIsSaving(false);
+    } catch (error: any) {
       console.error('Failed to save config:', error);
-      setError('Failed to save configuration');
+      setError(error.message || 'Failed to save configuration');
+      toast({
+        title: 'Save failed',
+        description: error.message || 'Failed to save configuration',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
       setIsSaving(false);
     }
   };
@@ -159,24 +176,28 @@ const AIUsage: React.FC = () => {
     setIsTesting(true);
 
     try {
-      // TODO: Gọi API khi backend ready
-      // await AIService.testApiKey(aiConfig.customer_api_key, aiConfig.api_provider);
+      // Call backend to test API key
+      const response = await AccountService.testAIApiKey(
+        aiConfig.customer_api_key,
+        aiConfig.api_provider
+      );
 
-      // Mock success
-      setTimeout(() => {
+      if (response.success) {
         toast({
           title: 'API Key Valid',
-          description: `Successfully connected to ${aiConfig.api_provider === 'claude' ? 'Claude' : 'OpenAI'} API`,
+          description: response.message || `Successfully connected to ${aiConfig.api_provider === 'claude' ? 'Claude' : 'OpenAI'} API`,
           status: 'success',
           duration: 3000,
           isClosable: true,
         });
-        setIsTesting(false);
-      }, 1000);
-    } catch (error) {
+      } else {
+        throw new Error(response.message || 'Invalid API key');
+      }
+      setIsTesting(false);
+    } catch (error: any) {
       toast({
         title: 'API Key Invalid',
-        description: 'Failed to connect with provided API key',
+        description: error.message || 'Failed to connect with provided API key',
         status: 'error',
         duration: 3000,
         isClosable: true,
