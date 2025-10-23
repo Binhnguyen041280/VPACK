@@ -28,16 +28,23 @@ def parse_qr_detections_from_log(log_file_path, event_ts):
     """
     Parse QR detections with bbox from log file.
 
+    Supports two patterns:
+    1. Success: timestamp,state,TRACKING_CODE,bbox:[x,y,w,h]
+    2. Boundary: timestamp,state,,boundary:[x,y,w,h]
+
     Args:
         log_file_path: Path to log file
         event_ts: Event start timestamp (relative seconds in video)
 
     Returns:
-        List of tuples: (relative_timestamp, tracking_code, bbox_x, bbox_y, bbox_w, bbox_h)
+        List of tuples: (relative_timestamp, tracking_code, bbox_x, bbox_y, bbox_w, bbox_h, decode_success)
+        decode_success: 1 for successful decode, 0 for boundary only
     """
     qr_detections = []
-    # Regex pattern: timestamp,state,TRACKING_CODE,bbox:[x,y,w,h]
-    pattern = r'^(\d+),\w+,([A-Z0-9]+),bbox:\[(\d+),(\d+),(\d+),(\d+)\]'
+    # Pattern 1: Success - timestamp,state,TRACKING_CODE,bbox:[x,y,w,h]
+    success_pattern = r'^(\d+),\w+,([A-Z0-9]+),bbox:\[(\d+),(\d+),(\d+),(\d+)\]'
+    # Pattern 2: Boundary - timestamp,state,,boundary:[x,y,w,h]
+    boundary_pattern = r'^(\d+),\w+,,boundary:\[(\d+),(\d+),(\d+),(\d+)\]'
 
     try:
         with open(log_file_path, 'r') as f:
@@ -47,7 +54,8 @@ def parse_qr_detections_from_log(log_file_path, event_ts):
                 if not line_stripped or line_stripped.startswith('#'):
                     continue
 
-                match = re.match(pattern, line_stripped)
+                # Try success pattern first
+                match = re.match(success_pattern, line_stripped)
                 if match:
                     log_timestamp = int(match.group(1))
                     tracking_code = match.group(2)
@@ -55,6 +63,7 @@ def parse_qr_detections_from_log(log_file_path, event_ts):
                     bbox_y = int(match.group(4))
                     bbox_w = int(match.group(5))
                     bbox_h = int(match.group(6))
+                    decode_success = 1
 
                     # Calculate relative timestamp from event start
                     relative_timestamp = log_timestamp - event_ts
@@ -67,7 +76,35 @@ def parse_qr_detections_from_log(log_file_path, event_ts):
                             bbox_x,
                             bbox_y,
                             bbox_w,
-                            bbox_h
+                            bbox_h,
+                            decode_success
+                        ))
+                    continue
+
+                # Try boundary pattern
+                match = re.match(boundary_pattern, line_stripped)
+                if match:
+                    log_timestamp = int(match.group(1))
+                    tracking_code = ""  # Empty for boundary entries
+                    bbox_x = int(match.group(2))
+                    bbox_y = int(match.group(3))
+                    bbox_w = int(match.group(4))
+                    bbox_h = int(match.group(5))
+                    decode_success = 0
+
+                    # Calculate relative timestamp from event start
+                    relative_timestamp = log_timestamp - event_ts
+
+                    # Skip negative timestamps (shouldn't happen)
+                    if relative_timestamp >= 0:
+                        qr_detections.append((
+                            relative_timestamp,
+                            tracking_code,
+                            bbox_x,
+                            bbox_y,
+                            bbox_w,
+                            bbox_h,
+                            decode_success
                         ))
 
         return qr_detections
@@ -247,9 +284,8 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
 
     for segment in segments:
         ts, te, duration, tracking_codes, segment_video_path, segment_event_id = segment
-        if te is not None and not tracking_codes:
-            logger.info(f"Skipping completed event due to empty tracking_codes: ts={ts}, te={te}")
-            continue
+        # Note: Don't skip events with empty tracking_codes yet - they may have boundary detections
+        # We'll validate after parsing QR detections
         # Calculate UTC timestamps for database storage
         packing_time_start = int((start_time_dt_utc.timestamp() + ts) * 1000) if ts is not None else None
         packing_time_end = int((start_time_dt_utc.timestamp() + te) * 1000) if te is not None else None
@@ -281,20 +317,48 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
             if qr_detections:
                 logger.info(f"Found {len(qr_detections)} QR detections for event {current_event_id}")
 
-                for rel_ts, code, bbox_x, bbox_y, bbox_w, bbox_h in qr_detections:
-                    # Only insert QR detections that match this event's tracking codes
-                    if code in tracking_codes:
+                success_count = 0
+                boundary_count = 0
+
+                for rel_ts, code, bbox_x, bbox_y, bbox_w, bbox_h, decode_success in qr_detections:
+                    # Insert logic:
+                    # - Success entries (decode_success=1): Only if code matches tracking_codes
+                    # - Boundary entries (decode_success=0): Always insert (for empty events)
+                    should_insert = False
+                    if decode_success == 1 and code in tracking_codes:
+                        should_insert = True
+                        success_count += 1
+                    elif decode_success == 0:
+                        should_insert = True
+                        boundary_count += 1
+
+                    if should_insert:
                         try:
                             cursor.execute("""
                                 INSERT INTO qr_detections
-                                (event_id, timestamp_seconds, tracking_code, bbox_x, bbox_y, bbox_w, bbox_h)
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
-                            """, (current_event_id, rel_ts, code, bbox_x, bbox_y, bbox_w, bbox_h))
+                                (event_id, timestamp_seconds, tracking_code, bbox_x, bbox_y, bbox_w, bbox_h, decode_success)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (current_event_id, rel_ts, code, bbox_x, bbox_y, bbox_w, bbox_h, decode_success))
 
-                            logger.debug(f"Inserted QR detection: event={current_event_id}, ts={rel_ts}s, code={code}, bbox=({bbox_x},{bbox_y},{bbox_w},{bbox_h})")
+                            if decode_success == 1:
+                                logger.debug(f"Inserted SUCCESS detection: event={current_event_id}, ts={rel_ts}s, code={code}, bbox=({bbox_x},{bbox_y},{bbox_w},{bbox_h})")
+                            else:
+                                logger.debug(f"Inserted BOUNDARY detection: event={current_event_id}, ts={rel_ts}s, bbox=({bbox_x},{bbox_y},{bbox_w},{bbox_h})")
                         except sqlite3.IntegrityError as e:
                             logger.error(f"Error inserting QR detection for event {current_event_id}: {e}")
                             continue
+
+                logger.info(f"Inserted {success_count} success detections and {boundary_count} boundary detections for event {current_event_id}")
+
+                # Validate: Skip event if no detections at all (noise event)
+                if success_count == 0 and boundary_count == 0 and not tracking_codes:
+                    logger.info(f"Deleting noise event {current_event_id}: no success codes, no boundaries")
+                    cursor.execute("DELETE FROM events WHERE event_id = ?", (current_event_id,))
+            else:
+                # No detections found - delete if no tracking_codes (noise event)
+                if not tracking_codes:
+                    logger.info(f"Deleting noise event {current_event_id}: no detections found")
+                    cursor.execute("DELETE FROM events WHERE event_id = ?", (current_event_id,))
 
     cursor.execute("UPDATE processed_logs SET is_processed = 1, processed_at = ? WHERE log_file = ?", (datetime.now(timezone.utc), log_file_path))
     logger.info("Database changes committed")

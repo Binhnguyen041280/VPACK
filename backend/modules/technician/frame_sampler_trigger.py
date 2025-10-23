@@ -29,6 +29,11 @@ class FrameSamplerTrigger:
         self.video_lock = threading.Lock()
         self.setup_wechat_qr()
 
+        # QR size tracking for future alternative detection methods
+        self.expected_mvd_qr_size = None      # {"width": 57, "height": 58}
+        self.expected_trigger_qr_size = None  # {"width": 176, "height": 181}
+        self.current_camera = None
+
     def setup_logging(self):
         self.logger = get_logger(__name__, {})
         self.logger.info("Logging initialized")
@@ -145,6 +150,112 @@ class FrameSamplerTrigger:
             self.logger.error(f"Error parsing {field_name} for {camera_name}: {str(e)}")
             return None
 
+    def _load_qr_sizes(self, camera_name):
+        """Load expected QR sizes from database for size-based filtering.
+
+        Loads expected MVD and TimeGo QR sizes from packing_profiles table.
+        These sizes are used to filter TimeGo boundaries from MVD boundaries.
+
+        Args:
+            camera_name: Camera profile name to load sizes for
+        """
+        with db_rwlock.gen_rlock():
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT expected_mvd_qr_size, expected_trigger_qr_size
+                    FROM packing_profiles WHERE profile_name = ?
+                """, (camera_name,))
+                result = cursor.fetchone()
+
+                if result:
+                    self.expected_mvd_qr_size = json.loads(result[0]) if result[0] else None
+                    self.expected_trigger_qr_size = json.loads(result[1]) if result[1] else None
+                    self.logger.info(
+                        f"📊 Loaded QR sizes for {camera_name}: "
+                        f"MVD={self.expected_mvd_qr_size}, TimeGo={self.expected_trigger_qr_size}"
+                    )
+                else:
+                    self.expected_mvd_qr_size = None
+                    self.expected_trigger_qr_size = None
+                    self.logger.warning(
+                        f"⚠️ No QR sizes found for {camera_name}, using fallback 100px threshold"
+                    )
+
+    def _is_mvd_size(self, bbox):
+        """Check if bbox size matches MVD QR (not TimeGo).
+
+        Uses expected QR sizes from database if available, otherwise falls back
+        to simple 100px threshold.
+
+        Args:
+            bbox: Bounding box [x, y, w, h]
+
+        Returns:
+            bool: True if MVD-sized, False if TimeGo-sized
+        """
+        w, h = bbox[2], bbox[3]
+
+        # If we have expected sizes from database, use them with distance comparison
+        if self.expected_mvd_qr_size and self.expected_trigger_qr_size:
+            mvd_w = self.expected_mvd_qr_size['width']
+            mvd_h = self.expected_mvd_qr_size['height']
+            trigger_w = self.expected_trigger_qr_size['width']
+            trigger_h = self.expected_trigger_qr_size['height']
+
+            # Calculate Manhattan distance to MVD and TimeGo sizes
+            mvd_diff = abs(w - mvd_w) + abs(h - mvd_h)
+            trigger_diff = abs(w - trigger_w) + abs(h - trigger_h)
+
+            # Accept if closer to MVD than TimeGo
+            is_mvd = mvd_diff < trigger_diff
+            self.logger.debug(
+                f"Size check: {w}x{h}, MVD_diff={mvd_diff}, TimeGo_diff={trigger_diff}, is_MVD={is_mvd}"
+            )
+            return is_mvd
+
+        # Fallback: Use simple 100px threshold if no DB data
+        is_mvd = w < 100 and h < 100
+        self.logger.debug(f"Size check (fallback): {w}x{h}, is_MVD={is_mvd}")
+        return is_mvd
+
+    def _update_mvd_qr_size(self, mvd_bbox):
+        """Auto-update expected MVD QR size from successful decode (Last Known Good pattern).
+
+        Updates database with new MVD QR size if it changed significantly (>10%)
+        from the current expected size. This allows system to adapt when labels change.
+
+        Args:
+            mvd_bbox: Tuple (x, y, w, h) from successful MVD decode
+        """
+        if not self.current_camera:
+            return
+
+        new_size = {"width": mvd_bbox[2], "height": mvd_bbox[3]}
+
+        # Only update if size changed significantly (>10%)
+        if self.expected_mvd_qr_size:
+            old_w = self.expected_mvd_qr_size['width']
+            change_ratio = abs(new_size['width'] - old_w) / old_w
+            if change_ratio < 0.1:
+                return  # Change too small, ignore
+
+        # Update database
+        with db_rwlock.gen_wlock():
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE packing_profiles
+                    SET expected_mvd_qr_size = ?
+                    WHERE profile_name = ?
+                """, (json.dumps(new_size), self.current_camera))
+                conn.commit()
+
+        self.expected_mvd_qr_size = new_size
+        self.logger.info(
+            f"📊 Auto-updated MVD QR size: {new_size} for camera {self.current_camera}"
+        )
+
     def get_video_duration(self, video_file):
         try:
             cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", video_file]
@@ -174,18 +285,20 @@ class FrameSamplerTrigger:
             packing_area_offset: Tuple (x, y) offset of packing_area in full frame (for bbox calculation)
 
         Returns:
-            tuple: (state, mvd, mvd_bbox)
+            tuple: (state, mvd, mvd_bbox, packing_points)
                 - state: "On" if TimeGo detected in trigger area, else "Off"
                 - mvd: Mã vận đơn detected in packing area (empty string if none)
                 - mvd_bbox: Bounding box (x, y, w, h) in full-frame coordinates, or None
+                - packing_points: QR boundary points for empty event processing
         """
         try:
             if self.qr_detector is None:
-                return "Off", "", None
+                return "Off", "", None, None
 
             state = "Off"
             mvd = ""
             mvd_bbox = None
+            boundary_points = None
 
             # Detect TimeGo in trigger area (if provided)
             if frame_trigger is not None and frame_trigger.size > 0:
@@ -205,11 +318,28 @@ class FrameSamplerTrigger:
 
                 packing_texts, packing_points = self.qr_detector.detectAndDecode(frame_packing)
 
+                # Track MVD index for boundary points
+                mvd_index = None
+                non_timego_index = None  # Track first non-TimeGo QR (even if decode failed)
+
+                # DEBUG: Log all detected QR codes
+                if len(packing_texts) > 0:
+                    self.logger.debug(f"Frame {frame_count}: Detected {len(packing_texts)} QR codes, texts={packing_texts}")
+
                 # Process each detected QR code
                 for i, text in enumerate(packing_texts):
                     # Skip TimeGo if found in packing area (should be in trigger area)
-                    if text and text != "TimeGo":
+                    if text == "TimeGo":
+                        continue  # Skip TimeGo, check next QR
+
+                    # Track first non-TimeGo QR (even if text is empty = decode failed)
+                    if non_timego_index is None:
+                        non_timego_index = i
+
+                    # If text successfully decoded (not empty string)
+                    if text:
                         mvd = text
+                        mvd_index = i  # Track index for boundary points
 
                         # Calculate bounding box if points available and offset provided
                         if i < len(packing_points) and packing_area_offset is not None:
@@ -236,13 +366,29 @@ class FrameSamplerTrigger:
 
                                 self.logger.debug(f"QR bbox calculated: local=({bbox_x_local},{bbox_y_local},{bbox_w},{bbox_h}), "
                                                 f"offset=({offset_x},{offset_y}), full={mvd_bbox}")
-                        break
+                        break  # Found decoded MVD, stop searching
 
-            return state, mvd, mvd_bbox
+                # Return boundary points for empty event processing
+                # Priority: MVD decoded > MVD detected but not decoded
+                # PERFORMANCE OPTIMIZATION: Size filtering moved to _log_boundary()
+                if len(packing_points) > 0 and packing_area_offset is not None:
+                    if mvd_index is not None:
+                        # MVD decoded successfully → use its boundary
+                        boundary_points = packing_points[mvd_index]
+                        self.logger.debug(f"Frame {frame_count}: Using MVD boundary (mvd_index={mvd_index})")
+                    elif non_timego_index is not None:
+                        # MVD detected but decode failed → use non-TimeGo boundary
+                        boundary_points = packing_points[non_timego_index]
+                        self.logger.debug(f"Frame {frame_count}: Using non-TimeGo boundary (non_timego_index={non_timego_index}, decode failed)")
+                    else:
+                        self.logger.debug(f"Frame {frame_count}: Only TimeGo detected, skipping boundary")
+                    # else: Only TimeGo detected → boundary_points stays None (skip)
+
+            return state, mvd, mvd_bbox, boundary_points
 
         except Exception as e:
             self.logger.error(f"Error processing frame {frame_count}: {str(e)}")
-            return "Off", "", None
+            return "Off", "", None, None
 
     def _get_video_start_time(self, video_file, camera_name=None):
         """Get video start time from metadata (ffprobe/exiftool).
@@ -331,6 +477,19 @@ class FrameSamplerTrigger:
                     cursor.execute("INSERT INTO processed_logs (log_file, is_processed) VALUES (?, 0)", (log_file,))
         return log_file_handle
 
+    # ============== EMPTY EVENT PROCESSING METHODS ==============
+
+    # ============== EMPTY EVENT PROCESSING METHODS (REMOVED) ==============
+    # Methods _calculate_bbox_from_points, _should_buffer_boundary,
+    # _process_empty_event, and _log_boundary were removed because they were
+    # based on incorrect assumption that WeChat QR detectAndDecode() returns
+    # boundary points when decode fails. In reality, if decode fails, both
+    # texts and points are empty.
+    #
+    # For future Empty Event detection, implement alternative detection methods
+    # (template matching, edge detection, etc.) using expected_qr_size data.
+    # ============== END REMOVED SECTION ==============
+
     def run(self):
         while True:
             frame_sampler_event.wait()
@@ -364,6 +523,12 @@ class FrameSamplerTrigger:
                     cursor.execute("SELECT camera_name FROM file_list WHERE file_path = ?", (video_file,))
                     result = cursor.fetchone()
                     camera_name = result[0] if result and result[0] else "CamTest"
+
+            # Load QR sizes if camera changed (for size-based filtering)
+            if camera_name != self.current_camera:
+                self._load_qr_sizes(camera_name)
+                self.current_camera = camera_name
+
             video = cv2.VideoCapture(video_file)
             if not video.isOpened():
                 self.logger.error(f"Failed to open video '{video_file}'")
@@ -446,9 +611,13 @@ class FrameSamplerTrigger:
                     continue
 
                 # Process both ROIs separately (with packing_offset for bbox calculation)
-                state, mvd, mvd_bbox = process_frame_func(frame_packing, frame_trigger, frame_count, packing_offset)
+                state, mvd, mvd_bbox, boundary_points = process_frame_func(frame_packing, frame_trigger, frame_count, packing_offset)
                 second_in_video = (frame_count - 1) / self.fps
                 second = round(second_in_video)
+
+                # Cache successful bbox and update QR size
+                if mvd and mvd_bbox:
+                    self._update_mvd_qr_size(mvd_bbox)  # Auto-update QR size from successful decode
                 if second >= current_end_second and second < end_time:
                     log_file_handle.close()
                     current_start_second = current_end_second
@@ -488,6 +657,12 @@ class FrameSamplerTrigger:
                             final_state = "Off"
                         if final_state:
                             if final_state != last_state:
+                                # Detect Ts and Te transitions (kept for future use)
+                                if final_state == "Off":
+                                    self.logger.debug(f"Event transition: Ts at second {second}")
+                                elif final_state == "On":
+                                    self.logger.debug(f"Event transition: Te at second {second}")
+
                                 log_line = f"{second},{final_state},\n"
                                 log_file_handle.write(log_line)
                                 self.logger.info(f"Log second {second}: {frame_states_str}: {final_state}")
