@@ -8,8 +8,9 @@ Processing Strategy:
     1. Wait for system idle signal (file_list all processed)
     2. Query events marked with retry_needed=1
     3. For each empty event:
-       - Open video file and seek to event start time (ts)
-       - Scan frames from ts to te at full sampling (1fps = every frame)
+       - Open video file and seek to event midpoint (ts + duration/2)
+       - Scan frames from midpoint to te at full sampling (1fps = every frame)
+       - Optimized: Only scan second half where motion typically occurs
        - Detect MVD (no TimeGo check needed for retry)
        - Stop immediately when MVD found
        - Update database with result
@@ -70,7 +71,9 @@ class RetryEmptyEventProcessor:
             1. system_idle_event.wait() - Block until system idle
             2. Query events WHERE retry_needed=1
             3. For each event: process_single_event()
-            4. Log results
+               - Optimized: scan second half only (ts + duration/2 → te)
+               - Focus: motion detection zone typically near event end
+            4. Log results and recovery rate
             5. Clear system_idle_event to signal completion
             6. Repeat
         """
@@ -149,11 +152,16 @@ class RetryEmptyEventProcessor:
 
         Strategy:
             1. Open video file
-            2. SEEK: Jump to event start frame (ts * fps)
-            3. SCAN: Read frames from ts to te (every frame = 1fps)
+            2. SEEK: Jump to event midpoint frame (ts + duration/2 * fps)
+            3. SCAN: Read frames from midpoint to te (every frame = 1fps)
             4. DETECT: Try to detect MVD in each frame (no TimeGo check)
             5. STOP: Return immediately when MVD found
             6. UPDATE: Database with result
+
+        Optimization:
+            - Scan second half of event (ts + duration/2 → te)
+            - Reduces processing time by ~50%
+            - Focuses on motion detection zone (typically near end of event)
 
         Args:
             event_id: Event ID from database
@@ -173,12 +181,14 @@ class RetryEmptyEventProcessor:
                 self.update_event_failed(event_id)
                 return False
 
-            # SEEK: Jump directly to event start
-            start_frame = int(ts * self.fps)
+            # OPTIMIZATION: Scan second half of event (where motion typically occurs)
+            event_duration = te - ts
+            scan_start = ts + (event_duration / 2)  # Start from midpoint
+            start_frame = int(scan_start * self.fps)
             end_frame = int(te * self.fps)
             video.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
-            self.logger.info(f"🔄 Event {event_id}: seeking to frame {start_frame} ({ts}s) - end {end_frame} ({te}s)")
+            self.logger.info(f"🔄 Event {event_id}: scanning second half from frame {start_frame} ({scan_start:.1f}s) to {end_frame} ({te}s) [total {event_duration}s]")
 
             # Get packing area for this camera
             packing_area, _ = self.sampler.get_packing_area(camera_name)
@@ -192,7 +202,7 @@ class RetryEmptyEventProcessor:
             frame_count = start_frame
             found = False
 
-            # SCAN: ts → te (every frame)
+            # SCAN: midpoint → te (every frame, optimized second half)
             while frame_count <= end_frame:
                 ret, frame = video.read()
                 if not ret:

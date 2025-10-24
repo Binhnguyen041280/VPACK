@@ -12,6 +12,7 @@ from werkzeug.exceptions import BadRequest
 from modules.config.services.step4_roi_service import roi_video_service
 from modules.config.shared.error_handlers import handle_general_error
 from modules.config.shared.validation import validate_required_fields
+from modules.db_utils import find_project_root
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -479,7 +480,24 @@ def save_roi_configuration():
             
             conn.commit()
             conn.close()
-            
+
+            # ✅ Delete uploaded video file after successful configuration save
+            try:
+                if os.path.exists(video_path):
+                    # Security check: only delete files from uploads directory (using centralized path resolution)
+                    project_root = find_project_root(os.path.abspath(__file__))
+                    uploads_dir = os.path.join(project_root, 'var', 'uploads', 'videos')
+                    if os.path.abspath(video_path).startswith(os.path.abspath(uploads_dir)):
+                        os.remove(video_path)
+                        logger.info(f"✅ Deleted uploaded video file: {video_path}")
+                    else:
+                        logger.debug(f"⚠️ Video file outside uploads directory, not deleting: {video_path}")
+                else:
+                    logger.debug(f"Video file not found: {video_path}")
+            except Exception as delete_error:
+                logger.warning(f"⚠️ Failed to delete video file {video_path}: {delete_error}")
+                # Don't fail the entire operation if deletion fails
+
             config_data = {
                 'camera_id': camera_id,
                 'video_path': video_path,
@@ -497,6 +515,23 @@ def save_roi_configuration():
             
         except Exception as db_error:
             logger.error(f"Failed to save ROI to database: {db_error}")
+
+            # ✅ Still delete video file even if database save fails
+            try:
+                if os.path.exists(video_path):
+                    # Security check: only delete files from uploads directory (using centralized path resolution)
+                    project_root = find_project_root(os.path.abspath(__file__))
+                    uploads_dir = os.path.join(project_root, 'var', 'uploads', 'videos')
+                    if os.path.abspath(video_path).startswith(os.path.abspath(uploads_dir)):
+                        os.remove(video_path)
+                        logger.info(f"✅ Deleted uploaded video file (after DB error): {video_path}")
+                    else:
+                        logger.debug(f"⚠️ Video file outside uploads directory, not deleting: {video_path}")
+                else:
+                    logger.debug(f"Video file not found: {video_path}")
+            except Exception as delete_error:
+                logger.warning(f"⚠️ Failed to delete video file {video_path}: {delete_error}")
+
             # Still return success for validation, but note database error
             config_data = {
                 'camera_id': camera_id,
