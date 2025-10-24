@@ -24,6 +24,69 @@ def calculate_duration(ts, te):
         return None
     return te - ts
 
+def calculate_duration_with_cut(ts, te, tracking_codes, max_packing_time, min_packing_time):
+    """
+    Calculate duration with min/max clamp and CUT window strategy.
+
+    When duration exceeds max_packing_time:
+    - HAS tracking code: Center window at midpoint, adjust if out of bounds
+    - NO tracking code: Window from end (for PASS 3 retry)
+
+    Returns:
+        tuple: (ts_cut, te_cut, duration)
+            - ts_cut, te_cut: Time window boundaries
+            - duration: Clamped duration [min, max]
+    """
+    if ts is None or te is None or te < ts:
+        return ts, te, None
+
+    detected_duration = te - ts
+
+    # Step 1: Clamp duration [min, max]
+    duration = detected_duration
+    if duration < min_packing_time:
+        duration = min_packing_time
+    if duration > max_packing_time:
+        duration = max_packing_time
+
+    # Step 2: Calculate CUT window if exceeded max
+    if detected_duration > max_packing_time:
+        if tracking_codes:
+            # Has tracking code: Center window at midpoint
+            midpoint = ts + (detected_duration / 2)
+            half_window = max_packing_time / 2
+
+            ts_candidate = midpoint - half_window
+            te_candidate = midpoint + half_window
+
+            # Adjust if out of bounds
+            if ts_candidate < ts:
+                # Shift right
+                ts_cut = ts
+                te_cut = ts + max_packing_time
+            elif te_candidate > te:
+                # Shift left
+                te_cut = te
+                ts_cut = te - max_packing_time
+            else:
+                # Within bounds
+                ts_cut = ts_candidate
+                te_cut = te_candidate
+
+            # Final clamp to ensure within [ts, te]
+            ts_cut = max(ts_cut, ts)
+            te_cut = min(te_cut, te)
+        else:
+            # No tracking code: Window from end (for PASS 3 retry)
+            ts_cut = max(ts, te - max_packing_time)
+            te_cut = te
+    else:
+        # Not exceeding max: keep original
+        ts_cut = ts
+        te_cut = te
+
+    return ts_cut, te_cut, duration
+
 def parse_qr_detections_from_log(log_file_path, event_ts):
     """
     Parse QR detections with bbox from log file.
@@ -173,11 +236,12 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
             except Exception as e:
                 logger.info(f"Error parsing line '{line.strip()}': {str(e)}")
 
-    # Get min_packing_time from Processing_config
-    cursor.execute("SELECT min_packing_time FROM Processing_config LIMIT 1")
-    min_packing_time_row = cursor.fetchone()
-    min_packing_time = min_packing_time_row[0] if min_packing_time_row else 5
-    logger.info(f"Min packing time: {min_packing_time}")
+    # Get min_packing_time and max_packing_time from Processing_config
+    cursor.execute("SELECT min_packing_time, max_packing_time FROM Processing_config LIMIT 1")
+    config_row = cursor.fetchone()
+    min_packing_time = config_row[0] if config_row else 10
+    max_packing_time = config_row[1] if config_row else 120
+    logger.info(f"Min packing time: {min_packing_time}, Max packing time: {max_packing_time}")
 
     # Get latest pending_event by ts
     cursor.execute("SELECT event_id, ts, tracking_codes, video_file FROM events WHERE te IS NULL AND camera_name = ? ORDER BY event_id DESC LIMIT 1", (camera_name,))
@@ -205,10 +269,21 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
                 # Tách tracking_codes thành các sự kiện liên tiếp
                 all_tracking_codes = list(set(pending_tracking_codes + current_tracking_codes))
                 num_codes = len(all_tracking_codes) if all_tracking_codes else 1
-                duration_per_event = max(round((total_duration or 0) / num_codes), min_packing_time)  # Round and ensure >= min_packing_time
+
+                # Apply min/max clamp with CUT strategy
+                ts_cut, te_cut, duration_clamped = calculate_duration_with_cut(
+                    ts, te, all_tracking_codes, max_packing_time, min_packing_time
+                )
+
+                # For multiple codes, divide duration equally
+                if num_codes > 1:
+                    duration_per_event = max(round(duration_clamped / num_codes), min_packing_time)
+                else:
+                    duration_per_event = duration_clamped
+
                 total_duration = duration_per_event * num_codes  # Update total_duration
                 te = ts + total_duration if ts is not None else te
-                logger.info(f"Adjusted pending event: Ts={ts}, Te={te}, Duration per event set to {duration_per_event}")
+                logger.info(f"Adjusted pending event: Ts={ts}, Te={te}, Duration per event set to {duration_per_event}, (clamped from {total_duration}s)")
 
                 if pending_video_file == video_path:
                     current_ts = ts
@@ -252,10 +327,21 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
                 # Tách tracking_codes thành các sự kiện liên tiếp
                 all_tracking_codes = list(set(pending_tracking_codes + current_tracking_codes))  # Loại bỏ trùng lặp
                 num_codes = len(all_tracking_codes) if all_tracking_codes else 1
-                duration_per_event = max(round((total_duration or 0) / num_codes), min_packing_time)  # Round and ensure >= min_packing_time
+
+                # Apply min/max clamp with CUT strategy
+                ts_cut, te_cut, duration_clamped = calculate_duration_with_cut(
+                    ts, te, all_tracking_codes, max_packing_time, min_packing_time
+                )
+
+                # For multiple codes, divide duration equally
+                if num_codes > 1:
+                    duration_per_event = max(round(duration_clamped / num_codes), min_packing_time)
+                else:
+                    duration_per_event = duration_clamped
+
                 total_duration = duration_per_event * num_codes  # Update total_duration
                 te = ts + total_duration if ts is not None else te
-                logger.info(f"Adjusted event: Ts={ts}, Te={te}, Duration per event set to {duration_per_event}")
+                logger.info(f"Adjusted event: Ts={ts}, Te={te}, Duration per event set to {duration_per_event}, (clamped from {total_duration}s)")
 
                 if all_tracking_codes:
                     current_ts = ts
