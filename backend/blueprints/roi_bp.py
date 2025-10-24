@@ -102,22 +102,15 @@ def finalize_roi_endpoint():
         if not os.path.exists(video_path):
             return jsonify({"success": False, "error": "Đường dẫn video không tồn tại."}), 404
 
+        # Extract ROI areas from rois array (HTML5 Canvas approach)
         packing_area = [0, 0, 0, 0]
-        if os.path.exists("/tmp/roi.json"):
-            with open("/tmp/roi.json", "r") as f:
-                roi_data = json.load(f)
-                if roi_data.get("success") and "roi" in roi_data:
-                    packing_area = [roi_data["roi"]["x"], roi_data["roi"]["y"], roi_data["roi"]["w"], roi_data["roi"]["h"]]
-
         qr_trigger_area = [0, 0, 0, 0]
-        table_type = None
-        if os.path.exists("/tmp/qr_roi.json"):
-            with open("/tmp/qr_roi.json", "r") as f:
-                qr_roi_data = json.load(f)
-                table_type = qr_roi_data.get("table_type")
-                for roi in rois:
-                    if roi["type"] == "trigger" and table_type == "standard":
-                        qr_trigger_area = [roi["x"], roi["y"], roi["w"], roi["h"]]
+
+        for roi in rois:
+            if roi.get("type") == "packing":
+                packing_area = [roi.get("x", 0), roi.get("y", 0), roi.get("w", 0), roi.get("h", 0)]
+            elif roi.get("type") == "trigger":
+                qr_trigger_area = [roi.get("x", 0), roi.get("y", 0), roi.get("w", 0), roi.get("h", 0)]
 
         profile_name = camera_id
         with safe_db_connection() as conn:

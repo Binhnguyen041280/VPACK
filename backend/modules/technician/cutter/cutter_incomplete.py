@@ -1,6 +1,7 @@
 import os
 import subprocess
 from .cutter_utils import generate_merged_filename, generate_output_filename
+from modules.path_utils import get_tmp_dir
 
 def cut_incomplete_event(event, video_buffer, video_length, output_file):
     """Cut video for incomplete event (missing ts or te)."""
@@ -69,8 +70,8 @@ def merge_incomplete_events(event_a, event_b, video_buffer, video_length_a, vide
     temp_file_b = event_b.get("cut_video_file")
     files_to_cleanup = []
 
-    # Create temp_clips directory for temporary files
-    temp_clips_dir = os.path.join(os.path.dirname(output_dir), "temp_clips")
+    # Create temp_clips directory for temporary files in var/tmp
+    temp_clips_dir = os.path.join(get_tmp_dir(), "temp_clips")
     if not os.path.exists(temp_clips_dir):
         os.makedirs(temp_clips_dir)
 
@@ -114,7 +115,7 @@ def merge_incomplete_events(event_a, event_b, video_buffer, video_length_a, vide
     output_file = os.path.join(output_dir, f"{brand_name}_{tracking_str}_{time_str}.mp4")
 
     # Concatenate videos A and B
-    concat_list_file = os.path.join(output_dir, f"concat_list_{event_a.get('event_id')}.txt")
+    concat_list_file = os.path.join(get_tmp_dir(), f"concat_list_{event_a.get('event_id')}.txt")
     try:
         with open(concat_list_file, 'w') as f:
             f.write(f"file '{temp_file_a}'\nfile '{temp_file_b}'\n")

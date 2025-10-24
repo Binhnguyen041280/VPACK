@@ -2,7 +2,6 @@ import cv2
 import mediapipe as mp
 import time
 import logging
-import json
 import os
 import glob
 from datetime import datetime
@@ -11,15 +10,9 @@ from typing import Dict, Any, Optional
 # Define BASE_DIR
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-# Use var/logs for application logs
-from modules.path_utils import get_logs_dir
-log_dir = get_logs_dir()
-log_file_path = os.path.join(log_dir, f"hand_detection_{datetime.now().strftime('%Y-%m-%d')}.log")
-logging.basicConfig(
-    filename=log_file_path,
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# Use centralized logging from config
+from modules.config.logging_config import get_logger
+logger = get_logger(__name__)
 
 # Type-safe MediaPipe imports
 try:
@@ -147,17 +140,14 @@ def select_roi(video_path: str, camera_id: str, step: str = "packing") -> Dict[s
                         logging.error(f"Error detecting hand: {detect_result['error']}")
                         return {"success": False, "error": detect_result["error"]}
                     hand_detected = detect_result["hand_detected"]
-                
-                # Save ROI coordinates and hand_detected status to /tmp/roi.json
+
+                # Return ROI coordinates and hand_detected status (no longer save to roi.json)
                 result = {
                     "success": True,
                     "roi": {"x": x, "y": y, "w": w, "h": h},
                     "roi_frame": os.path.relpath(roi_frame_path, BASE_DIR),
                     "hand_detected": hand_detected
                 }
-                logging.debug(f"Saving ROI to /tmp/roi.json: {result}")
-                with open("/tmp/roi.json", "w") as f:
-                    json.dump(result, f)
 
                 logging.debug(f"Valid ROI: x={x}, y={y}, w={w}, h={h}, hand_detected: {hand_detected}")
                 return result

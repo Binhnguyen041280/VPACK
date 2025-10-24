@@ -35,6 +35,7 @@ from .db_sync import db_rwlock, frame_sampler_event, event_detector_event, syste
 from .file_lister import run_file_scan
 from .program_runner import start_frame_sampler_thread, start_event_detector_thread, start_retry_processor
 from .config.scheduler_config import SchedulerConfig
+from modules.utils.cleanup import cleanup_service
 
 logger = get_logger(__name__, {"module": "batch_scheduler"})
 logger.info("BatchScheduler logging initialized")
@@ -213,8 +214,11 @@ class BatchScheduler:
         self.sampler_threads = []
         self.detector_thread = None
         self.retry_thread = None
+        self.cleanup_thread = None
         self.pause_event = threading.Event()
         self.pause_event.set()  # Start in unpaused state
+        self.last_system_cleanup = 0  # Timestamp of last system cleanup
+        self.last_output_cleanup = 0  # Timestamp of last output cleanup
 
     def pause(self) -> None:
         """Pause the BatchScheduler, stopping new file processing.
@@ -346,6 +350,55 @@ class BatchScheduler:
             logger.error(f"❌ Error checking system idle: {e}")
             return False
 
+    def monitor_cleanup(self):
+        """Monitor and run cleanup tasks periodically.
+
+        Runs:
+        - System cleanup every 1 hour (logs, cache, old logs)
+        - Output cleanup every 24 hours (based on retention config)
+
+        This ensures the system doesn't accumulate excessive temporary files
+        that could eventually exhaust disk space.
+        """
+        logger.info("🧹 Cleanup monitor started")
+
+        while self.running:
+            try:
+                current_time = time.time()
+
+                # System cleanup - every 1 hour (3600 seconds)
+                if current_time - self.last_system_cleanup > 3600:
+                    threading.Thread(target=self._run_system_cleanup, daemon=True).start()
+                    self.last_system_cleanup = current_time
+
+                # Output cleanup - every 24 hours (86400 seconds)
+                if current_time - self.last_output_cleanup > 86400:
+                    threading.Thread(target=self._run_output_cleanup, daemon=True).start()
+                    self.last_output_cleanup = current_time
+
+                # Check every 5 minutes
+                time.sleep(300)
+
+            except Exception as e:
+                logger.error(f"❌ Error in cleanup monitor: {e}")
+                time.sleep(300)
+
+    def _run_system_cleanup(self):
+        """Execute system cleanup in background thread"""
+        try:
+            result = cleanup_service.cleanup_system_files()
+            logger.info(f"✅ System cleanup: {result['total_deleted']} files deleted, {result['total_freed_mb']:.2f} MB freed")
+        except Exception as e:
+            logger.error(f"❌ System cleanup error: {e}")
+
+    def _run_output_cleanup(self):
+        """Execute output cleanup in background thread"""
+        try:
+            result = cleanup_service.cleanup_output_files()
+            logger.info(f"✅ Output cleanup: {result.get('deleted', 0)} files deleted, {result.get('freed_mb', 0):.2f} MB freed")
+        except Exception as e:
+            logger.error(f"❌ Output cleanup error: {e}")
+
     def monitor_system_idle(self):
         """Monitor and signal when system becomes idle for PASS 3 retry.
 
@@ -469,10 +522,13 @@ class BatchScheduler:
             batch_thread = threading.Thread(target=self.run_batch)
             idle_monitor_thread = threading.Thread(target=self.monitor_system_idle, name="IdleMonitor")
             idle_monitor_thread.daemon = True  # Exit when main thread exits
+            cleanup_monitor_thread = threading.Thread(target=self.monitor_cleanup, name="CleanupMonitor")
+            cleanup_monitor_thread.daemon = True  # Exit when main thread exits
 
             scan_thread.start()
             batch_thread.start()
             idle_monitor_thread.start()
+            cleanup_monitor_thread.start()
 
             # Start PASS 3 retry processor (runs only when idle)
             if not self.retry_thread or not self.retry_thread.is_alive():

@@ -317,7 +317,7 @@ def select_qr_roi(video_path, camera_id, roi_frame_path, step="mvd"):
             logger.debug(f"[MVD] Waiting for thread ROI {threads.index(thread) + 1} to finish")
             thread.join()
 
-        # Save result to /tmp/qr_roi.json
+        # Build and return result
         result = {
             "success": True,
             "rois": rois,
@@ -329,15 +329,6 @@ def select_qr_roi(video_path, camera_id, roi_frame_path, step="mvd"):
             "trigger_detected": trigger_detected,
             "table_type": table_type
         }
-        logger.debug(f"[MVD] Saving result to /tmp/qr_roi.json: {result}")
-        try:
-            with open("/tmp/qr_roi.json", "w") as f:
-                json.dump(result, f)
-            logger.info("[MVD] Saved result to /tmp/qr_roi.json")
-        except Exception as e:
-            logger.error(f"[MVD] Error saving /tmp/qr_roi.json: {str(e)}\n{traceback.format_exc()}")
-            cv2.destroyAllWindows()
-            return {"success": False, "error": f"Error saving /tmp/qr_roi.json: {str(e)}"}
 
         logger.info(f"[MVD] Completed select_qr_roi for camera_id: {camera_id}, step: {step}")
         cv2.destroyAllWindows()

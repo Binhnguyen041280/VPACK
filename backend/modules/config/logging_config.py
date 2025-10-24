@@ -365,6 +365,10 @@ def setup_dual_logging(base_dir, app_name="app", general_level=logging.INFO, eve
     log_dir = get_logs_dir()
     is_dev = is_development_mode()
 
+    # === Create application subfolder ===
+    app_log_dir = os.path.join(log_dir, "application")
+    os.makedirs(app_log_dir, exist_ok=True)
+
     # Clear any existing handlers
     root_logger = logging.getLogger()
     root_logger.handlers.clear()
@@ -376,7 +380,7 @@ def setup_dual_logging(base_dir, app_name="app", general_level=logging.INFO, eve
     else:
         app_log_filename = f"{app_name}_{datetime.now().strftime('%Y%m%d')}.log"
 
-    app_log_path = os.path.join(log_dir, app_log_filename)
+    app_log_path = os.path.join(app_log_dir, app_log_filename)
 
     app_handler = SafeRotatingFileHandler(
         app_log_path,
@@ -405,7 +409,7 @@ def setup_dual_logging(base_dir, app_name="app", general_level=logging.INFO, eve
     else:
         event_log_filename = f"event_processing_{datetime.now().strftime('%Y%m%d')}.log"
 
-    event_log_path = os.path.join(log_dir, event_log_filename)
+    event_log_path = os.path.join(app_log_dir, event_log_filename)
 
     event_handler = SafeRotatingFileHandler(
         event_log_path,
