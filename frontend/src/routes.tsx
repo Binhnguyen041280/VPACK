@@ -5,6 +5,7 @@ import {
   MdCode,
   MdTimeline,
   MdVideocam,
+  MdBuildCircle,
 } from 'react-icons/md';
 import { IoMdPerson } from 'react-icons/io';
 import { LuHistory } from 'react-icons/lu';
@@ -41,6 +42,13 @@ const routes: IRoute[] = [
     disabled: false,
     path: '/?config=camera',
     icon: <Icon as={MdVideocam} width="20px" height="20px" color="inherit" />,
+    collapse: false,
+  },
+  {
+    name: 'Camera Health',
+    disabled: false,
+    path: '/camera-health',
+    icon: <Icon as={MdBuildCircle} width="20px" height="20px" color="inherit" />,
     collapse: false,
   },
   {

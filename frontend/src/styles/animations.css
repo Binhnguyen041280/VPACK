@@ -16,3 +16,42 @@
 .company-name-blink {
   animation: companyNameBlink 0.8s ease-in-out infinite;
 }
+
+/* Camera Health CRITICAL alert - Blinking red */
+@keyframes camera-health-alert {
+  0% {
+    opacity: 1;
+    color: #F56565;
+    text-shadow: 0 0 10px rgba(245, 101, 101, 0.8);
+  }
+  50% {
+    opacity: 0.5;
+    color: #C53030;
+    text-shadow: 0 0 20px rgba(245, 101, 101, 0.4);
+  }
+  100% {
+    opacity: 1;
+    color: #F56565;
+    text-shadow: 0 0 10px rgba(245, 101, 101, 0.8);
+  }
+}
+
+.camera-health-alert {
+  animation: camera-health-alert 1s ease-in-out infinite !important;
+}
+
+/* Badge pulse animation for Camera Health critical alert */
+@keyframes pulse {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

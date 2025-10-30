@@ -309,6 +309,15 @@ function Chat(props: { apiKeyApp: string }) {
       // Skip redirect if user intentionally navigated to Camera Config
       if (configParam === 'camera') {
         console.log('🎯 User navigated to Camera Config - skipping auto-redirect');
+
+        // Check if step parameter is provided and set the configStep accordingly
+        const stepParam = searchParams.get('step');
+        if (stepParam && STEP_NUMBER_TO_KEY[stepParam]) {
+          const stepKey = STEP_NUMBER_TO_KEY[stepParam];
+          console.log(`📍 Setting config step to ${stepParam} (${stepKey})`);
+          setConfigStep(stepKey);
+        }
+
         setIsCheckingConfig(false); // Allow render
         return;
       }

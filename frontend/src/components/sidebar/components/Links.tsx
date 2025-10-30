@@ -18,12 +18,13 @@ import {
   Icon,
   ListItem,
   useColorModeValue,
+  Badge,
 } from '@chakra-ui/react';
 import { FaCircle } from 'react-icons/fa';
 import { IoMdAdd } from 'react-icons/io';
 import NavLink from '@/components/link/NavLink';
 import { IRoute } from '@/types/navigation';
-import { PropsWithChildren, useCallback } from 'react';
+import { PropsWithChildren, useCallback, useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
 import { useRoute } from '@/contexts/RouteContext';
@@ -38,7 +39,30 @@ export function SidebarLinks(props: SidebarLinksProps) {
   const pathname = usePathname();
   const { currentColors } = useColorTheme();
   const { companyName, isAnimating, currentRoute } = useRoute();
-  
+
+  // Health status state for Camera Health badge
+  const [healthStatus, setHealthStatus] = useState({ critical_count: 0 });
+
+  // Fetch health status summary on mount
+  useEffect(() => {
+    const fetchHealthStatus = async () => {
+      try {
+        const response = await fetch('http://localhost:8080/api/qr-detection/health-status-summary');
+        if (response.ok) {
+          const data = await response.json();
+          setHealthStatus(data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch health status:', error);
+      }
+    };
+
+    fetchHealthStatus();
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchHealthStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Animation class for company name
   const getAnimationProps = (isCompanyRoute: boolean) => {
     if (isCompanyRoute && isAnimating) {
@@ -235,9 +259,12 @@ export function SidebarLinks(props: SidebarLinksProps) {
                         alignItems="center"
                         justifyContent={collapsed ? "center" : "center"}
                       >
+                        {/* Icon - Red alert if Camera Health is CRITICAL */}
                         <Box
                           color={
-                            activeRoute(route.path.toLowerCase())
+                            route.name === 'Camera Health' && healthStatus.critical_count > 0
+                              ? '#F56565'  // Bright red
+                              : activeRoute(route.path.toLowerCase())
                               ? activeIcon
                               : inactiveColor
                           }
@@ -247,24 +274,60 @@ export function SidebarLinks(props: SidebarLinksProps) {
                           alignItems="center"
                           justifyContent="center"
                           flexShrink={0}
+                          className={
+                            route.name === 'Camera Health' && healthStatus.critical_count > 0
+                              ? 'camera-health-alert'
+                              : ''
+                          }
                         >
                           {route.icon}
                         </Box>
                         {!collapsed && (
-                          <Text
-                            me="auto"
-                            color={
-                              activeRoute(route.path.toLowerCase())
-                                ? activeColor
-                                : 'gray.500'
-                            }
-                            fontWeight="500"
-                            letterSpacing="0px"
-                            fontSize="sm"
-                            {...getAnimationProps(route.name === 'Alan_Go')}
-                          >
-                            {route.name === 'Alan_Go' ? companyName : route.name}
-                          </Text>
+                          <HStack spacing="8px" me="auto">
+                            {/* Text - Red alert if Camera Health is CRITICAL */}
+                            <Text
+                              color={
+                                route.name === 'Camera Health' && healthStatus.critical_count > 0
+                                  ? '#F56565'  // Bright red
+                                  : activeRoute(route.path.toLowerCase())
+                                  ? activeColor
+                                  : 'gray.500'
+                              }
+                              fontWeight={
+                                route.name === 'Camera Health' && healthStatus.critical_count > 0
+                                  ? '700'  // Bold when alert
+                                  : '500'
+                              }
+                              letterSpacing="0px"
+                              fontSize="sm"
+                              className={
+                                route.name === 'Camera Health' && healthStatus.critical_count > 0
+                                  ? 'camera-health-alert'
+                                  : ''
+                              }
+                              {...getAnimationProps(route.name === 'Alan_Go')}
+                            >
+                              {route.name === 'Alan_Go' ? companyName : route.name}
+                            </Text>
+                            {/* Critical Count Badge */}
+                            {route.name === 'Camera Health' && healthStatus.critical_count > 0 && (
+                              <Badge
+                                colorScheme="red"
+                                borderRadius="full"
+                                px="2"
+                                className="camera-health-alert"
+                                fontSize="xs"
+                                fontWeight="700"
+                                minW="20px"
+                                h="20px"
+                                display="flex"
+                                alignItems="center"
+                                justifyContent="center"
+                              >
+                                {healthStatus.critical_count}
+                              </Badge>
+                            )}
+                          </HStack>
                         )}
                       </Flex>
                     </NavLink>

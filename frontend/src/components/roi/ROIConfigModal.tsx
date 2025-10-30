@@ -21,13 +21,8 @@ import {
   Input,
   FormControl,
   FormLabel,
-  Alert,
-  AlertIcon,
-  AlertTitle,
-  AlertDescription,
   Spinner,
   Badge,
-  Divider,
   Tooltip,
   useColorModeValue,
   useToast
@@ -201,6 +196,27 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     isPlaying: false,
     currentTime: 0,
     duration: 0,
+  });
+
+  // Baseline info state - stores baseline metrics captured during QR preprocessing
+  const [baselineInfo, setBaselineInfo] = useState<{
+    available: boolean;
+    baselineSuccessRatePct: number;
+    detectedFrames: number;
+    totalFrames: number;
+    baselineId: number | null;
+    firstTimegoSec: number | null;
+    loading: boolean;
+    error: string | null;
+  }>({
+    available: false,
+    baselineSuccessRatePct: 0,
+    detectedFrames: 0,
+    totalFrames: 0,
+    baselineId: null,
+    firstTimegoSec: null,
+    loading: false,
+    error: null
   });
 
   // Calculate available viewport space for video display
@@ -1169,6 +1185,51 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
   }, []);
 
   // QR preprocessing progress polling
+  // Poll for baseline info from cache
+  const pollBaselineInfo = useCallback(async (cacheKey: string) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`http://localhost:8080/api/qr-detection/get-baseline-info/${cacheKey}`);
+        const result = await response.json();
+
+        if (result.success && result.baseline_available) {
+          clearInterval(pollInterval);
+          setBaselineInfo(prev => ({
+            ...prev,
+            available: true,
+            baselineSuccessRatePct: result.baseline_success_rate_pct || 0,
+            detectedFrames: result.detected_frames || 0,
+            totalFrames: result.total_frames || 0,
+            baselineId: result.baseline_id,
+            firstTimegoSec: result.first_timego_sec,
+            loading: false,
+            error: null
+          }));
+          console.log(`✅ Baseline captured: ${result.baseline_success_rate_pct?.toFixed(1)}% (${result.detected_frames}/${result.total_frames} frames)`);
+        } else if (!result.baseline_available && !result.success) {
+          // Still processing or not yet available
+          setBaselineInfo(prev => ({
+            ...prev,
+            loading: true
+          }));
+        }
+      } catch (error) {
+        console.error('Baseline polling error:', error);
+        // Continue polling even on error - might just be network issue
+      }
+    }, 1000); // Poll every 1 second for baseline (faster than QR preprocessing status)
+
+    // Stop polling after 60 seconds
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      setBaselineInfo(prev => ({
+        ...prev,
+        loading: false,
+        error: prev.available ? null : 'Baseline capture timeout'
+      }));
+    }, 60000);
+  }, []);
+
   const pollQRPreprocessingProgress = useCallback(async (cacheKey: string) => {
     const pollInterval = setInterval(async () => {
       try {
@@ -1229,6 +1290,14 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
     }
 
     try {
+      // Reset baseline info when starting new preprocessing
+      setBaselineInfo(prev => ({
+        ...prev,
+        available: false,
+        loading: true,
+        error: null
+      }));
+
       setQRPreprocessingState(prev => ({
         ...prev,
         isProcessing: true,
@@ -1258,17 +1327,21 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
         body: JSON.stringify({
           video_path: videoPath,
           roi_config: roi_orig,  // Send video coordinates
-          fps: 5
+          fps: 5,
+          camera_name: cameraId  // Pass camera name for baseline capture
         })
       });
 
       const result = await response.json();
-      
+
       if (result.success) {
         setQRPreprocessingState(prev => ({
           ...prev,
           cacheKey: result.cache_key
         }));
+
+        // Start polling for baseline info immediately
+        pollBaselineInfo(result.cache_key);
 
         if (result.status === 'completed') {
           // QR pre-processing already completed (cached)
@@ -1294,7 +1367,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
         error: error instanceof Error ? error.message : 'Unknown QR error'
       }));
     }
-  }, [videoMetadata, rois, packingMethod, videoPath, pollQRPreprocessingProgress, canvasDimensions]);
+  }, [videoMetadata, rois, packingMethod, videoPath, cameraId, pollQRPreprocessingProgress, pollBaselineInfo, canvasDimensions]);
 
   // Modified startPreprocessing to trigger both hand and QR preprocessing
   const startBothPreprocessing = useCallback(async () => {
@@ -1444,7 +1517,9 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
           trigger_qr_size: detectedTriggerQR ? {
             width: detectedTriggerQR.width,
             height: detectedTriggerQR.height
-          } : null
+          } : null,
+          // 🆕 QR Cache Key - for baseline retrieval
+          qr_cache_key: qrPreprocessingState.cacheKey || null
         })
       });
 
@@ -1453,13 +1528,35 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       }
 
       const saveResult = await saveResponse.json();
-      
+
       if (!saveResult.success) {
         throw new Error(saveResult.error || 'Configuration save failed');
       }
 
       // Success
-      // Configuration saved successfully - user will see modal close
+      // Configuration saved successfully - show toast with optional baseline info
+
+      // Build success message
+      let successMessage = '✅ ROI configuration saved successfully';
+
+      // Add baseline capture info if available
+      if (saveResult.baseline_captured && saveResult.baseline) {
+        const baseline = saveResult.baseline;
+        const successRate = baseline.success_rate_pct.toFixed(1);
+        const detected = baseline.detected_frames;
+        const total = baseline.total_frames;
+        successMessage = `✅ ROI saved! Baseline: ${successRate}% success rate (${detected}/${total} frames detected)`;
+      }
+
+      // Show success toast
+      toast({
+        title: 'Configuration Saved',
+        description: successMessage,
+        status: 'success',
+        duration: 5000,
+        isClosable: true,
+        position: 'top-right'
+      });
 
       // Call parent save handler
       onSave?.({
@@ -1467,7 +1564,9 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
         videoPath,
         rois,
         packingMethod,
-        videoMetadata
+        videoMetadata,
+        baseline_captured: saveResult.baseline_captured,
+        baseline: saveResult.baseline
       });
 
       // Close modal
@@ -1565,13 +1664,10 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                 {/* Header */}
                 <Box>
                   <Text fontSize={adaptiveConfig.fontSize.header} fontWeight="bold" color={textColor} mb={adaptiveConfig.spacing.item}>
-                    🎯 ROI Configuration
+                    ROI Configuration
                   </Text>
                   <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText}>
                     Camera: {cameraId}
-                  </Text>
-                  <Text fontSize={adaptiveConfig.fontSize.body} color={secondaryText}>
-                    Method: {packingMethod === 'traditional' ? 'Traditional Detection' : 'QR Code Detection'}
                   </Text>
                 </Box>
 
@@ -1580,14 +1676,11 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                 {/* ROI List */}
                 {rois.length > 0 && (
                   <Box>
-                    <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="medium" color={textColor} mb={adaptiveConfig.spacing.item}>
-                      Created ROIs ({rois.length})
-                    </Text>
                     <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
                       {rois.map((roi) => (
                         <Box
                           key={roi.id}
-                          p={adaptiveConfig.spacing.item}
+                          p="8px"
                           borderRadius="6px"
                           border="1px solid"
                           borderColor={selectedROIId === roi.id ? roi.color : borderColor}
@@ -1625,15 +1718,12 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                 {/* 🆕 QR BOUNDARY SIZE DETECTION - for Empty Event feature */}
                 {packingMethod === 'qr' && (detectedMVDQR || detectedTriggerQR) && (
                   <Box>
-                    <Text fontSize={adaptiveConfig.fontSize.title} fontWeight="medium" color={textColor} mb={adaptiveConfig.spacing.item}>
-                      📦 Detected QR Codes
-                    </Text>
                     <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
 
                       {/* Trigger QR */}
                       {detectedTriggerQR && (
                         <Box
-                          p={adaptiveConfig.spacing.item}
+                          p="8px"
                           borderRadius="6px"
                           border="1px solid"
                           borderColor="green.300"
@@ -1656,7 +1746,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                       {/* Shipping Label QR */}
                       {detectedMVDQR && (
                         <Box
-                          p={adaptiveConfig.spacing.item}
+                          p="8px"
                           borderRadius="6px"
                           border="1px solid"
                           borderColor="blue.300"
@@ -1680,140 +1770,92 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                   </Box>
                 )}
 
-                {/* Action Buttons */}
+                {/* Baseline Info - Both Traditional & QR */}
+                {rois.length > 0 && (
+                  <>
+                    {/* Baseline Loading Status */}
+                    {baselineInfo.loading && (
+                      <Box p="8px" bg="cyan.100" borderRadius="6px" mb="8px">
+                        <Text fontSize="xs" fontWeight="medium" mb="4px">
+                          📊 Capturing Baseline...
+                        </Text>
+                        <Flex align="center" gap="8px">
+                          <Spinner size="sm" color="cyan.600" />
+                          <Text fontSize="2xs" color={secondaryText}>
+                            Analyzing QR detection quality
+                          </Text>
+                        </Flex>
+                      </Box>
+                    )}
+
+                    {/* Baseline Success */}
+                    {baselineInfo.available && (
+                      <Box p="8px" bg="green.100" borderRadius="6px" mb="8px">
+                        <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="medium" color="green.800" mb="4px">
+                          ✅ Baseline Captured
+                        </Text>
+                        <VStack align="start" spacing="2px">
+                          <Text fontSize="2xs" color="green.700">
+                            <strong>Success Rate:</strong> {baselineInfo.baselineSuccessRatePct.toFixed(1)}%
+                          </Text>
+                          <Text fontSize="2xs" color="green.700">
+                            <strong>Frames:</strong> {baselineInfo.detectedFrames}/{baselineInfo.totalFrames}
+                          </Text>
+                          {baselineInfo.firstTimegoSec !== null && (
+                            <Text fontSize="2xs" color="green.700">
+                              <strong>QR Found At:</strong> {baselineInfo.firstTimegoSec.toFixed(2)}s
+                            </Text>
+                          )}
+                        </VStack>
+                      </Box>
+                    )}
+
+                    {/* Baseline Error */}
+                    {baselineInfo.error && !baselineInfo.available && (
+                      <Box p="8px" bg="orange.100" borderRadius="6px" mb="8px">
+                        <Text fontSize="xs" fontWeight="medium" color="orange.700" mb="2px">
+                          ⚠️ Baseline Info
+                        </Text>
+                        <Text fontSize="2xs" color="orange.600">
+                          {baselineInfo.error}
+                        </Text>
+                      </Box>
+                    )}
+                  </>
+                )}
+
+                {/* Action Buttons - Horizontal Layout */}
                 <VStack spacing={adaptiveConfig.spacing.item} align="stretch">
-                  <Button
-                    colorScheme="blue"
-                    size={adaptiveConfig.mode === 'compact' ? 'sm' : 'md'}
-                    onClick={handleSaveConfiguration}
-                    isLoading={isSaving}
-                    loadingText="Saving..."
-                    isDisabled={!allRequiredCompleted}
-                  >
-                    Save Configuration
-                  </Button>
-                  
-                  <Button
-                    variant="outline"
-                    size={adaptiveConfig.mode === 'compact' ? 'sm' : 'md'}
-                    onClick={onClose}
-                    isDisabled={isSaving}
-                  >
-                    Cancel
-                  </Button>
-                  
+                  <HStack spacing={adaptiveConfig.spacing.item} align="stretch">
+                    <Button
+                      colorScheme="blue"
+                      size={adaptiveConfig.mode === 'compact' ? 'sm' : 'md'}
+                      onClick={handleSaveConfiguration}
+                      isLoading={isSaving}
+                      loadingText="Saving..."
+                      isDisabled={!allRequiredCompleted}
+                      flex="1"
+                    >
+                      Save
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size={adaptiveConfig.mode === 'compact' ? 'sm' : 'md'}
+                      onClick={onClose}
+                      isDisabled={isSaving}
+                      flex="1"
+                    >
+                      Cancel
+                    </Button>
+                  </HStack>
+
                   {!allRequiredCompleted && (
                     <Text fontSize={adaptiveConfig.fontSize.small} color="orange.500" textAlign="center">
                       Complete all required steps to save
                     </Text>
                   )}
                 </VStack>
-
-                <Divider />
-
-                {/* Messages & Status - Highlighted Section */}
-                <Box p="12px" bg="blue.50" borderRadius="8px" border="2px solid" borderColor="blue.200">
-                  <Text fontSize="sm" fontWeight="bold" color="blue.800" mb="8px">
-                    📋 Status & Instructions
-                  </Text>
-
-                  {/* Error Alert */}
-                  {error && (
-                    <Alert status="error" size="sm" borderRadius="6px" mb="8px">
-                      <AlertIcon boxSize="14px" />
-                      <Box>
-                        <AlertTitle fontSize="xs">Error!</AlertTitle>
-                        <AlertDescription fontSize="xs">{error}</AlertDescription>
-                      </Box>
-                    </Alert>
-                  )}
-
-                  {/* Instructions */}
-                  {rois.length === 0 && (
-                    <Box p="8px" bg="gray.50" borderRadius="6px" mb="8px">
-                      <Text fontSize="xs" color={secondaryText}>
-                        💡 Click and drag on the video to create ROI rectangles. 
-                        Double-click an existing ROI to delete it.
-                      </Text>
-                    </Box>
-                  )}
-
-                  {/* Pre-processing Status */}
-                  {rois.length > 0 && videoMetadata && packingMethod === 'traditional' && (
-                    <>
-                      {preprocessingState.isProcessing && (
-                        <Box p="8px" bg="blue.100" borderRadius="6px" mb="8px">
-                          <Text fontSize="xs" fontWeight="medium" mb="4px">
-                            🤖 Processing hand analysis...
-                          </Text>
-                          <Box w="100%" bg="gray.200" borderRadius="2px" h="4px" mb="4px">
-                            <Box 
-                              w={`${preprocessingState.progress}%`} 
-                              bg="blue.500" 
-                              borderRadius="2px" 
-                              h="100%" 
-                              transition="width 0.3s ease"
-                            />
-                          </Box>
-                          <Text fontSize="2xs" color={secondaryText}>
-                            Progress: {preprocessingState.progress.toFixed(1)}%
-                          </Text>
-                        </Box>
-                      )}
-
-                      {/* Waiting for analysis message */}
-                      {isWaitingForAnalysis && (
-                        <Box p="8px" bg="orange.100" borderRadius="6px" mb="8px">
-                          <Text fontSize="xs" fontWeight="medium" color="orange.700" mb="2px">
-                            ⏳ Đang phân tích...
-                          </Text>
-                          <Text fontSize="2xs" color="orange.600">
-                            Video tạm dừng, chờ phân tích hoàn tất
-                          </Text>
-                        </Box>
-                      )}
-
-                      {preprocessingState.completed && !isVideoPlaying && !isWaitingForAnalysis && (
-                        <Box p="8px" bg="green.100" borderRadius="6px" mb="8px">
-                          <Text fontSize="xs" fontWeight="medium" color="green.700" mb="2px">
-                            ✅ Analysis Ready
-                          </Text>
-                          <Text fontSize="2xs" color="green.600">
-                            Press Play to see results!
-                          </Text>
-                        </Box>
-                      )}
-
-                      {preprocessingState.error && (
-                        <Box p="8px" bg="red.100" borderRadius="6px" mb="8px">
-                          <Text fontSize="xs" fontWeight="medium" color="red.700" mb="2px">
-                            ❌ Processing Error
-                          </Text>
-                          <Text fontSize="2xs" color="red.600" mb="4px">
-                            {preprocessingState.error}
-                          </Text>
-                          <Button size="xs" colorScheme="red" variant="outline" onClick={startPreprocessing}>
-                            Try Again
-                          </Button>
-                        </Box>
-                      )}
-
-                      {!preprocessingState.isProcessing && !preprocessingState.completed && !preprocessingState.error && rois.some(roi => roi.type === 'packing_area') && (
-                        <Box p="8px" bg="blue.100" borderRadius="6px" mb="8px">
-                          <Text fontSize="xs" fontWeight="medium" color="blue.700" mb="2px">
-                            🎯 ROI Created
-                          </Text>
-                          <Text fontSize="2xs" color="blue.600" mb="4px">
-                            Start hand detection processing
-                          </Text>
-                          <Button size="xs" colorScheme="blue" onClick={startPreprocessing}>
-                            Start Analysis
-                          </Button>
-                        </Box>
-                      )}
-                    </>
-                  )}
-                </Box>
 
               </VStack>
             </Box>
