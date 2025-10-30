@@ -145,7 +145,7 @@ def run_frame_sampler() -> None:
                         cursor = conn.cursor()
                         cursor.execute("SELECT status, is_processed FROM file_list WHERE file_path = ?", (video_file,))
                         result = cursor.fetchone()
-                    if result and (result[0] in ["Processing", "Done"] or result[1] == 1):
+                    if result and (result[0] in ["Processing", "Done", "health_check_failed"] or result[1] == 1):
                         logger.info(f"Skipping video {video_file}: already being processed or completed")
                         continue
 
@@ -241,42 +241,89 @@ def run_frame_sampler() -> None:
                             cursor = conn.cursor()
                             cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("Processing", video_file))
                         logger.debug(f"Updated status for {video_file} to 'Processing'")
-                    
+
+                    # STEP 4.5: RUN HEALTH CHECK BEFORE ALL BLOCKS (NEW FIX)
+                    # This ensures if health check is CRITICAL, ALL blocks are skipped
+                    # Not just the first block
+                    health_check_failed = False
+                    from modules.technician.camera_health_checker import should_run_health_check, run_health_check
+
+                    if should_run_health_check(camera_name):
+                        logger.info(f"[HEALTH] Running health check BEFORE processing blocks for {camera_name}")
+                        health_result = run_health_check(camera_name=camera_name, video_path=video_file)
+
+                        if health_result.get('success') and health_result.get('status') == 'CRITICAL':
+                            logger.error(f"[HEALTH] 🛑 Health check CRITICAL for {camera_name} - SKIPPING ALL BLOCKS")
+                            health_check_failed = True
+
+                            # Mark file as health check failed
+                            with db_rwlock.gen_wlock():
+                                with safe_db_connection() as conn:
+                                    cursor = conn.cursor()
+                                    health_metadata = json.dumps({
+                                        "health_check_required": True,
+                                        "health_check_done": True,
+                                        "health_check_status": "CRITICAL"
+                                    })
+                                    cursor.execute("""
+                                        UPDATE file_list
+                                        SET health_check_failed = 1,
+                                            health_check_message = ?,
+                                            status = 'health_check_failed'
+                                        WHERE file_path = ?
+                                    """, (health_metadata, video_file))
+                                    conn.commit()
+
+                            # Clear all remaining blocks to prevent processing
+                            while not work_block_queue.empty():
+                                work_block_queue.get()
+                            logger.error(f"[HEALTH] Cleared all work blocks for {video_file}")
+
                     # STEP 5: Process video blocks identified by IdleMonitor
                     log_file = None
-                    while not work_block_queue.empty():
-                        work_block = work_block_queue.get()
-                        start_time = work_block['start_time']
-                        end_time = work_block['end_time']
-                        logger.info(f"Processing video block: start_time={start_time}, end_time={end_time}")
-                        
-                        # Run frame sampling on the active video segment
-                        log_file = frame_sampler.process_video(
-                            video_file,
-                            video_lock=frame_sampler.video_lock,
-                            get_packing_area_func=frame_sampler.get_packing_area,
-                            process_frame_func=frame_sampler.process_frame,
-                            frame_interval=frame_sampler.frame_interval,
-                            start_time=start_time,
-                            end_time=end_time
-                        )
+                    if not health_check_failed:  # Only process if health check passed
+                        while not work_block_queue.empty():
+                            work_block = work_block_queue.get()
+                            start_time = work_block['start_time']
+                            end_time = work_block['end_time']
+                            logger.info(f"Processing video block: start_time={start_time}, end_time={end_time}")
+
+                            # ✅ Run frame sampling on the active video segment
+                            # MUST be INSIDE loop to process ALL blocks, not just last one!
+                            log_file = frame_sampler.process_video(
+                                video_file,
+                                video_lock=frame_sampler.video_lock,
+                                get_packing_area_func=frame_sampler.get_packing_area,
+                                process_frame_func=frame_sampler.process_frame,
+                                frame_interval=frame_sampler.frame_interval,
+                                start_time=start_time,
+                                end_time=end_time
+                            )
                     
                     # STEP 6: Update final processing status and trigger event detection
-                    with db_rwlock.gen_wlock():
-                        with safe_db_connection() as conn:
-                            cursor = conn.cursor()
-                            if log_file:
-                                cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("Done", video_file))
-                                event_detector_event.set()  # Signal event detector that logs are ready
-                                logger.info(f"Video {video_file} processed successfully, log file: {log_file}")
-                            else:
-                                cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("Error", video_file))
-                                logger.error(f"Failed to process video {video_file}")
+                    # ✅ IMPORTANT: Only update if health check passed!
+                    # If health_check_failed, status already set to 'health_check_failed' in STEP 4.5
+                    if not health_check_failed:
+                        with db_rwlock.gen_wlock():
+                            with safe_db_connection() as conn:
+                                cursor = conn.cursor()
+                                if log_file:
+                                    cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("Done", video_file))
+                                    event_detector_event.set()  # Signal event detector that logs are ready
+                                    logger.info(f"Video {video_file} processed successfully, log file: {log_file}")
+                                else:
+                                    cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("Error", video_file))
+                                    logger.error(f"Failed to process video {video_file}")
                     
                     # STEP 7: Wait for event detector to process the generated logs
-                    logger.info(f"Frame Sampler pausing after processing {video_file}, waiting for Event Detector...")
-                    while not event_detector_done.is_set():
-                        time.sleep(1)  # Wait for event detector to complete log analysis
+                    # ✅ IMPORTANT: Only wait if processing happened (health check passed)
+                    # If health_check_failed, skip waiting to allow lock release
+                    if not health_check_failed:
+                        logger.info(f"Frame Sampler pausing after processing {video_file}, waiting for Event Detector...")
+                        while not event_detector_done.is_set():
+                            time.sleep(1)  # Wait for event detector to complete log analysis
+                    else:
+                        logger.info(f"Frame Sampler skipping Event Detector wait for {video_file} (health check failed)")
 
                 finally:
                     # Clean up video lock and remove from global locks dictionary

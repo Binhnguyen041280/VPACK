@@ -418,7 +418,21 @@ def save_files_to_db(conn: Any, video_files: List[str], file_ctimes: List[float]
                 logger.warning(f"Invalid camera_name '{camera_name}' detected, using CamTest")
                 camera_name = "CamTest"
         
-        # Prepare database record
+        # Check if health check required for this camera
+        from modules.technician.camera_health_checker import should_run_health_check
+        import json
+
+        health_check_needed = should_run_health_check(camera_name)
+
+        # Store health check metadata in JSON (but status stays 'pending')
+        health_metadata = json.dumps({
+            "health_check_required": health_check_needed,
+            "health_check_done": False,
+            "health_check_status": None,
+            "timestamp": datetime.now(_get_system_tz()).isoformat()
+        })
+
+        # Prepare database record - status always 'pending', health check tracked via metadata
         insert_data.append((
             scan_action,           # program_type
             days_val,             # days
@@ -428,8 +442,9 @@ def save_files_to_db(conn: Any, video_files: List[str], file_ctimes: List[float]
             file_ctime_dt,        # ctime
             priority,             # priority
             camera_name,          # camera_name
-            'pending',            # status
-            0                     # is_processed
+            'pending',            # status (always 'pending' - no status changes for health check)
+            0,                    # is_processed
+            health_metadata       # health_check_message (JSON with health_check_required flag)
         ))
 
     # Perform batch database insertion with duplicate check
@@ -455,8 +470,8 @@ def save_files_to_db(conn: Any, video_files: List[str], file_ctimes: List[float]
             else:
                 # File not in queue, safe to insert
                 cursor.execute('''
-                    INSERT INTO file_list (program_type, days, custom_path, file_path, created_at, ctime, priority, camera_name, status, is_processed)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO file_list (program_type, days, custom_path, file_path, created_at, ctime, priority, camera_name, status, is_processed, health_check_message)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', record)
                 inserted_count += 1
 

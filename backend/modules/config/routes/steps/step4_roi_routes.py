@@ -14,6 +14,12 @@ from modules.config.shared.error_handlers import handle_general_error
 from modules.config.shared.validation import validate_required_fields
 from modules.db_utils import find_project_root
 
+# Import QR baseline cache for retrieving cached baseline during save
+try:
+    from blueprints.qr_detection_bp import qr_baseline_cache
+except ImportError:
+    qr_baseline_cache = {}  # Fallback empty dict if import fails
+
 # Set up logging
 logger = logging.getLogger(__name__)
 
@@ -405,6 +411,32 @@ def save_roi_configuration():
                 else:
                     logger.info("ℹ️ No TimeGo QR detected - boundary size will be NULL (video may not show TimeGo QR)")
 
+            # ✅ RETRIEVE BASELINE from cache (captured during QR preprocessing)
+            baseline_captured = False
+            baseline_data = None
+
+            if packing_method == 'qr':
+                qr_cache_key = data.get('qr_cache_key')
+                if qr_cache_key:
+                    try:
+                        if qr_cache_key in qr_baseline_cache:
+                            baseline_info = qr_baseline_cache[qr_cache_key]
+                            baseline_captured = True
+                            baseline_data = {
+                                'baseline_success_rate_pct': baseline_info.get('baseline_success_rate_pct', 0),
+                                'detected_frames': baseline_info.get('detected_frames', 0),
+                                'total_frames': baseline_info.get('total_frames', 0),
+                                'baseline_id': baseline_info.get('baseline_id'),
+                                'first_timego_sec': baseline_info.get('first_timego_sec')
+                            }
+                            logger.info(f"✅ Retrieved cached baseline: {baseline_data['baseline_success_rate_pct']:.1f}%")
+                        else:
+                            logger.warning(f"⚠️ Baseline cache not found for key: {qr_cache_key}. Available keys: {list(qr_baseline_cache.keys())}")
+                    except Exception as baseline_error:
+                        logger.warning(f"⚠️ Error retrieving baseline from cache: {baseline_error}")
+                else:
+                    logger.info("ℹ️ No QR cache key provided - baseline will not be included")
+
             # Create profile name based on camera (no timestamp for consistent lookup)
             profile_name = camera_id
             
@@ -510,9 +542,14 @@ def save_roi_configuration():
                 'database_table': 'packing_profiles',
                 'profile_name': profile_name,
                 'packing_area_saved': packing_area_roi is not None,
-                'qr_trigger_saved': qr_trigger_roi is not None
+                'qr_trigger_saved': qr_trigger_roi is not None,
+                'baseline_captured': baseline_captured
             }
-            
+
+            # Add baseline info if captured
+            if baseline_data:
+                config_data['baseline'] = baseline_data
+
         except Exception as db_error:
             logger.error(f"Failed to save ROI to database: {db_error}")
 
@@ -543,8 +580,13 @@ def save_roi_configuration():
                 'status': 'configured',
                 'saved_to_database': False,
                 'database_table': 'packing_profiles',
-                'database_error': str(db_error)
+                'database_error': str(db_error),
+                'baseline_captured': baseline_captured
             }
+
+            # Add baseline info even if database save failed
+            if baseline_data:
+                config_data['baseline'] = baseline_data
         
         # Stop any active detection processes before completing save
         try:

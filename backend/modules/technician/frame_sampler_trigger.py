@@ -14,6 +14,12 @@ from zoneinfo import ZoneInfo
 import math
 from modules.config.logging_config import get_logger
 
+# Health check imports
+from modules.technician.camera_health_checker import (
+    should_run_health_check,
+    run_health_check
+)
+
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "models", "wechat_qr")
@@ -269,10 +275,16 @@ class FrameSamplerTrigger:
         with db_rwlock.gen_rlock():
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT file_path FROM file_list WHERE is_processed = 0 AND status != 'completed' ORDER BY priority DESC, created_at ASC")
+                # Exclude files that failed health checks (status='health_check_failed')
+                cursor.execute("""
+                    SELECT file_path FROM file_list
+                    WHERE is_processed = 0
+                    AND status NOT IN ('completed', 'health_check_failed')
+                    ORDER BY priority DESC, created_at ASC
+                """)
                 video_files = [row[0] for row in cursor.fetchall()]
         if not video_files:
-            self.logger.info("No video files found with is_processed = 0 and status != 'completed'.")
+            self.logger.info("No video files found (excluding completed and health_check_failed).")
         return video_files
 
     def process_frame(self, frame_packing, frame_trigger, frame_count, packing_area_offset=None):
@@ -509,6 +521,19 @@ class FrameSamplerTrigger:
     def process_video(self, video_file, video_lock, get_packing_area_func, process_frame_func, frame_interval, start_time=0, end_time=None):
         with video_lock:
             self.logger.info(f"Processing video: {video_file} from {start_time}s to {end_time}s")
+
+            # Safety check: Skip if this file already failed health check
+            with db_rwlock.gen_rlock():
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT health_check_failed, status FROM file_list WHERE file_path = ?", (video_file,))
+                    result = cursor.fetchone()
+                    if result:
+                        health_check_failed, status = result
+                        if health_check_failed == 1 or status == 'health_check_failed':
+                            self.logger.error(f"[HEALTH] Skipping {video_file} - already marked as health_check_failed")
+                            return None
+
             if not os.path.exists(video_file):
                 self.logger.error(f"File '{video_file}' does not exist")
                 with db_rwlock.gen_wlock():
@@ -528,6 +553,130 @@ class FrameSamplerTrigger:
             if camera_name != self.current_camera:
                 self._load_qr_sizes(camera_name)
                 self.current_camera = camera_name
+
+            # ========== HEALTH CHECK AT START OF PROCESS_VIDEO ==========
+            # Read health check metadata (set by file_lister)
+            with db_rwlock.gen_rlock():
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT health_check_message, health_check_failed FROM file_list WHERE file_path = ?", (video_file,))
+                    result = cursor.fetchone()
+                    health_metadata_json = result[0] if result else '{}'
+                    health_check_failed = result[1] if result else 0
+
+            # Parse health metadata
+            try:
+                health_metadata = json.loads(health_metadata_json) if health_metadata_json else {}
+            except json.JSONDecodeError:
+                health_metadata = {}
+
+            # If health check is required and not yet done, execute it now
+            if health_metadata.get('health_check_required') and not health_metadata.get('health_check_done'):
+                self.logger.info(f"[HEALTH] Executing health check for {camera_name}")
+
+                # Run health check (new function handles baseline lookup, first TimeGo detection, and UPDATE logic)
+                health_result = run_health_check(
+                    camera_name=camera_name,
+                    video_path=video_file
+                )
+
+                if health_result.get('success'):
+                    # Update health metadata with result
+                    health_metadata.update({
+                        "health_check_done": True,
+                        "health_check_status": health_result.get('status'),
+                        "health_check_metrics": health_result.get('metrics'),
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    })
+                else:
+                    # Health check failed or skipped (no baseline)
+                    self.logger.warning(f"[HEALTH] ⚠️ Health check skipped for {camera_name}: {health_result.get('error')}")
+                    health_metadata.update({
+                        "health_check_done": False,
+                        "health_check_error": health_result.get('error'),
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    })
+
+                if health_result.get('success'):
+
+                    # Handle health check result
+                    if health_result.get('status') == 'CRITICAL':
+                        # CRITICAL (<70%) → PAUSE processing
+                        self.logger.error(f"[HEALTH] 🛑 CRITICAL - Pausing processing for {camera_name}")
+                        metrics = health_result.get('metrics', {})
+                        self.logger.error(f"[HEALTH] QR degradation: {metrics.get('qr_readable', {}).get('degradation_pct', 'N/A')}%")
+
+                        # Update file_list with health_check_failed=1 and mark as blocked (health_check_failed)
+                        # Mark as is_processed=1 to prevent re-queueing, but use special status to indicate health failure
+                        with db_rwlock.gen_wlock():
+                            with safe_db_connection() as conn:
+                                cursor = conn.cursor()
+                                cursor.execute("""
+                                    UPDATE file_list
+                                    SET health_check_failed = 1,
+                                        health_check_message = ?,
+                                        is_processed = 0,
+                                        status = 'health_check_failed'
+                                    WHERE file_path = ?
+                                """, (json.dumps(health_metadata), video_file))
+                                conn.commit()
+
+                        # STOP processing this video
+                        self.logger.error(f"[HEALTH] Skipping video {video_file} due to CRITICAL health check")
+                        return None
+
+                    elif health_result.get('status') == 'CAUTION':
+                        # CAUTION (70-84%) → Warning + Continue
+                        metrics = health_result.get('metrics', {})
+                        self.logger.warning(f"[HEALTH] ⚠️ CAUTION - QR degradation: {metrics.get('qr_readable', {}).get('degradation_pct', 'N/A')}%")
+
+                        # Mark health check done but keep health_check_failed=0
+                        with db_rwlock.gen_wlock():
+                            with safe_db_connection() as conn:
+                                cursor = conn.cursor()
+                                cursor.execute("""
+                                    UPDATE file_list
+                                    SET health_check_failed = 0,
+                                        health_check_message = ?
+                                    WHERE file_path = ?
+                                """, (json.dumps(health_metadata), video_file))
+                                conn.commit()
+
+                    elif health_result.get('status') == 'OK':
+                        # OK (≥85%) → Continue normally
+                        self.logger.info(f"[HEALTH] ✅ Camera health OK - no degradation detected")
+
+                        # Mark health check done, health_check_failed=0
+                        with db_rwlock.gen_wlock():
+                            with safe_db_connection() as conn:
+                                cursor = conn.cursor()
+                                cursor.execute("""
+                                    UPDATE file_list
+                                    SET health_check_failed = 0,
+                                        health_check_message = ?
+                                    WHERE file_path = ?
+                                """, (json.dumps(health_metadata), video_file))
+                                conn.commit()
+
+                else:
+                    # No TimeGo found - skip health check, continue processing
+                    self.logger.warning(f"[HEALTH] No TimeGo found - skipping health check, continuing processing")
+                    health_metadata["health_check_done"] = True
+                    health_metadata["health_check_status"] = "SKIPPED"
+                    health_metadata["health_check_message"] = "No TimeGo detected"
+
+                    with db_rwlock.gen_wlock():
+                        with safe_db_connection() as conn:
+                            cursor = conn.cursor()
+                            cursor.execute("""
+                                UPDATE file_list
+                                SET health_check_failed = 0,
+                                    health_check_message = ?
+                                WHERE file_path = ?
+                            """, (json.dumps(health_metadata), video_file))
+                            conn.commit()
+
+            # ========== END HEALTH CHECK ==========
 
             video = cv2.VideoCapture(video_file)
             if not video.isOpened():
