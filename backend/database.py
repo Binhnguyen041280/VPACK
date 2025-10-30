@@ -367,6 +367,91 @@ def update_database():
                 )
             """)
 
+            # 8.2. Camera Baseline Samples Table (for Health Check - captured during Step 4 ROI setup)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS camera_baseline_samples (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    camera_name TEXT NOT NULL UNIQUE,
+                    packing_profile_id INTEGER,
+
+                    -- Setup video info (from Step 4)
+                    setup_video_path TEXT,
+                    setup_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                    -- Baseline sampling window (3 seconds from first TimeGo detection)
+                    baseline_sample_start_sec REAL,  -- When first TimeGo detected
+                    baseline_sample_duration_sec REAL DEFAULT 3.0,
+
+                    -- ==================== GOLDEN METRIC ====================
+                    -- PRIMARY: QR detection success rate
+                    total_frames INTEGER DEFAULT 15,  -- 3 sec × 5fps
+                    qr_detected_count INTEGER NOT NULL,  -- Count of TimeGo detected
+                    baseline_success_rate REAL NOT NULL,  -- detected/total (0-1)
+                    baseline_success_rate_pct REAL NOT NULL,  -- % format
+
+                    -- ==================== TRIGGER ROI CONFIG ====================
+                    trigger_roi TEXT NOT NULL,  -- JSON: {"x": 700, "y": 500, "w": 150, "h": 150}
+
+                    -- ==================== DIAGNOSTIC METRICS (for root cause analysis) ====================
+                    -- These are captured but not used as PRIMARY metric for status
+                    diagnostic_blur_score REAL,
+                    diagnostic_brightness REAL,
+                    diagnostic_contrast REAL,
+                    diagnostic_ink_saturation REAL,
+                    diagnostic_ink_coverage REAL,
+                    diagnostic_edge_density REAL,
+                    diagnostic_edge_sharpness REAL,
+
+                    -- Status
+                    status TEXT DEFAULT 'active',  -- 'active' / 'archived'
+
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # 8.3. Camera Health Check Results Table (for comparing against baseline)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS camera_health_check_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    baseline_id INTEGER NOT NULL,
+                    camera_name TEXT NOT NULL,
+                    video_file TEXT,
+
+                    -- ==================== CURRENT METRICS (same protocol as baseline) ====================
+                    current_total_frames INTEGER DEFAULT 15,
+                    current_qr_detected_count INTEGER,
+                    current_success_rate REAL,
+                    current_success_rate_pct REAL,
+
+                    -- ==================== COMPARISON ====================
+                    baseline_success_rate_pct REAL,
+                    success_rate_degradation REAL,
+                    success_rate_degradation_pct REAL,
+
+                    -- ==================== STATUS & DIAGNOSIS ====================
+                    overall_status TEXT,  -- 'OK' / 'CAUTION' / 'CRITICAL'
+                    alert_severity TEXT,  -- 'INFO' / 'WARNING' / 'CRITICAL'
+                    primary_cause TEXT,  -- blur / lighting / ink_fading / none
+                    probable_causes TEXT,  -- JSON array
+
+                    -- ==================== DIAGNOSTICS ====================
+                    diagnostic_blur_score REAL,
+                    diagnostic_blur_degradation_pct REAL,
+                    diagnostic_brightness REAL,
+                    diagnostic_ink_saturation REAL,
+                    diagnostic_ink_degradation_pct REAL,
+
+                    alert_message TEXT,
+                    recommended_action TEXT,
+
+                    check_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                    FOREIGN KEY (baseline_id) REFERENCES camera_baseline_samples(id) ON DELETE CASCADE
+                )
+            """)
+
             # Add decode_success column for boundary extraction feature
             try:
                 cursor.execute("ALTER TABLE qr_detections ADD COLUMN decode_success INTEGER DEFAULT 1")
@@ -374,10 +459,68 @@ def update_database():
             except sqlite3.OperationalError:
                 pass  # Column already exists
 
+            # ==================== HEALTH CHECK FEATURE COLUMNS ====================
+
+            # Add health check columns to file_list
+            try:
+                cursor.execute("ALTER TABLE file_list ADD COLUMN health_check_failed INTEGER DEFAULT 0")
+                print("✅ Added health_check_failed column to file_list")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+            try:
+                cursor.execute("ALTER TABLE file_list ADD COLUMN health_check_message TEXT")
+                print("✅ Added health_check_message column to file_list")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+            # Add health check columns to camera_health_check_results
+            try:
+                cursor.execute("ALTER TABLE camera_health_check_results ADD COLUMN action_taken TEXT")
+                print("✅ Added action_taken column to camera_health_check_results")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+            try:
+                cursor.execute("ALTER TABLE camera_health_check_results ADD COLUMN check_type TEXT DEFAULT 'periodic'")
+                print("✅ Added check_type column to camera_health_check_results")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+            # Add QR trigger bbox columns (for QR position tracking)
+            try:
+                cursor.execute("ALTER TABLE camera_baseline_samples ADD COLUMN qr_trigger_bbox TEXT DEFAULT NULL")
+                print("✅ Added qr_trigger_bbox column to camera_baseline_samples")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+            try:
+                cursor.execute("ALTER TABLE camera_health_check_results ADD COLUMN qr_trigger_bbox TEXT DEFAULT NULL")
+                print("✅ Added qr_trigger_bbox column to camera_health_check_results")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
+            try:
+                cursor.execute("ALTER TABLE camera_health_check_results ADD COLUMN qr_position_offset_pct REAL DEFAULT NULL")
+                print("✅ Added qr_position_offset_pct column to camera_health_check_results")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
             # Create index for QR detections
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_qr_detections_event ON qr_detections(event_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_qr_detections_timestamp ON qr_detections(event_id, timestamp_seconds)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_qr_detections_decode_success ON qr_detections(decode_success, event_id)")
+
+            # Create indexes for camera baseline samples (health check feature)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_baseline_camera ON camera_baseline_samples(camera_name)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_baseline_status ON camera_baseline_samples(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_baseline_created ON camera_baseline_samples(created_at)")
+
+            # Create indexes for camera health check results
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_health_check_baseline ON camera_health_check_results(baseline_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_health_check_camera ON camera_health_check_results(camera_name)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_health_check_status ON camera_health_check_results(overall_status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_health_check_timestamp ON camera_health_check_results(check_timestamp)")
 
             # ==================== TIMEZONE MANAGEMENT TABLES ====================
             

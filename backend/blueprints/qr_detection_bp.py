@@ -1,5 +1,13 @@
 from flask import Blueprint, request, jsonify
 from modules.technician.qr_detector import detect_qr_at_time, preprocess_video_qr, detect_qr_from_image
+from modules.technician.camera_health_baseline import capture_baseline_from_step4
+from modules.technician.camera_health_checker import (
+    run_health_check,
+    get_latest_health_check,
+    get_baseline_by_camera,
+    evaluate_camera_health_checklist
+)
+from modules.db_utils.safe_connection import safe_db_connection
 import os
 import json
 import logging
@@ -18,6 +26,10 @@ logger = logging.getLogger(__name__)
 # Structure: {cache_key: {'detections': [...], 'metadata': {...}, 'expires_at': datetime}}
 qr_preprocessing_cache = {}
 qr_preprocessing_progress = {}  # Track progress for ongoing processing
+
+# Baseline capture cache - stores baseline metrics captured during QR preprocessing
+# Structure: {cache_key: {'baseline_success_rate_pct': float, 'detected_frames': int, 'total_frames': int, 'baseline_id': int, 'expires_at': datetime}}
+qr_baseline_cache = {}
 
 # ✅ FIXED: Use same path calculation as hand_detection_bp.py
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -81,12 +93,21 @@ def preprocess_qr_video():
                 "success": False,
                 "error": "No JSON data provided"
             }), 400
-        
+
         # Validate required parameters
         video_path = data.get('video_path')
         roi_config = data.get('roi_config')
         fps = data.get('fps', 5)  # Default 5fps
-        
+
+        # Optional parameters for baseline capture
+        camera_name = data.get('camera_name')
+        packing_profile_id = data.get('packing_profile_id')
+
+        if camera_name:
+            logger.info(f"[BASELINE] QR preprocessing will capture baseline for camera: {camera_name}")
+        else:
+            logger.warning(f"[BASELINE] No camera_name provided - baseline capture will be skipped")
+
         if not video_path:
             return jsonify({
                 "success": False,
@@ -156,7 +177,38 @@ def preprocess_qr_video():
                 "estimated_completion": progress_data.get('estimated_completion')
             }), 202  # 202 Accepted - Processing
         
-        # Start background processing
+        # ✅ OPTION B: Baseline capture runs in PARALLEL with QR preprocessing
+        # Baseline completes in ~5-10 seconds, doesn't wait for full video processing
+
+        def background_baseline_capture():
+            """Async baseline capture - runs independently of QR preprocessing"""
+            try:
+                logger.info(f"[BASELINE] Starting parallel baseline capture for {camera_name}")
+
+                baseline_result = capture_baseline_from_step4(
+                    camera_name=camera_name,
+                    video_path=video_path,
+                    trigger_roi=roi_config,
+                    packing_profile_id=packing_profile_id
+                )
+
+                # Cache baseline immediately
+                if baseline_result.get('success'):
+                    qr_baseline_cache[cache_key] = {
+                        'baseline_success_rate_pct': baseline_result.get('baseline_success_rate_pct', 0),
+                        'detected_frames': baseline_result.get('detected_frames', 0),
+                        'total_frames': baseline_result.get('total_frames', 0),
+                        'baseline_id': baseline_result.get('baseline_id'),
+                        'first_timego_sec': baseline_result.get('first_timego_sec'),
+                        'expires_at': datetime.now() + timedelta(minutes=30)
+                    }
+                    logger.info(f"[BASELINE] ✅ Baseline READY: {baseline_result.get('baseline_success_rate_pct', 0):.1f}% ({baseline_result.get('detected_frames', 0)}/{baseline_result.get('total_frames', 0)}) for {cache_key}")
+                else:
+                    logger.warning(f"[BASELINE] Baseline capture failed: {baseline_result.get('error', 'Unknown error')}")
+
+            except Exception as e:
+                logger.error(f"[BASELINE] Error in parallel baseline capture: {str(e)}", exc_info=True)
+
         def background_qr_processing():
             try:
                 # Initialize progress tracking - simplified
@@ -165,9 +217,12 @@ def preprocess_qr_video():
                     'started_at': datetime.now(),
                     'estimated_completion': None,
                     'processed_count': 0,
-                    'total_frames': 0
+                    'total_frames': 0,
+                    'camera_name': camera_name,  # Store for baseline capture
+                    'packing_profile_id': packing_profile_id,
+                    'roi_config': roi_config  # Store ROI config for baseline
                 }
-                
+
                 # Initialize main cache entry for progressive accumulation
                 qr_preprocessing_cache[cache_key] = {
                     'detections': [],  # Start with empty list to accumulate
@@ -180,24 +235,24 @@ def preprocess_qr_video():
                     'expires_at': datetime.now() + timedelta(minutes=30),
                     'processed_at': datetime.now()
                 }
-                
+
                 # Progress callback function - simplified with skip-to-end logic
                 def update_qr_progress(progress, processed_count, total_frames, new_detections=None):
                     # Check for cancellation flag and trigger skip-to-end
                     if cache_key not in qr_preprocessing_progress:
                         logger.info(f"QR preprocessing cancelled - progress tracking removed for {cache_key}")
                         raise Exception(f"QR preprocessing cancelled for {cache_key}")
-                    
+
                     if qr_preprocessing_progress[cache_key].get('cancelled', False):
                         logger.info(f"QR preprocessing skip-to-end triggered for {cache_key}")
                         raise Exception(f"QR preprocessing cancelled for {cache_key}")
-                    
+
                     qr_preprocessing_progress[cache_key].update({
                         'progress': progress,
                         'processed_count': processed_count,
                         'total_frames': total_frames
                     })
-                    
+
                     # Accumulate new detections into main cache (không overwrite)
                     if new_detections and len(new_detections) > 0:
                         if cache_key in qr_preprocessing_cache:
@@ -212,14 +267,14 @@ def preprocess_qr_video():
                             logger.debug(f"QR: Accumulated {len(new_detections)} new detections. Total: {total_detections} for {cache_key}")
                         else:
                             logger.warning(f"QR: Cache key {cache_key} not found during update")
-                
+
                 logger.info(f"Starting QR video pre-processing for cache key: {cache_key}")
-                
+
                 # Call the QR pre-processing function with progress callback
                 result = preprocess_video_qr(video_path, roi_config, fps, progress_callback=update_qr_progress)
-                
+
                 if result.get('success'):
-                    # Cache the results for 30 minutes
+                    # Cache the QR results for 30 minutes
                     expires_at = datetime.now() + timedelta(minutes=30)
                     qr_preprocessing_cache[cache_key] = {
                         'detections': result['detections'],
@@ -227,7 +282,7 @@ def preprocess_qr_video():
                         'expires_at': expires_at,
                         'processed_at': datetime.now()
                     }
-                    
+
                     total_qr_detections = sum(d.get('qr_count', 0) for d in result['detections'])
                     logger.info(f"QR pre-processing completed for {cache_key}: {len(result['detections'])} timeline entries, {total_qr_detections} QR detections cached")
                 else:
@@ -235,11 +290,11 @@ def preprocess_qr_video():
                         logger.info(f"QR pre-processing cancelled for {cache_key}: {result.get('error')}")
                     else:
                         logger.error(f"QR pre-processing failed for {cache_key}: {result.get('error')}")
-                
+
                 # Clean up progress tracking
                 if cache_key in qr_preprocessing_progress:
                     del qr_preprocessing_progress[cache_key]
-                    
+
             except Exception as e:
                 if "cancelled" in str(e).lower():
                     logger.info(f"Background QR processing cancelled for {cache_key}: {str(e)}")
@@ -247,10 +302,15 @@ def preprocess_qr_video():
                     logger.error(f"Background QR processing error for {cache_key}: {str(e)}")
                 if cache_key in qr_preprocessing_progress:
                     del qr_preprocessing_progress[cache_key]
-        
-        # Start processing in background thread
-        thread = threading.Thread(target=background_qr_processing, daemon=True)
-        thread.start()
+
+        # ✅ Start BOTH threads in parallel
+        # - Baseline thread completes in ~5-10 seconds (3 second sample)
+        # - QR preprocessing continues independently (30-60 seconds)
+        baseline_thread = threading.Thread(target=background_baseline_capture, daemon=True, name=f"baseline-{cache_key[:8]}")
+        baseline_thread.start()
+
+        qr_thread = threading.Thread(target=background_qr_processing, daemon=True, name=f"qr-{cache_key[:8]}")
+        qr_thread.start()
         
         return jsonify({
             "success": True,
@@ -787,6 +847,303 @@ def detect_qr_from_uploaded_image():
             "error": error_msg
         }), 500
 
+@qr_detection_bp.route('/get-baseline-info/<cache_key>', methods=['GET'])
+def get_baseline_info(cache_key: str):
+    """
+    Get cached baseline information captured during QR preprocessing
+
+    Response:
+    {
+        "success": bool,
+        "baseline_available": bool,
+        "baseline_success_rate_pct": float (if available),
+        "detected_frames": int (if available),
+        "total_frames": int (if available),
+        "baseline_id": int (if available),
+        "first_timego_sec": float (if available),
+        "error": str (if error)
+    }
+    """
+    try:
+        # Check if baseline is cached and not expired
+        if cache_key in qr_baseline_cache:
+            baseline_data = qr_baseline_cache[cache_key]
+
+            # Check expiration
+            if baseline_data.get('expires_at', datetime.now()) <= datetime.now():
+                del qr_baseline_cache[cache_key]
+                return jsonify({
+                    "success": False,
+                    "baseline_available": False,
+                    "error": "Baseline cache expired"
+                }), 404
+
+            # Return cached baseline
+            return jsonify({
+                "success": True,
+                "baseline_available": True,
+                "baseline_success_rate_pct": baseline_data.get('baseline_success_rate_pct', 0),
+                "detected_frames": baseline_data.get('detected_frames', 0),
+                "total_frames": baseline_data.get('total_frames', 0),
+                "baseline_id": baseline_data.get('baseline_id'),
+                "first_timego_sec": baseline_data.get('first_timego_sec')
+            }), 200
+
+        # Not cached
+        return jsonify({
+            "success": False,
+            "baseline_available": False,
+            "error": "No baseline found for this cache key"
+        }), 404
+
+    except Exception as e:
+        error_msg = f"Error getting baseline info: {str(e)}"
+        logger.error(error_msg)
+        return jsonify({
+            "success": False,
+            "baseline_available": False,
+            "error": error_msg
+        }), 500
+
+@qr_detection_bp.route('/camera-health-check', methods=['POST'])
+def camera_health_check():
+    """
+    Run health check for a camera
+
+    Request:
+    {
+        "camera_name": "Cam1_PackingTable",
+        "video_path": "/path/to/video.mp4"
+    }
+
+    Response:
+    {
+        "success": true,
+        "camera_name": "Cam1_PackingTable",
+        "baseline": {"success_rate_pct": 93.3},
+        "current": {"success_rate_pct": 86.7, "detected": 13, "total": 15},
+        "comparison": {"degradation_pct": -7.0, "status": "OK"},
+        "diagnosis": {"probable_causes": [], "primary_cause": null, "recommended_action": "..."},
+        "alert": {"severity": "INFO", "message": "QR success rate: 86.7%..."}
+    }
+    """
+    try:
+        data = request.get_json()
+        camera_name = data.get('camera_name')
+        video_path = data.get('video_path')
+
+        if not camera_name or not video_path:
+            return jsonify({
+                'success': False,
+                'error': 'camera_name and video_path required'
+            }), 400
+
+        if not os.path.exists(video_path):
+            return jsonify({
+                'success': False,
+                'error': f'Video not found: {video_path}'
+            }), 404
+
+        # Run health check
+        result = run_health_check(camera_name, video_path)
+
+        if result.get('success'):
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 400
+
+    except Exception as e:
+        error_msg = f"Health check error: {str(e)}"
+        logger.error(error_msg)
+        return jsonify({
+            'success': False,
+            'error': error_msg
+        }), 500
+
+
+@qr_detection_bp.route('/camera-health-status/<camera_name>', methods=['GET'])
+def get_camera_health_status(camera_name):
+    """
+    Get latest health status for a camera
+
+    Response:
+    {
+        "success": true,
+        "camera_name": "Cam1_PackingTable",
+        "baseline": {
+            "exists": true,
+            "success_rate_pct": 93.3
+        },
+        "latest_check": {
+            "current_success_rate_pct": 86.7,
+            "degradation_pct": -7.0,
+            "status": "OK",
+            "severity": "INFO",
+            "message": "QR success rate: 86.7% (baseline: 93.3%) - Degraded 7.0%",
+            "recommendation": "Monitor next check or restart system",
+            "timestamp": "2025-10-25T14:30:00"
+        }
+    }
+    """
+    try:
+        # Get baseline
+        baseline = get_baseline_by_camera(camera_name)
+        baseline_info = {
+            'exists': baseline is not None,
+            'success_rate_pct': baseline['baseline_success_rate_pct'] if baseline else None
+        }
+
+        # Get latest check
+        latest_check = get_latest_health_check(camera_name)
+
+        # ✅ Transform 'status' key to 'overall_status' for frontend consistency
+        if latest_check and 'status' in latest_check:
+            latest_check['overall_status'] = latest_check.pop('status')
+
+        result = {
+            'success': True,
+            'camera_name': camera_name,
+            'baseline': baseline_info,
+            'latest_check': latest_check
+        }
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        error_msg = f"Error getting health status: {str(e)}"
+        logger.error(error_msg)
+        return jsonify({
+            'success': False,
+            'error': error_msg
+        }), 500
+
+
+@qr_detection_bp.route('/cameras', methods=['GET'])
+def get_all_cameras():
+    """
+    Get all cameras with baseline information and latest health check status
+
+    Response:
+    [
+        {
+            "camera_name": "Cloud_Cam3",
+            "baseline_success_rate_pct": 93.3,
+            "status": "active",
+            "overall_status": "CRITICAL"  // Latest health check status
+        },
+        ...
+    ]
+    """
+    try:
+        from modules.db_utils.safe_connection import safe_db_connection
+
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT camera_name, baseline_success_rate_pct, status
+                FROM camera_baseline_samples
+                WHERE status = 'active'
+                ORDER BY camera_name
+            """)
+
+            rows = cursor.fetchall()
+            cameras = []
+
+            for row in rows:
+                camera_name = row[0]
+
+                # Get latest health check status for this camera
+                cursor.execute("""
+                    SELECT overall_status FROM camera_health_check_results
+                    WHERE camera_name = ?
+                    ORDER BY check_timestamp DESC
+                    LIMIT 1
+                """, (camera_name,))
+
+                health_result = cursor.fetchone()
+                overall_status = health_result[0] if health_result else None
+
+                cameras.append({
+                    'camera_name': camera_name,
+                    'baseline_success_rate_pct': row[1],
+                    'status': row[2],
+                    'overall_status': overall_status  # ✅ Latest health check status
+                })
+
+            return jsonify(cameras), 200
+
+    except Exception as e:
+        logger.error(f"Error getting cameras: {str(e)}")
+        return jsonify({
+            'error': f'Error getting cameras: {str(e)}'
+        }), 500
+
+
+@qr_detection_bp.route('/health-status-summary', methods=['GET'])
+def get_health_status_summary():
+    """
+    Get summary of camera health status (for sidebar badge)
+
+    Response:
+    {
+        "critical_count": 1,
+        "caution_count": 0,
+        "ok_count": 2,
+        "no_baseline_count": 0
+    }
+    """
+    try:
+        from modules.db_utils.safe_connection import safe_db_connection
+
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+
+            # Get latest health check for each active camera
+            cursor.execute("""
+                SELECT DISTINCT camera_name FROM camera_baseline_samples
+                WHERE status = 'active'
+            """)
+
+            cameras = [row[0] for row in cursor.fetchall()]
+
+            status_count = {
+                'CRITICAL': 0,
+                'CAUTION': 0,
+                'OK': 0,
+                'NO_BASELINE': 0
+            }
+
+            for camera_name in cameras:
+                # Get latest health check status
+                cursor.execute("""
+                    SELECT overall_status FROM camera_health_check_results
+                    WHERE camera_name = ?
+                    ORDER BY check_timestamp DESC
+                    LIMIT 1
+                """, (camera_name,))
+
+                result = cursor.fetchone()
+                if result:
+                    status = result[0]
+                    if status in status_count:
+                        status_count[status] += 1
+                else:
+                    status_count['NO_BASELINE'] += 1
+
+            return jsonify({
+                'critical_count': status_count['CRITICAL'],
+                'caution_count': status_count['CAUTION'],
+                'ok_count': status_count['OK'],
+                'no_baseline_count': status_count['NO_BASELINE']
+            }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting health status summary: {str(e)}")
+        return jsonify({
+            'error': f'Error getting health status summary: {str(e)}'
+        }), 500
+
+
 @qr_detection_bp.route('/health', methods=['GET'])
 def qr_health_check():
     """Health check endpoint for QR detection"""
@@ -802,6 +1159,7 @@ def qr_health_check():
                 "GET /preprocess-status/<cache_key> - Check preprocessing progress",
                 "POST /get-cached-qr - Get QR detections from cache by timestamp",
                 "POST /get-cached-trigger - Get QR trigger detections (search for 'TimeGo')",
+                "GET /get-baseline-info/<cache_key> - Get cached baseline info",
                 "POST /detect-qr-image - Detect QR codes from uploaded image",
                 "GET /test - Test QR detection with sample video",
                 "GET /health - Health check"
@@ -809,6 +1167,7 @@ def qr_health_check():
             "cache_status": {
                 "active_cache_entries": len(qr_preprocessing_cache),
                 "active_processing_jobs": len(qr_preprocessing_progress),
+                "active_baseline_cache_entries": len(qr_baseline_cache),
                 "total_cached_detections": sum(
                     len(cache_data.get('detections', []))
                     for cache_data in qr_preprocessing_cache.values()
@@ -817,13 +1176,15 @@ def qr_health_check():
             },
             "features": [
                 "5fps QR video preprocessing",
-                "Perfect timestamp synchronization", 
+                "Perfect timestamp synchronization",
                 "Dynamic QR bbox mapping to canvas",
                 "QR trigger detection for 'TimeGo' text",
                 "Trigger area ROI filtering",
                 "Automatic cache expiration",
                 "Background processing",
-                "WeChat QR model integration"
+                "WeChat QR model integration",
+                "Baseline capture during preprocessing",
+                "Baseline success rate calculation"
             ],
             "camera_roi_dir": CAMERA_ROI_DIR,
             "camera_roi_dir_exists": os.path.exists(CAMERA_ROI_DIR),
@@ -837,4 +1198,149 @@ def qr_health_check():
         return jsonify({
             "status": "unhealthy",
             "error": str(e)
+        }), 500
+
+
+# ==================== HEALTH CHECK RESUME ENDPOINT ====================
+
+@qr_detection_bp.route('/resume-processing', methods=['POST'])
+def resume_processing():
+    """
+    Resume processing after operator fixed camera.
+
+    When health check fails with CRITICAL status, processing is paused.
+    Operator fixes the camera (clean lens, adjust position, etc.) and clicks
+    "Fixed - Resume Processing" button, which calls this endpoint.
+
+    Flow:
+    1. Re-run health check immediately
+    2. If overall_status = OK → Resume processing (reset health_check_failed flag)
+    3. If overall_status = CRITICAL/CAUTION → Do NOT resume, return new status
+
+    Request JSON:
+        {
+            "camera_name": "Cam1"
+        }
+
+    Response (Success):
+        {
+            "success": true,
+            "message": "Health check passed! Processing resumed.",
+            "overall_status": "OK",
+            "videos_resumed": 3
+        }
+
+    Response (Failed):
+        {
+            "success": false,
+            "message": "Health check still CRITICAL. Please fix and try again.",
+            "overall_status": "CRITICAL"
+        }
+    """
+    try:
+        from modules.technician.camera_health_checker import run_health_check
+
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No JSON body provided'}), 400
+
+        camera_name = data.get('camera_name')
+        if not camera_name:
+            return jsonify({'success': False, 'error': 'camera_name required'}), 400
+
+        logger.info(f"[HEALTH] User clicked 'Fixed - Resume Processing' for {camera_name}")
+
+        # ✅ Step 1: Re-run health check immediately
+        logger.info(f"[HEALTH] Re-checking camera health for {camera_name}")
+
+        # Find latest video for this camera to re-check
+        # Status is 'health_check_failed' when health check CRITICAL (not 'Error')
+        with safe_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT file_path FROM file_list
+                WHERE camera_name = ? AND status = 'health_check_failed'
+                ORDER BY created_at DESC
+                LIMIT 1
+            """, (camera_name,))
+            result = cursor.fetchone()
+            video_path = result[0] if result else None
+
+        if not video_path:
+            logger.warning(f"[HEALTH] No failed video found for {camera_name}")
+            return jsonify({
+                'success': False,
+                'message': 'No video to re-check found',
+                'overall_status': 'NO_DATA'
+            }), 400
+
+        # Re-run health check
+        health_result = run_health_check(camera_name, video_path)
+
+        if not health_result.get('success'):
+            logger.error(f"[HEALTH] Health check re-run failed for {camera_name}")
+            return jsonify({
+                'success': False,
+                'message': 'Health check re-run failed',
+                'error': health_result.get('error')
+            }), 500
+
+        new_status = health_result.get('status')  # Note: run_health_check returns 'status', not 'overall_status'
+        logger.info(f"[HEALTH] Health check re-run result: {new_status}")
+
+        # ✅ Step 2: Check result and decide whether to resume
+        if new_status == 'OK':
+            # ✅ PASS - Resume processing
+            # NOTE: run_health_check() already updated camera_health_check_results table
+            # We only need to reset the failed videos in file_list here
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+
+                # Reset failed videos for this camera (include both 'Error' and 'health_check_failed' statuses)
+                # ✅ IMPORTANT: Set status = 'pending' (not 'Queued') to trigger full re-processing
+                # 'pending' status tells framework to run IdleMonitor from beginning again
+                cursor.execute("""
+                    UPDATE file_list
+                    SET status = 'pending',
+                        health_check_failed = 0,
+                        health_check_message = NULL,
+                        is_processed = 0
+                    WHERE camera_name = ? AND status IN ('Error', 'health_check_failed')
+                """, (camera_name,))
+
+                updated_count = cursor.rowcount
+                conn.commit()
+
+            logger.info(f"[HEALTH] ✅ Health check PASSED! Reset {updated_count} videos for {camera_name}")
+
+            # Trigger FrameSampler to pick up videos again
+            try:
+                from modules.scheduler.db_sync import frame_sampler_event
+                frame_sampler_event.set()
+                logger.info(f"[HEALTH] Triggered FrameSampler to resume processing")
+            except Exception as e:
+                logger.warning(f"[HEALTH] Could not trigger FrameSampler: {e}")
+
+            return jsonify({
+                'success': True,
+                'message': 'Health check passed! Processing resumed.',
+                'overall_status': 'OK',
+                'videos_resumed': updated_count
+            }), 200
+
+        else:
+            # ❌ FAIL - Do NOT resume, keep CRITICAL status
+            logger.error(f"[HEALTH] Health check FAILED! Status is still {new_status} for {camera_name}")
+
+            return jsonify({
+                'success': False,
+                'message': f'Health check still {new_status}. Please fix and try again.',
+                'overall_status': new_status
+            }), 200  # Return 200 because it's not an error, just a failed check
+
+    except Exception as e:
+        logger.error(f"[HEALTH] Error in resume_processing: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
         }), 500
