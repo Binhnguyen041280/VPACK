@@ -61,9 +61,15 @@ npm test
 
 ### Full System Startup
 ```bash
-# Use the startup script (updates database schema first)
-./backend/start.sh
-# This runs update_database.py then starts both backend and frontend concurrently
+# Start backend (terminal 1) - automatically updates database schema
+cd backend
+python3 app.py
+
+# Start frontend (terminal 2)
+cd frontend
+npm run dev
+
+# Or use VSCode tasks: Run "Run V_Track (Both)" task
 ```
 
 ### License System Commands
@@ -191,7 +197,8 @@ Key tables:
 2. Install backend dependencies: `pip install -r backend/requirements.txt`
 3. Install frontend dependencies: `cd frontend && npm install`
 4. Initialize database: `python3 backend/database.py`
-5. Start development: `./backend/start.sh` (handles database updates automatically)
+5. Start backend: `cd backend && python3 app.py` (automatically updates database)
+6. Start frontend: `cd frontend && npm run dev` (in separate terminal)
 
 The system will be available at:
 - Frontend: http://localhost:3000
@@ -323,7 +330,7 @@ FRONTEND_ROOT: /Users/annhu/vtrack_app/V_Track/frontend/
 - Cloud Functions must be deployed for license verification
 
 ### Database Schema Updates
-- `./backend/start.sh` automatically runs `update_database.py`
+- `app.py` automatically calls `update_database()` on startup
 - Database migrations are handled in `database.py:update_database()`
 - WAL mode enables concurrent access during video processing
 

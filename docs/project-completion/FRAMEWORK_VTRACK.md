@@ -415,11 +415,11 @@ scripts/
 
 | ID | Item | Definition of Done | Priority | Current |
 |----|------|-------------------|----------|---------|
-| P2.1 | start.sh | Start backend + frontend | 🔴 | ❌ MISSING |
+| P2.1 | start.sh | Start backend + frontend | ✅ | ❌ NOT NEEDED (use VSCode tasks or manual start) |
 | P2.2 | start_backend.sh | Start backend only | 🟡 | ⚠️ Manual |
 | P2.3 | start_frontend.sh | Start frontend only | 🟡 | ⚠️ Manual |
 | P2.4 | stop.sh | Stop servers gracefully | 🔴 | ❌ MISSING |
-| P2.5 | restart.sh | Restart servers | 🟢 | ❌ MISSING |
+| P2.5 | restart.sh | Restart servers | ✅ | ❌ NOT NEEDED (use VSCode tasks or manual restart) |
 | P2.6 | status.sh | Check servers running | 🟢 | ❌ MISSING |
 
 **Current:** Users must manually run `cd backend && python app.py` and `cd frontend && npm run dev`
@@ -863,7 +863,7 @@ scripts/
 ```bash
 scripts/
   ├── setup.sh           # One-time setup
-  ├── start.sh           # Start all servers
+  ├── start.sh           # ✅ REPLACED by VSCode tasks
   ├── stop.sh            # Stop servers
   ├── backup.sh          # Backup database
   └── restore.sh         # Restore from backup
@@ -880,7 +880,7 @@ scripts/
 ### Nice to Have (Priority 3):
 ```bash
 scripts/
-  ├── restart.sh         # Restart servers
+  ├── restart.sh         # ✅ REPLACED by VSCode tasks
   ├── logs.sh            # View logs
   └── test.sh            # Run tests
 ```
