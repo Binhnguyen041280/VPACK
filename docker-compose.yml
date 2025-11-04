@@ -31,8 +31,11 @@ services:
       - DB_BACKUP_PATH=/app/database/backups
       - LOG_FILE_PATH=/app/logs/vtrack.log
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      # Force development-style paths for logs/var directories (enables mounting to host)
-      - VTRACK_FORCE_DEV_PATHS=true
+      # Deployment mode configuration
+      - VTRACK_DEPLOYMENT_MODE=docker
+      - VTRACK_BASE_DIR=/app
+      # Legacy: Docker detection (auto-detected via /.dockerenv but explicit is better)
+      - VTRACK_IN_DOCKER=true
       - GOOGLE_DRIVE_CREDENTIALS_PATH=/app/credentials/google_drive_key.json
       - GOOGLE_DRIVE_FOLDER_ID=${GOOGLE_DRIVE_FOLDER_ID}
       - GOOGLE_DRIVE_AUTO_SYNC=${GOOGLE_DRIVE_AUTO_SYNC:-true}

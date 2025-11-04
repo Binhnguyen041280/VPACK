@@ -1,7 +1,7 @@
 import sqlite3
 import os
 import json
-from modules.db_utils import find_project_root
+from modules.path_utils import get_paths
 from modules.db_utils.safe_connection import safe_db_connection
 import time
 from datetime import datetime, timedelta
@@ -12,12 +12,11 @@ from typing import List, Dict, Any, Optional
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Xác định thư mục gốc của dự án
-BASE_DIR = find_project_root(os.path.abspath(__file__))
-
-# Đường dẫn cơ sở dữ liệu
-DB_DIR = os.path.join(BASE_DIR, "backend/database")
-DB_PATH = os.path.join(DB_DIR, "events.db")
+# Get centralized paths configuration
+paths = get_paths()
+BASE_DIR = paths["BASE_DIR"]
+DB_PATH = paths["DB_PATH"]
+DB_DIR = os.path.dirname(DB_PATH)
 
 # Đường dẫn mặc định - OS-aware paths for Canvas compatibility
 def get_default_storage_paths():
@@ -49,14 +48,14 @@ def get_default_storage_paths():
 # Get OS-specific paths
 INPUT_VIDEO_DIR, OUTPUT_CLIPS_DIR = get_default_storage_paths()
 
-# Fallback to project-relative paths if OS-specific paths fail
+# Fallback to var/ directory if OS-specific paths fail
 try:
     os.makedirs(os.path.dirname(INPUT_VIDEO_DIR), exist_ok=True)
     os.makedirs(os.path.dirname(OUTPUT_CLIPS_DIR), exist_ok=True)
 except (OSError, PermissionError):
-    print("⚠️ Cannot create OS-specific paths, falling back to project directories")
-    INPUT_VIDEO_DIR = os.path.join(BASE_DIR, "resources/Inputvideo")
-    OUTPUT_CLIPS_DIR = os.path.join(BASE_DIR, "resources/output_clips")
+    print("⚠️ Cannot create OS-specific paths, falling back to var/ directories")
+    INPUT_VIDEO_DIR = os.path.join(paths["VAR_DIR"], "input_videos")
+    OUTPUT_CLIPS_DIR = os.path.join(paths["VAR_DIR"], "output_clips")
 
 def get_db_connection():
     """

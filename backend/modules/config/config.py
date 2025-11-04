@@ -98,17 +98,12 @@ def init_app_and_config():
     # Initialize configuration
     init_config()
     
-    # ✅ FIX: Calculate DB_PATH for compatibility with app.py
-    try:
-        from modules.db_utils import find_project_root
-        BASE_DIR = find_project_root(os.path.abspath(__file__))
-        DB_PATH = os.path.join(BASE_DIR, "backend/database/events.db")
-    except ImportError:
-        # Fallback method
-        BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-        DB_PATH = os.path.join(BASE_DIR, "backend/database/events.db")
-    
-    logger.info(f"📍 DB_PATH calculated: {DB_PATH}")
+    # ✅ Use centralized path configuration
+    from modules.path_utils import get_paths
+    paths = get_paths()
+    DB_PATH = paths["DB_PATH"]
+
+    logger.info(f"📍 DB_PATH from centralized config: {DB_PATH}")
     
     # ✅ FIX: Return tuple (app, DB_PATH, logger) as expected by app.py
     return app, DB_PATH, logger
