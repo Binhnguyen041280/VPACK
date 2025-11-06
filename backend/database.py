@@ -77,18 +77,22 @@ def _ensure_storage_paths_initialized():
         return
 
     # Get OS-specific paths
-    INPUT_VIDEO_DIR, OUTPUT_CLIPS_DIR = get_default_storage_paths()
+    input_dir, output_dir = get_default_storage_paths()
 
     # Fallback to var/ directory if OS-specific paths fail
     try:
-        os.makedirs(os.path.dirname(INPUT_VIDEO_DIR), exist_ok=True)
-        os.makedirs(os.path.dirname(OUTPUT_CLIPS_DIR), exist_ok=True)
+        os.makedirs(os.path.dirname(input_dir), exist_ok=True)
+        os.makedirs(os.path.dirname(output_dir), exist_ok=True)
+        # Update globals with OS-specific paths
+        globals()['INPUT_VIDEO_DIR'] = input_dir
+        globals()['OUTPUT_CLIPS_DIR'] = output_dir
     except (OSError, PermissionError):
         print("⚠️ Cannot create OS-specific paths, falling back to var/ directories")
         # Ensure paths are initialized before accessing VAR_DIR
         _ensure_paths_initialized()
-        INPUT_VIDEO_DIR = os.path.join(paths["VAR_DIR"], "input_videos")
-        OUTPUT_CLIPS_DIR = os.path.join(paths["VAR_DIR"], "output_clips")
+        # Update globals with fallback paths
+        globals()['INPUT_VIDEO_DIR'] = os.path.join(paths["VAR_DIR"], "input_videos")
+        globals()['OUTPUT_CLIPS_DIR'] = os.path.join(paths["VAR_DIR"], "output_clips")
 
 def get_db_connection():
     """
@@ -182,10 +186,14 @@ def update_database():
             # Insert default data if empty
             cursor.execute("SELECT COUNT(*) FROM processing_config")
             if cursor.fetchone()[0] == 0:
+                # Ensure both path types are initialized before using them
+                _ensure_paths_initialized()
+                _ensure_storage_paths_initialized()
+
                 cursor.execute("""
                     INSERT INTO processing_config (
-                        id, input_path, output_path, storage_duration, min_packing_time, 
-                        max_packing_time, frame_rate, frame_interval, video_buffer, default_frame_mode, 
+                        id, input_path, output_path, storage_duration, min_packing_time,
+                        max_packing_time, frame_rate, frame_interval, video_buffer, default_frame_mode,
                         selected_cameras, db_path, run_default_on_start, multiple_sources_enabled, camera_paths
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (1, INPUT_VIDEO_DIR, OUTPUT_CLIPS_DIR, 30, 10, 120, 30, 5, 2, "default", "[]", DB_PATH, 0, 0, "{}"))
