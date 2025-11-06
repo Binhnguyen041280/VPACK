@@ -71,7 +71,7 @@ def get_paths():
             └── uploads/                 # User uploaded files
 
     Only BASE_DIR differs per mode:
-    - development: /path/to/V_Track/backend/
+    - development: /path/to/V_Track/ (project root, so var/ is at root)
     - docker: /app/
     - production: /path/to/executable/
     - installed: ~/.local/share/vtrack/ (or platform equivalent)
@@ -83,9 +83,8 @@ def get_paths():
 
     # Determine BASE_DIR based on deployment mode
     if mode == 'development':
-        # Development: Use backend/ subfolder as base
-        project_root = find_project_root(__file__)
-        base_dir = os.path.join(project_root, "backend")
+        # Development: Use project root as base (var/ at root, not backend/var/)
+        base_dir = find_project_root(__file__)
 
     elif mode == 'docker':
         # Docker: Use /app/ or custom base
@@ -109,14 +108,26 @@ def get_paths():
     # Build unified path structure
     var_dir = os.path.join(base_dir, "var")
 
+    # Database location depends on mode
+    if mode == 'development':
+        # Development: database is in backend/database/
+        db_path = os.path.join(base_dir, "backend", "database", "events.db")
+        backend_dir = os.path.join(base_dir, "backend")
+        frontend_dir = os.path.join(base_dir, "frontend")
+    else:
+        # Docker/Production/Installed: database at base_dir/database/
+        db_path = os.path.join(base_dir, "database", "events.db")
+        backend_dir = base_dir
+        frontend_dir = base_dir
+
     return {
         "BASE_DIR": base_dir,
         "DEPLOYMENT_MODE": mode,
         # Database
-        "DB_PATH": os.path.join(base_dir, "database", "events.db"),
+        "DB_PATH": db_path,
         # Code directories (for compatibility)
-        "BACKEND_DIR": base_dir,
-        "FRONTEND_DIR": base_dir,
+        "BACKEND_DIR": backend_dir,
+        "FRONTEND_DIR": frontend_dir,
         # Var subdirectories (unified structure)
         "VAR_DIR": var_dir,
         "CACHE_DIR": os.path.join(var_dir, "cache"),
