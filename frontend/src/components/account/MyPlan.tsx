@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useLicense } from '@/contexts/LicenseContext';
 import {
   VStack,
   HStack,
@@ -43,6 +44,7 @@ import LicenseActivationModal from './LicenseActivationModal';
 const MyPlan: React.FC = () => {
   const router = useRouter();
   const toast = useToast();
+  const license = useLicense();
   
   // Core state
   const [packages, setPackages] = useState<Record<string, PricingPackage>>({});
@@ -235,18 +237,21 @@ const MyPlan: React.FC = () => {
 
   // Handle license activation completion
   const handleActivationComplete = (licenseData: LicenseInfo) => {
-    // Update current license
+    // Update current license locally
     setCurrentLicense(licenseData);
-    
+
     // Reset payment flow
     setPaymentFlow({
       currentStep: 'packages',
       isProcessing: false
     });
-    
-    showNotification('License activated successfully! Redirecting to Trace page...', 'success');
-    
-    // Redirect to trace page
+
+    showNotification('License activated successfully! Refreshing license status...', 'success');
+
+    // Trigger license context refresh to sync with backend
+    license.refreshLicense();
+
+    // Redirect to trace page after refresh completes
     setTimeout(() => {
       router.push('/trace');
     }, 3000);

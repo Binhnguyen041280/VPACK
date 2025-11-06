@@ -45,26 +45,28 @@ const PricingPackagesGrid: React.FC<PricingPackagesGridProps> = ({
 
   // Check if user can purchase/upgrade to this package
   const canPurchasePackage = (packageCode: string) => {
-    if (!currentLicense) return true; // No license, can purchase anything
-    return currentLicense.package_type !== packageCode; // Can't purchase same package
+    // Allow purchase of any package, even if currently active
+    // User can renew/extend expired licenses or upgrade/downgrade plans
+    return true;
   };
 
   // Get button text based on current license and package
   const getButtonText = (packageCode: string) => {
     if (!currentLicense) return '💳 PURCHASE';
-    if (currentLicense.package_type === packageCode) return '✅ CURRENT PLAN';
-    
-    // Simple upgrade logic
-    const upgrades = {
-      'trial_24h': 'personal_1m',
-      'personal_1m': 'personal_1y',
-      'personal_1y': 'business_1y',
-      'business_1m': 'business_1y'
-    };
-    
+
+    const isSamePlan = currentLicense.package_type === packageCode;
+    const isExpired = currentLicense.daysRemaining !== null && currentLicense.daysRemaining <= 0;
+
+    // If same plan and NOT expired, show as current
+    if (isSamePlan && !isExpired) return '✅ CURRENT PLAN';
+
+    // If same plan but EXPIRED, allow renew
+    if (isSamePlan && isExpired) return '🔄 RENEW';
+
+    // Different plan - upgrade/downgrade logic
     const currentOrder = packageOrder.indexOf(currentLicense.package_type);
     const targetOrder = packageOrder.indexOf(packageCode);
-    
+
     if (targetOrder > currentOrder) return '🚀 UPGRADE';
     if (targetOrder < currentOrder) return '📦 DOWNGRADE';
     return '🔄 SWITCH';
@@ -73,11 +75,20 @@ const PricingPackagesGrid: React.FC<PricingPackagesGridProps> = ({
   // Get button color scheme
   const getButtonColorScheme = (packageCode: string) => {
     if (!currentLicense) return 'blue';
-    if (currentLicense.package_type === packageCode) return 'green';
-    
+
+    const isSamePlan = currentLicense.package_type === packageCode;
+    const isExpired = currentLicense.daysRemaining !== null && currentLicense.daysRemaining <= 0;
+
+    // Current active plan (not expired)
+    if (isSamePlan && !isExpired) return 'green';
+
+    // Expired plan (can renew)
+    if (isSamePlan && isExpired) return 'orange';
+
+    // Different plan
     const currentOrder = packageOrder.indexOf(currentLicense.package_type);
     const targetOrder = packageOrder.indexOf(packageCode);
-    
+
     if (targetOrder > currentOrder) return 'purple'; // Upgrade
     return 'blue'; // Downgrade or switch
   };
