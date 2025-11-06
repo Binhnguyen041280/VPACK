@@ -13,8 +13,12 @@ from pathlib import Path
 from typing import Dict, List
 import logging
 from modules.db_utils.safe_connection import safe_db_connection
+from modules.path_utils import get_paths
 
 logger = logging.getLogger(__name__)
+
+# Get centralized paths at module level
+paths = get_paths()
 
 
 class CleanupService:
@@ -53,8 +57,7 @@ class CleanupService:
 
     def _cleanup_application_logs(self) -> Dict:
         """Clean var/logs/application/ - keep 1 day + *_latest.log"""
-        base = Path(__file__).parent.parent.parent.parent
-        logs_dir = base / "var" / "logs" / "application"
+        logs_dir = Path(paths["LOGS_DIR"])
 
         return self._clean_directory(
             path=logs_dir,
@@ -66,8 +69,7 @@ class CleanupService:
 
     def _cleanup_cloud_cache(self) -> Dict:
         """Clean var/cache/cloud_downloads/ - keep 1 day"""
-        base = Path(__file__).parent.parent.parent.parent
-        cache_dir = base / "var" / "cache" / "cloud_downloads"
+        cache_dir = Path(paths["CLOUD_STAGING_DIR"])
 
         return self._clean_directory(
             path=cache_dir,
@@ -80,8 +82,7 @@ class CleanupService:
 
     def _cleanup_old_output_logs(self) -> Dict:
         """Clean resources/output_clips/LOG/ - delete ALL old logs"""
-        base = Path(__file__).parent.parent.parent.parent
-        old_logs = base / "resources" / "output_clips" / "LOG"
+        old_logs = Path(paths["BASE_DIR"]) / "resources" / "output_clips" / "LOG"
 
         return self._clean_directory(
             path=old_logs,
