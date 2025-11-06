@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, send_file, make_response
 from modules.technician.hand_detection import finalize_roi
+from modules.path_utils import get_paths
 import os
 import glob
 import json
@@ -10,10 +11,10 @@ roi_bp = Blueprint('roi', __name__)
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# ✅ CORRECTED: Path calculation to project root
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # Go up to project root V_Track/
-DB_PATH = os.path.join(BASE_DIR, "backend", "database", "events.db")
-CAMERA_ROI_DIR = os.path.join(BASE_DIR, "resources", "output_clips", "CameraROI")
+# Use centralized path configuration
+paths = get_paths()
+DB_PATH = paths["DB_PATH"]
+CAMERA_ROI_DIR = os.path.join(paths["VAR_DIR"], "cache", "roi_legacy")
 
 # ✅ FIXED: Proper OPTIONS handler with explicit return
 @roi_bp.before_request

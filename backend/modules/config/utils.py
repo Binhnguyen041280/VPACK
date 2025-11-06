@@ -8,6 +8,7 @@ to avoid code duplication and maintain DRY principle.
 import os
 import json
 from typing import List, Dict, Any, Optional
+from modules.path_utils import get_paths
 
 
 def get_working_path_for_source(source_type: str, source_name: str, source_path: str) -> str:
@@ -241,18 +242,19 @@ def extract_cameras_from_cloud_folders(folders: List[Dict[str, Any]]) -> List[st
 def load_config() -> Dict[str, str]:
     """
     Load configuration from config.json file or environment variables.
-    
+
     Returns:
         Configuration dictionary with default values
     """
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+    # Use centralized path configuration
+    paths = get_paths()
     default_config = {
-        "db_path": os.path.join(BASE_DIR, "database", "events.db"),
-        "input_path": os.path.join(BASE_DIR, "Inputvideo"),
-        "output_path": os.path.join(BASE_DIR, "output_clips")
+        "db_path": paths["DB_PATH"],
+        "input_path": os.path.join(paths["BASE_DIR"], "Inputvideo"),
+        "output_path": os.path.join(paths["BASE_DIR"], "output_clips")
     }
-    
-    CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
+
+    CONFIG_FILE = os.path.join(paths["BASE_DIR"], "config.json")
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
@@ -260,7 +262,7 @@ def load_config() -> Dict[str, str]:
         except Exception as e:
             print(f"Error loading config file: {e}")
             return default_config
-    
+
     return {
         "db_path": os.getenv("DB_PATH", default_config["db_path"]),
         "input_path": os.getenv("INPUT_PATH", default_config["input_path"]),

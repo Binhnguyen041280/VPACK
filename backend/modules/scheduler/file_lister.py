@@ -40,12 +40,15 @@ from modules.db_utils import find_project_root
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.config.logging_config import get_logger
 from modules.utils.simple_timezone import get_system_timezone_from_db
+from modules.path_utils import get_paths
 # Removed video_timezone_detector - using simple video detection
 from .db_sync import db_rwlock, retry_in_progress_flag
 from .config.scheduler_config import SchedulerConfig
 import subprocess
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Use centralized path configuration
+paths = get_paths()
+DB_PATH = paths["DB_PATH"]
 
 logger = get_logger(__name__, {"module": "file_lister"})
 logger.info("File lister logging initialized")
@@ -55,15 +58,12 @@ def _get_system_tz():
     return ZoneInfo(get_system_timezone_from_db())
 
 
-DB_PATH = os.path.join(BASE_DIR, "database", "events.db")
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-
 def get_db_path() -> str:
     """Get the configured database path from processing configuration.
-    
+
     Returns:
         str: Path to the events database file
-        
+
     Fallback:
         Returns default DB_PATH if configuration is not available or on error.
     """
@@ -78,7 +78,6 @@ def get_db_path() -> str:
         logger.error(f"Error getting DB_PATH: {e}")
         return DB_PATH
 
-DB_PATH = get_db_path()
 logger.info(f"Using DB_PATH: {DB_PATH}")
 
 def get_file_creation_time(file_path: str, camera_name: Optional[str] = None) -> datetime:

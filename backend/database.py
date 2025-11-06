@@ -26,11 +26,18 @@ def _ensure_paths_initialized():
     if _paths_initialized:
         return
 
-    paths = get_paths()
-    BASE_DIR = paths["BASE_DIR"]
-    DB_PATH = paths["DB_PATH"]
-    DB_DIR = os.path.dirname(DB_PATH)
-    _paths_initialized = True
+    # Get paths from centralized configuration
+    paths_dict = get_paths()
+
+    # Update global variables
+    globals()['paths'] = paths_dict
+    globals()['BASE_DIR'] = paths_dict["BASE_DIR"]
+    globals()['DB_PATH'] = paths_dict["DB_PATH"]
+    globals()['DB_DIR'] = os.path.dirname(paths_dict["DB_PATH"])
+    globals()['_paths_initialized'] = True
+
+    # Ensure database directory exists
+    os.makedirs(globals()['DB_DIR'], exist_ok=True)
 
 # Đường dẫn mặc định - OS-aware paths for Canvas compatibility
 def get_default_storage_paths():
@@ -1146,6 +1153,8 @@ def update_database():
             """)
 
             conn.commit()
+            # Use the initialized DB_PATH (from lazy init)
+            _ensure_paths_initialized()
             print(f"🎉 Database updated successfully at {DB_PATH}")
             print("✅ All 20 tables created successfully")
             print("✅ Platform management system implemented")
@@ -1459,5 +1468,6 @@ def cleanup_sync_integrity():
     return False
 
 if __name__ == "__main__":
+    _ensure_paths_initialized()
     os.makedirs(DB_DIR, exist_ok=True)
     update_database()

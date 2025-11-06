@@ -6,6 +6,7 @@ import os
 import sqlite3
 from datetime import datetime
 from modules.db_utils.safe_connection import safe_db_connection
+from modules.path_utils import get_paths
 from zoneinfo import ZoneInfo
 from modules.utils.simple_timezone import simple_validate_timezone, get_available_timezones, get_timezone_offset
 # Import db_rwlock conditionally to avoid circular imports
@@ -27,6 +28,10 @@ config_routes_bp = Blueprint('config_routes', __name__)
 
 # Load config using shared utility
 config = load_config()
+
+# Get centralized paths
+paths = get_paths()
+DB_PATH = paths["DB_PATH"]
 
 @config_routes_bp.route('/save-config', methods=['POST'])
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
@@ -123,16 +128,7 @@ def save_config():
                 except sqlite3.OperationalError:
                     pass  # Column already exists
                 
-                # Get DB_PATH
-                try:
-                    from modules.db_utils import find_project_root
-                    import os
-                    BASE_DIR = find_project_root(os.path.abspath(__file__))
-                    DB_PATH = os.path.join(BASE_DIR, "backend/database/events.db")
-                except ImportError:
-                    # Fallback to default database path
-                    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
-                    DB_PATH = os.path.join(BASE_DIR, "database", "events.db")
+                # Use centralized DB_PATH (already initialized at module level)
                 
                 # INSERT/UPDATE processing_config (all in same context)
                 cursor.execute("""

@@ -10,6 +10,7 @@ from io import BytesIO
 from typing import Dict, List, Any, Optional, Tuple
 from modules.db_utils import find_project_root
 from modules.db_utils.safe_connection import safe_db_connection
+from modules.path_utils import get_paths
 from ..utils.file_parser import parse_uploaded_file
 from modules.scheduler.db_sync import db_rwlock  # Thêm import db_rwlock
 from zoneinfo import ZoneInfo
@@ -23,12 +24,9 @@ from modules.license.license_guard import require_valid_license
 query_bp = Blueprint('query', __name__)
 logger = get_logger(__name__)
 
-# Xác định thư mục gốc của dự án
-BASE_DIR = find_project_root(os.path.abspath(__file__))
-
-# Định nghĩa DB_PATH dựa trên BASE_DIR
-DB_PATH = os.path.join(BASE_DIR, "database", "events.db")
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+# Use centralized path configuration
+paths = get_paths()
+DB_PATH = paths["DB_PATH"]
 
 @query_bp.route('/get-csv-headers', methods=['POST'])
 def get_csv_headers():

@@ -8,6 +8,7 @@ Uses existing processing_config table and save_config validation.
 import json
 import os
 from typing import Dict, Any, Tuple, Optional
+from modules.path_utils import get_paths
 from ..shared import (
     safe_connection_wrapper,
     execute_with_change_detection,
@@ -16,6 +17,10 @@ from ..shared import (
     sanitize_input,
     log_step_operation
 )
+
+# Get centralized paths at module level
+paths = get_paths()
+DB_PATH = paths["DB_PATH"]
 
 
 class Step5TimingService:
@@ -171,16 +176,8 @@ class Step5TimingService:
             with safe_connection_wrapper() as conn:
                 cursor = conn.cursor()
                 
-                # Get DB_PATH using same logic as save_config
-                try:
-                    from modules.db_utils import find_project_root
-                    BASE_DIR = find_project_root(os.path.abspath(__file__))
-                    DB_PATH = os.path.join(BASE_DIR, "backend/database/events.db")
-                except ImportError:
-                    # Fallback to default database path
-                    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
-                    DB_PATH = os.path.join(BASE_DIR, "database", "events.db")
-                
+                # Use centralized DB_PATH (already initialized at module level)
+
                 # Update using same pattern as save_config
                 cursor.execute("""
                     INSERT OR REPLACE INTO processing_config (

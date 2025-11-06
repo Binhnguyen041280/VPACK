@@ -41,19 +41,16 @@ from modules.db_utils import find_project_root
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.config.logging_config import get_logger
 from modules.utils.simple_timezone import get_system_timezone_from_db
+from modules.path_utils import get_paths, get_logs_dir
 from .file_lister import run_file_scan, get_db_path
 from .batch_scheduler import BatchScheduler
 from .db_sync import frame_sampler_event, event_detector_event
 
 program_bp = Blueprint('program', __name__)
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(BASE_DIR, "database", "events.db")
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-
-DB_PATH = get_db_path()
-# Use var/logs for application logs
-from modules.path_utils import get_logs_dir
+# Use centralized path configuration
+paths = get_paths()
+DB_PATH = paths["DB_PATH"]
 LOG_DIR = get_logs_dir()
 
 logger = get_logger(__name__, {"module": "program_api"})
