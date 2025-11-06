@@ -42,10 +42,28 @@ BASE_DIR = paths["BASE_DIR"]
 DEFAULT_DB_PATH = paths["DB_PATH"]
 # Debug print to help diagnose path issues
 print(f"DEBUG db_utils.py: __file__={__file__}, BASE_DIR={BASE_DIR}, DB_PATH={DEFAULT_DB_PATH}")
-os.makedirs(os.path.dirname(DEFAULT_DB_PATH), exist_ok=True)  # Tạo thư mục database nếu chưa có
+
+# Lazy initialization: All DB setup deferred until first use
+# This prevents creating wrong paths during early imports when deployment mode might not be finalized
+_db_initialized = False
+_cached_db_path = None
+
+def _ensure_db_initialized():
+    """Lazy initialization: Set up database directory when first needed"""
+    global _db_initialized, _cached_db_path
+    if _db_initialized:
+        return _cached_db_path
+
+    # Create database directory
+    os.makedirs(os.path.dirname(DEFAULT_DB_PATH), exist_ok=True)
+    _db_initialized = True
+    _cached_db_path = DEFAULT_DB_PATH
+    return _cached_db_path
 
 # Hàm lấy DB_PATH từ processing_config
 def get_db_path():
+    """Get database path, ensuring directory exists"""
+    _ensure_db_initialized()
     try:
         conn = sqlite3.connect(DEFAULT_DB_PATH)  # Kết nối tạm thời để truy vấn
         cursor = conn.cursor()
@@ -61,13 +79,16 @@ def get_db_path():
         print(f"Error getting DB_PATH from database: {e}")
         return DEFAULT_DB_PATH
 
-DB_PATH = get_db_path()
-
 def get_db_connection():
-    if not os.path.exists(DB_PATH):
-        raise FileNotFoundError(f"Database file not found: {DB_PATH}")
-    if not os.access(DB_PATH, os.R_OK):
-        raise PermissionError(f"No read permission for database: {DB_PATH}")
-    if not os.access(DB_PATH, os.W_OK):
-        raise PermissionError(f"No write permission for database: {DB_PATH}")
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
+    """Get database connection, ensuring database directory and file exist"""
+    # Lazy initialization on first access
+    _ensure_db_initialized()
+
+    db_path = get_db_path()
+    if not os.path.exists(db_path):
+        raise FileNotFoundError(f"Database file not found: {db_path}")
+    if not os.access(db_path, os.R_OK):
+        raise PermissionError(f"No read permission for database: {db_path}")
+    if not os.access(db_path, os.W_OK):
+        raise PermissionError(f"No write permission for database: {db_path}")
+    return sqlite3.connect(db_path, check_same_thread=False)

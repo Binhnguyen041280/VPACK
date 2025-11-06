@@ -12,11 +12,25 @@ from typing import List, Dict, Any, Optional
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Get centralized paths configuration
-paths = get_paths()
-BASE_DIR = paths["BASE_DIR"]
-DB_PATH = paths["DB_PATH"]
-DB_DIR = os.path.dirname(DB_PATH)
+# Lazy initialization: Defer path resolution until actually needed
+# This ensures deployment mode is finalized before we determine paths
+_paths_initialized = False
+paths = None
+BASE_DIR = None
+DB_PATH = None
+DB_DIR = None
+
+def _ensure_paths_initialized():
+    """Lazy initialization of paths configuration"""
+    global _paths_initialized, paths, BASE_DIR, DB_PATH, DB_DIR
+    if _paths_initialized:
+        return
+
+    paths = get_paths()
+    BASE_DIR = paths["BASE_DIR"]
+    DB_PATH = paths["DB_PATH"]
+    DB_DIR = os.path.dirname(DB_PATH)
+    _paths_initialized = True
 
 # Đường dẫn mặc định - OS-aware paths for Canvas compatibility
 def get_default_storage_paths():
@@ -45,22 +59,37 @@ def get_default_storage_paths():
     
     return input_dir, output_dir
 
-# Get OS-specific paths
-INPUT_VIDEO_DIR, OUTPUT_CLIPS_DIR = get_default_storage_paths()
+# Lazy initialization: Get video storage paths only when needed
+INPUT_VIDEO_DIR = None
+OUTPUT_CLIPS_DIR = None
 
-# Fallback to var/ directory if OS-specific paths fail
-try:
-    os.makedirs(os.path.dirname(INPUT_VIDEO_DIR), exist_ok=True)
-    os.makedirs(os.path.dirname(OUTPUT_CLIPS_DIR), exist_ok=True)
-except (OSError, PermissionError):
-    print("⚠️ Cannot create OS-specific paths, falling back to var/ directories")
-    INPUT_VIDEO_DIR = os.path.join(paths["VAR_DIR"], "input_videos")
-    OUTPUT_CLIPS_DIR = os.path.join(paths["VAR_DIR"], "output_clips")
+def _ensure_storage_paths_initialized():
+    """Lazy initialization of video storage paths"""
+    global INPUT_VIDEO_DIR, OUTPUT_CLIPS_DIR
+    if INPUT_VIDEO_DIR is not None:
+        return
+
+    # Get OS-specific paths
+    INPUT_VIDEO_DIR, OUTPUT_CLIPS_DIR = get_default_storage_paths()
+
+    # Fallback to var/ directory if OS-specific paths fail
+    try:
+        os.makedirs(os.path.dirname(INPUT_VIDEO_DIR), exist_ok=True)
+        os.makedirs(os.path.dirname(OUTPUT_CLIPS_DIR), exist_ok=True)
+    except (OSError, PermissionError):
+        print("⚠️ Cannot create OS-specific paths, falling back to var/ directories")
+        # Ensure paths are initialized before accessing VAR_DIR
+        _ensure_paths_initialized()
+        INPUT_VIDEO_DIR = os.path.join(paths["VAR_DIR"], "input_videos")
+        OUTPUT_CLIPS_DIR = os.path.join(paths["VAR_DIR"], "output_clips")
 
 def get_db_connection():
     """
     Get DB connection with retry logic for locked database and enhanced WAL config
     """
+    # Ensure paths are initialized (lazy initialization)
+    _ensure_paths_initialized()
+
     for attempt in range(5):  # Retry tối đa 5 lần
         try:
             conn = sqlite3.connect(DB_PATH, timeout=60.0)  # Tăng timeout lên 60 giây
