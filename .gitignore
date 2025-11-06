@@ -1,5 +1,8 @@
 # ===== V_TRACK PROJECT GITIGNORE =====
 
+# ===== IDE & EDITOR CONFIG =====
+pyrightconfig.json
+
 # ===== FOLDERS CẦN BỎ QUA =====
 # Thư mục dữ liệu và service
 resources/
@@ -103,6 +106,10 @@ next-env.d.ts
 /src.backup
 /public.backup
 /config.backup
+/environment
+/cut_videos
+.pytest_cache/
 docs/backup code/VPACK_all_10_11_10_28.md
 docs/backup code/VPACK_all_10_15_09_45.md
 docs/backup code/VPACK_cloudfunction_10_15_09_46.md
+docs/backup code/

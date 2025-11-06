@@ -1,1 +1,22 @@
+# Flask session (managed at root level)
 ../flask_session/
+
+# Python cache and bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# macOS junk
+.DS_Store
+
+# Log files (use var/logs/ instead)
+*.log
+
+# Empty/test files
+database.db
+cookies.txt
+
+# Test scripts (use tests/ folder)
+test_*.py

@@ -679,8 +679,9 @@ def upload_video():
                 'error': f'Unsupported file type: {file_ext}. Allowed: {", ".join(allowed_extensions)}'
             }), 400
 
-        # Create upload directory if it doesn't exist
-        upload_dir = os.path.join(os.getcwd(), 'var', 'uploads', 'videos')
+        # Create upload directory if it doesn't exist (using project root, not cwd)
+        project_root = find_project_root(os.path.abspath(__file__))
+        upload_dir = os.path.join(project_root, 'var', 'uploads', 'videos')
         os.makedirs(upload_dir, exist_ok=True)
 
         # Generate unique filename with timestamp
