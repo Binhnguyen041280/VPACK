@@ -16,8 +16,8 @@ with db_rwlock.gen_rlock():
         cursor = conn.cursor()
         cursor.execute("SELECT output_path FROM processing_config LIMIT 1")
         result = cursor.fetchone()
-        output_dir = result[0] if result else os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../resources/output_clips")
-        if not os.path.exists(output_dir):
+        output_dir = result[0] if result and result[0] else os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../resources/output_clips")
+        if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
 def get_video_duration(video_file):
