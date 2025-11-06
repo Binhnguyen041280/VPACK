@@ -1,0 +1,191 @@
+# ============================================================================
+# V_TRACK DOCKER COMPOSE - Production Configuration
+# Orchestrates Backend (Flask) + Frontend (Next.js) + Database
+# ============================================================================
+
+version: '3.8'
+
+services:
+  # =========================================================================
+  # BACKEND SERVICE - Flask Application
+  # =========================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vtrack-backend
+
+    # Port mapping: container:host
+    ports:
+      - "${FLASK_PORT:-8080}:8080"
+
+    # Environment variables
+    environment:
+      - FLASK_HOST=0.0.0.0
+      - FLASK_PORT=8080
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - FLASK_DEBUG=${FLASK_DEBUG:-false}
+      - SECRET_KEY=${SECRET_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - DB_PATH=/app/database/events.db
+      - DB_BACKUP_PATH=/app/database/backups
+      - LOG_FILE_PATH=/app/logs/vtrack.log
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Force development-style paths for logs/var directories (enables mounting to host)
+      - VTRACK_FORCE_DEV_PATHS=true
+      - GOOGLE_DRIVE_CREDENTIALS_PATH=/app/credentials/google_drive_key.json
+      - GOOGLE_DRIVE_FOLDER_ID=${GOOGLE_DRIVE_FOLDER_ID}
+      - GOOGLE_DRIVE_AUTO_SYNC=${GOOGLE_DRIVE_AUTO_SYNC:-true}
+      - CLOUD_PAYMENT_URL=${CLOUD_PAYMENT_URL}
+      - CLOUD_WEBHOOK_URL=${CLOUD_WEBHOOK_URL}
+      - CLOUD_LICENSE_URL=${CLOUD_LICENSE_URL}
+      # Video processing settings
+      - CV_CAMERA_BACKEND=V4L2
+      - CV_BUFFER_SIZE=${CV_BUFFER_SIZE:-1}
+      - CV_FPS_LIMIT=${CV_FPS_LIMIT:-30}
+      - VIDEO_OUTPUT_PATH=/app/var/recordings
+      - VIDEO_CODEC=${VIDEO_CODEC:-mp4v}
+      - VIDEO_QUALITY=${VIDEO_QUALITY:-720p}
+      # Computer vision settings
+      - HAND_DETECTION_CONFIDENCE=${HAND_DETECTION_CONFIDENCE:-0.5}
+      - HAND_TRACKING_CONFIDENCE=${HAND_TRACKING_CONFIDENCE:-0.5}
+      - HAND_MAX_HANDS=${HAND_MAX_HANDS:-2}
+      - QR_DETECTION_ENABLED=${QR_DETECTION_ENABLED:-true}
+      - QR_MIN_SIZE=${QR_MIN_SIZE:-50}
+      - QR_MAX_SIZE=${QR_MAX_SIZE:-500}
+      # Email settings
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SENDER_NAME=${SENDER_NAME:-V_track License System}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      # Feature flags
+      - FEATURE_HAND_DETECTION=${FEATURE_HAND_DETECTION:-true}
+      - FEATURE_QR_DETECTION=${FEATURE_QR_DETECTION:-true}
+      - FEATURE_MOTION_DETECTION=${FEATURE_MOTION_DETECTION:-true}
+      - FEATURE_LICENSE_MANAGEMENT=${FEATURE_LICENSE_MANAGEMENT:-true}
+
+    # Volume mounts for data persistence
+    volumes:
+      # Database files
+      - ./backend/database:/app/database
+      # Keys and credentials (mounted as read-only if credentials pre-generated)
+      - ./backend/keys:/app/keys
+      # Application logs
+      - ./backend/logs:/app/logs
+      # Variable data (recordings, cache, uploads)
+      - ./backend/var:/app/var
+      # Credentials (optional - mount if you have Google Drive credentials)
+      # - ./backend/credentials:/app/credentials:ro
+
+    # Health check configuration (disabled for now due to code compatibility issues)
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Resource limits (optional - adjust based on your machine)
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+    # Network configuration
+    networks:
+      - vtrack-network
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =========================================================================
+  # FRONTEND SERVICE - Next.js Application
+  # =========================================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=http://backend:8080
+    container_name: vtrack-frontend
+
+    # Port mapping: container:host
+    ports:
+      - "${NEXT_PUBLIC_PORT:-3000}:3000"
+
+    # Environment variables
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://backend:8080
+      - NEXT_PUBLIC_APP_NAME=${APP_NAME:-V_Track}
+      - NEXT_PUBLIC_APP_VERSION=${APP_VERSION:-2.1.0}
+
+    # Depends on backend service (wait for startup)
+    depends_on:
+      - backend
+
+    # Health check configuration
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Resource limits (optional - adjust based on your machine)
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    # Network configuration
+    networks:
+      - vtrack-network
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ============================================================================
+# NETWORKS
+# ============================================================================
+networks:
+  vtrack-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# ============================================================================
+# VOLUMES (Optional - can be used instead of bind mounts)
+# ============================================================================
+# volumes:
+#   backend-database:
+#     driver: local
+#   backend-logs:
+#     driver: local
+#   backend-var:
+#     driver: local

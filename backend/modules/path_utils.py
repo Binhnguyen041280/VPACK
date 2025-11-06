@@ -19,6 +19,10 @@ def is_development_mode():
     Returns:
         bool: True if in development, False if in production/installed
     """
+    # Allow forcing development paths via environment variable (useful for Docker)
+    if os.getenv("VTRACK_FORCE_DEV_PATHS") == "true":
+        return True
+
     try:
         base_dir = find_project_root(__file__)
         # If we can find project root with backend/, we're in dev mode
@@ -42,7 +46,11 @@ def get_paths():
 
     if is_dev:
         # Development mode: Use var/ directory in project
-        base_dir = find_project_root(__file__)
+        # Check if forced dev paths (Docker environment)
+        if os.getenv("VTRACK_FORCE_DEV_PATHS") == "true":
+            base_dir = "/app"  # Docker container base directory
+        else:
+            base_dir = find_project_root(__file__)
         var_dir = os.path.join(base_dir, "var")
 
         return {

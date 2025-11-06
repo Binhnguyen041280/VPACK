@@ -451,27 +451,29 @@ def setup_dual_logging(base_dir, app_name="app", general_level=logging.INFO, eve
 
     # === Symlink to latest (development only) ===
     if is_dev:
-        # Symlink app.log
-        latest_app = os.path.join(log_dir, f"{app_name}_latest.log")
+        # Symlink app.log (in application/ subfolder)
+        latest_app = os.path.join(app_log_dir, f"{app_name}_latest.log")
         if os.path.islink(latest_app):
             os.unlink(latest_app)
         try:
+            # Use relative path (just filename, symlink is in same directory)
             os.symlink(app_log_filename, latest_app)
         except OSError:
             pass
 
-        # Symlink event_processing.log
-        latest_event = os.path.join(log_dir, "event_processing_latest.log")
+        # Symlink event_processing.log (in application/ subfolder)
+        latest_event = os.path.join(app_log_dir, "event_processing_latest.log")
         if os.path.islink(latest_event):
             os.unlink(latest_event)
         try:
+            # Use relative path (just filename, symlink is in same directory)
             os.symlink(event_log_filename, latest_event)
         except OSError:
             pass
 
-    # === Cleanup old logs ===
-    cleanup_old_logs(log_dir, app_name, keep_count=50 if is_dev else None, keep_days=None if is_dev else 30)
-    cleanup_old_logs(log_dir, "event_processing", keep_count=30 if is_dev else None, keep_days=None if is_dev else 15)
+    # === Cleanup old logs (in application/ subfolder) ===
+    cleanup_old_logs(app_log_dir, app_name, keep_count=50 if is_dev else None, keep_days=None if is_dev else 30)
+    cleanup_old_logs(app_log_dir, "event_processing", keep_count=30 if is_dev else None, keep_days=None if is_dev else 15)
 
     print(f"📋 Dual logging initialized:", file=sys.stderr)
     print(f"   App log: {app_log_path}", file=sys.stderr)
