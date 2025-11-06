@@ -447,11 +447,43 @@ def activate_license():
         existing_license = License.get_by_key(license_key)
         license_id = None
         license_record = None
-        
+
         if existing_license and existing_license.get('id'):
-            logger.info(f"📋 Reusing existing license record: {existing_license['id']}")
+            logger.info(f"📋 Found existing license record: {existing_license['id']}")
             license_id = existing_license['id']
             license_record = existing_license
+
+            # SECURITY: Check if this license key has EVER been activated
+            # Each license key can only be activated ONCE (no re-activation allowed)
+            try:
+                with safe_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM license_activations
+                        WHERE license_id = ? AND status = 'active'
+                    """, (license_id,))
+
+                    activation_count = cursor.fetchone()[0]
+
+                    if activation_count > 0:
+                        logger.warning(f"❌ SECURITY: License key already activated before - no re-activation allowed")
+                        return jsonify({
+                            'success': False,
+                            'valid': False,
+                            'error': 'This license key has already been activated. Each license key can only be activated once. Please purchase a new license to continue.',
+                            'data': {
+                                'license_key': license_key,
+                                'status': 'already_used',
+                                'message': 'License key reuse not allowed'
+                            },
+                            'activation': {
+                                'source': validation_source,
+                                'method': 'license_already_activated'
+                            }
+                        })
+            except Exception as e:
+                logger.error(f"Error checking license activation history: {e}")
+                # Continue with error - don't block
         else:
             # Extract package info from license key format: VTRACK-P1M-...
             package_info = extract_package_from_license_key(license_key)
