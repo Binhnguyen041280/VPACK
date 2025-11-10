@@ -38,8 +38,8 @@ class GoogleDriveClient:
             token_path (str): Path to store access tokens (fallback)
         """
         self.source_id = source_id
-        self.credentials_path = os.path.join(os.path.dirname(__file__), credentials_path)
-        self.token_path = os.path.join(os.path.dirname(__file__), token_path)
+        self.credentials_path = str(Path(__file__).parent / credentials_path)
+        self.token_path = str(Path(__file__).parent / token_path)
         self.service = None
         self.creds = None
         self.oauth2client_creds = None  # 🆕 NEW: PyDrive2 compatible credentials
@@ -80,11 +80,11 @@ class GoogleDriveClient:
                 return None
             
             # Load credentials from encrypted storage
-            tokens_dir = os.path.join(os.path.dirname(__file__), 'tokens')
+            tokens_dir = str(Path(__file__).parent / 'tokens')
             token_filename = f"google_drive_{hashlib.md5(user_email.encode()).hexdigest()[:16]}.json"
-            token_path = os.path.join(tokens_dir, token_filename)
+            token_path = str(Path(tokens_dir) / token_filename)
             
-            if not os.path.exists(token_path):
+            if not Path(token_path).exists():
                 logger.error(f"❌ Token file not found: {token_path}")
                 return None
             
@@ -209,7 +209,7 @@ class GoogleDriveClient:
             logger.info("🔄 Falling back to local token file authentication...")
             
             # Load existing token if available
-            if os.path.exists(self.token_path):
+            if Path(self.token_path).exists():
                 from google.oauth2.credentials import Credentials
                 self.creds = Credentials.from_authorized_user_file(self.token_path, self.SCOPES)
             
@@ -449,11 +449,11 @@ class GoogleDriveClient:
             dict: Upload result with file ID and metadata
         """
         try:
-            if not os.path.exists(file_path):
+            if not Path(file_path).exists():
                 return {"success": False, "message": f"File not found: {file_path}"}
             
-            file_name = custom_name or os.path.basename(file_path)
-            file_size = os.path.getsize(file_path)
+            file_name = custom_name or Path(file_path).name
+            file_size = Path(file_path).stat().st_size
             
             logger.info(f"📤 Uploading {file_name} ({file_size} bytes) to Google Drive...")
             

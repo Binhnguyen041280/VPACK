@@ -3,6 +3,7 @@ Simple Avatar Downloader
 Download user avatars to frontend public folder
 """
 import os
+from pathlib import Path
 import requests
 import logging
 from modules.config.logging_config import get_logger
@@ -12,12 +13,9 @@ logger = get_logger(__name__)
 class SimpleAvatarDownloader:
     def __init__(self):
         # Path to frontend public avatars folder
-        self.frontend_avatars_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            '..', 'frontend', 'public', 'img', 'avatars'
-        )
+        self.frontend_avatars_dir = str(Path(__file__).parent.parent.parent / 'frontend' / 'public' / 'img' / 'avatars')
         # Ensure directory exists
-        os.makedirs(self.frontend_avatars_dir, exist_ok=True)
+        Path(self.frontend_avatars_dir).mkdir(parents=True, exist_ok=True)
 
     def get_user_avatar_filename(self, user_email):
         """Generate filename for user avatar"""
@@ -33,7 +31,7 @@ class SimpleAvatarDownloader:
     def download_avatar(self, user_email, avatar_url, max_retries=3):
         """Download avatar to frontend public folder with retry logic"""
         filename = self.get_user_avatar_filename(user_email)
-        local_path = os.path.join(self.frontend_avatars_dir, filename)
+        local_path = str(Path(self.frontend_avatars_dir) / filename)
 
         # Check if file exists and is valid
         if self._is_avatar_valid(local_path):
@@ -61,11 +59,11 @@ class SimpleAvatarDownloader:
                 # Validate downloaded file
                 if self._is_avatar_valid(temp_path):
                     # Move temp file to final location
-                    if os.path.exists(local_path):
+                    if Path(local_path).exists():
                         os.remove(local_path)
                     os.rename(temp_path, local_path)
 
-                    logger.info(f"💾 Avatar saved: {filename} ({os.path.getsize(local_path)} bytes)")
+                    logger.info(f"💾 Avatar saved: {filename} ({Path(local_path).stat().st_size} bytes)")
                     return self.get_avatar_path(user_email)
                 else:
                     os.remove(temp_path)
@@ -84,11 +82,11 @@ class SimpleAvatarDownloader:
     def _is_avatar_valid(self, file_path):
         """Check if avatar file exists and is valid"""
         try:
-            if not os.path.exists(file_path):
+            if not Path(file_path).exists():
                 return False
 
             # Check file size (should be > 100 bytes)
-            file_size = os.path.getsize(file_path)
+            file_size = Path(file_path).stat().st_size
             if file_size < 100:
                 logger.warning(f"⚠️ Avatar file too small: {file_path} ({file_size} bytes)")
                 return False
@@ -123,7 +121,7 @@ class SimpleAvatarDownloader:
     def validate_user_avatar(self, user_email):
         """Public method to validate user's avatar exists and is valid"""
         filename = self.get_user_avatar_filename(user_email)
-        local_path = os.path.join(self.frontend_avatars_dir, filename)
+        local_path = str(Path(self.frontend_avatars_dir) / filename)
         return self._is_avatar_valid(local_path)
 
 # Global instance

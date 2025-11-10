@@ -9,6 +9,7 @@ from modules.technician.camera_health_checker import (
 )
 from modules.db_utils.safe_connection import safe_db_connection
 import os
+from pathlib import Path
 import json
 import logging
 import sys
@@ -32,9 +33,9 @@ qr_preprocessing_progress = {}  # Track progress for ongoing processing
 qr_baseline_cache = {}
 
 # ✅ FIXED: Use same path calculation as hand_detection_bp.py
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BACKEND_DIR = os.path.join(BASE_DIR, "backend")
-CAMERA_ROI_DIR = os.path.join(BASE_DIR, "resources", "output_clips", "CameraROI")
+BASE_DIR = str(Path(__file__).resolve().parent.parent.parent)
+BACKEND_DIR = str(Path(BASE_DIR) / "backend")
+CAMERA_ROI_DIR = str(Path(BASE_DIR) / "resources" / "output_clips" / "CameraROI")
 
 def generate_qr_cache_key(video_path: str, roi_config: dict) -> str:
     """Generate unique cache key for video + ROI combination"""
@@ -938,7 +939,7 @@ def camera_health_check():
                 'error': 'camera_name and video_path required'
             }), 400
 
-        if not os.path.exists(video_path):
+        if not Path(video_path).exists():
             return jsonify({
                 'success': False,
                 'error': f'Video not found: {video_path}'
@@ -1187,11 +1188,11 @@ def qr_health_check():
                 "Baseline success rate calculation"
             ],
             "camera_roi_dir": CAMERA_ROI_DIR,
-            "camera_roi_dir_exists": os.path.exists(CAMERA_ROI_DIR),
+            "camera_roi_dir_exists": Path(CAMERA_ROI_DIR).exists(),
             "base_dir": BASE_DIR,
             "backend_dir": BACKEND_DIR,
-            "script_path": os.path.join(BACKEND_DIR, "modules", "technician", "qr_detector.py"),
-            "script_exists": os.path.exists(os.path.join(BACKEND_DIR, "modules", "technician", "qr_detector.py")),
+            "script_path": str(Path(BACKEND_DIR) / "modules" / "technician", "qr_detector.py"),
+            "script_exists": Path(str(Path(BACKEND_DIR).exists() / "modules" / "technician", "qr_detector.py")),
             "description": "Advanced QR detection with preprocessing and caching for perfect video synchronization"
         }), 200
     except Exception as e:

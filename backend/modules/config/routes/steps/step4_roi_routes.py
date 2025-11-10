@@ -4,6 +4,7 @@ Web-based ROI selection and video streaming endpoints
 """
 
 import os
+from pathlib import Path
 import json
 import logging
 from datetime import datetime
@@ -515,11 +516,11 @@ def save_roi_configuration():
 
             # ✅ Delete uploaded video file after successful configuration save
             try:
-                if os.path.exists(video_path):
+                if Path(video_path).exists():
                     # Security check: only delete files from uploads directory (using centralized path resolution)
-                    project_root = find_project_root(os.path.abspath(__file__))
-                    uploads_dir = os.path.join(project_root, 'var', 'uploads', 'videos')
-                    if os.path.abspath(video_path).startswith(os.path.abspath(uploads_dir)):
+                    project_root = find_project_root(str(Path(__file__).resolve()))
+                    uploads_dir = str(Path(project_root) / 'var' / 'uploads', 'videos')
+                    if str(Path(video_path).resolve()).startswith(str(Path(uploads_dir).resolve())):
                         os.remove(video_path)
                         logger.info(f"✅ Deleted uploaded video file: {video_path}")
                     else:
@@ -555,11 +556,11 @@ def save_roi_configuration():
 
             # ✅ Still delete video file even if database save fails
             try:
-                if os.path.exists(video_path):
+                if Path(video_path).exists():
                     # Security check: only delete files from uploads directory (using centralized path resolution)
-                    project_root = find_project_root(os.path.abspath(__file__))
-                    uploads_dir = os.path.join(project_root, 'var', 'uploads', 'videos')
-                    if os.path.abspath(video_path).startswith(os.path.abspath(uploads_dir)):
+                    project_root = find_project_root(str(Path(__file__).resolve()))
+                    uploads_dir = str(Path(project_root) / 'var' / 'uploads', 'videos')
+                    if str(Path(video_path).resolve()).startswith(str(Path(uploads_dir).resolve())):
                         os.remove(video_path)
                         logger.info(f"✅ Deleted uploaded video file (after DB error): {video_path}")
                     else:
@@ -671,7 +672,7 @@ def upload_video():
 
         # Validate file extension
         allowed_extensions = {'.mp4', '.mov', '.avi', '.mkv', '.webm'}
-        file_ext = os.path.splitext(file.filename)[1].lower()
+        file_ext = Path(file.filename).suffix.lower()
 
         if file_ext not in allowed_extensions:
             return jsonify({
@@ -680,14 +681,14 @@ def upload_video():
             }), 400
 
         # Create upload directory if it doesn't exist (using project root, not cwd)
-        project_root = find_project_root(os.path.abspath(__file__))
-        upload_dir = os.path.join(project_root, 'var', 'uploads', 'videos')
+        project_root = find_project_root(str(Path(__file__).resolve()))
+        upload_dir = str(Path(project_root) / 'var' / 'uploads', 'videos')
         os.makedirs(upload_dir, exist_ok=True)
 
         # Generate unique filename with timestamp
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         safe_filename = f"{timestamp}_{file.filename}"
-        file_path = os.path.join(upload_dir, safe_filename)
+        file_path = str(Path(upload_dir) / safe_filename)
 
         # Save file
         file.save(file_path)
