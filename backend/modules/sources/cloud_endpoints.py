@@ -11,6 +11,7 @@ from oauthlib.oauth2.rfc6749.errors import InvalidScopeError, OAuth2Error
 import hashlib
 import json
 import os
+from pathlib import Path
 import logging
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, session
@@ -205,12 +206,9 @@ def drive_authenticate():
         logger.info(f"🔐 Drive authentication request: {provider}, action: {action}")
         
         if action == 'initiate_auth':
-            CLIENT_SECRETS_FILE = os.path.join(
-                os.path.dirname(__file__), 
-                'credentials/google_drive_credentials_web.json'
-            )
+            CLIENT_SECRETS_FILE = str(Path(__file__).parent / 'credentials/google_drive_credentials_web.json')
             
-            if not os.path.exists(CLIENT_SECRETS_FILE):
+            if not Path(CLIENT_SECRETS_FILE).exists():
                 return jsonify({
                     'success': False,
                     'message': f'Credentials file not found: {CLIENT_SECRETS_FILE}',
@@ -317,12 +315,9 @@ def gmail_authenticate():
         
         if action == 'initiate_auth':
             # Use dedicated Gmail credentials file
-            CLIENT_SECRETS_FILE = os.path.join(
-                os.path.dirname(__file__), 
-                'credentials/gmail_credentials.json'
-            )
+            CLIENT_SECRETS_FILE = str(Path(__file__).parent / 'credentials/gmail_credentials.json')
             
-            if not os.path.exists(CLIENT_SECRETS_FILE):
+            if not Path(CLIENT_SECRETS_FILE).exists():
                 return jsonify({
                     'success': False,
                     'message': f'Credentials file not found: {CLIENT_SECRETS_FILE}',
@@ -430,10 +425,7 @@ def gmail_oauth_callback():
             return _create_gmail_error_page("Session expired", "Please start authentication again")
         
         # Recreate Gmail flow using dedicated credentials
-        CLIENT_SECRETS_FILE = os.path.join(
-            os.path.dirname(__file__), 
-            'credentials/gmail_credentials.json'
-        )
+        CLIENT_SECRETS_FILE = str(Path(__file__).parent / 'credentials/gmail_credentials.json')
         
         GMAIL_SCOPES = [
             'openid',
@@ -737,10 +729,7 @@ def cloud_oauth_callback():
                     'https://www.googleapis.com/auth/drive.metadata.readonly'
                 ],
                 'redirect_uri': 'http://localhost:8080/api/cloud/oauth/callback',
-                'client_secrets_file': os.path.join(
-                    os.path.dirname(__file__), 
-                    'credentials/google_drive_credentials_web.json'
-                )
+                'client_secrets_file': str(Path(__file__).parent / 'credentials/google_drive_credentials_web.json')
             }
         
         # Recreate flow
@@ -953,12 +942,12 @@ def cloud_oauth_callback():
 def _store_credentials_safely(credentials, user_info):
     """Store credentials safely with AES-256 encryption"""
     try:
-        tokens_dir = os.path.join(os.path.dirname(__file__), 'tokens')
+        tokens_dir = str(Path(__file__).parent / 'tokens')
         os.makedirs(tokens_dir, exist_ok=True)
 
         email_hash = hashlib.sha256(user_info['email'].encode()).hexdigest()[:16]
         token_filename = f"google_drive_{email_hash}.json"
-        token_filepath = os.path.join(tokens_dir, token_filename)
+        token_filepath = str(Path(tokens_dir) / token_filename)
 
         # Convert google-auth credentials to oauth2client format for consistent storage
         credential_data = {
@@ -1551,12 +1540,12 @@ def cloud_disconnect():
         # Optionally remove stored token file
         if user_email:
             try:
-                tokens_dir = os.path.join(os.path.dirname(__file__), 'tokens')
+                tokens_dir = str(Path(__file__).parent / 'tokens')
                 email_hash = hashlib.sha256(user_email.encode()).hexdigest()[:16]
                 token_filename = f"google_drive_{email_hash}.json"
-                token_filepath = os.path.join(tokens_dir, token_filename)
+                token_filepath = str(Path(tokens_dir) / token_filename)
                 
-                if os.path.exists(token_filepath):
+                if Path(token_filepath).exists():
                     os.remove(token_filepath)
                     logger.info(f"🗑️ Removed token file: {token_filename}")
             except Exception as e:
@@ -1578,12 +1567,12 @@ def cloud_disconnect():
 def load_encrypted_credentials_for_user(user_email):
     """Load and decrypt credentials for backend operations"""
     try:
-        tokens_dir = os.path.join(os.path.dirname(__file__), 'tokens')
+        tokens_dir = str(Path(__file__).parent / 'tokens')
         email_hash = hashlib.sha256(user_email.encode()).hexdigest()[:16]
         token_filename = f"google_drive_{email_hash}.json"
-        token_filepath = os.path.join(tokens_dir, token_filename)
+        token_filepath = str(Path(tokens_dir) / token_filename)
         
-        if not os.path.exists(token_filepath):
+        if not Path(token_filepath).exists():
             logger.warning(f"⚠️ No encrypted credentials found for: {user_email}")
             return None
         

@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from datetime import datetime, timezone, timedelta
 import csv
 import io
+from pathlib import Path
 import os
 import base64
 import pandas as pd
@@ -45,7 +46,7 @@ def get_csv_headers():
         except Exception as e:
             return jsonify({"error": f"Failed to read file content: {str(e)}. Ensure the content is properly formatted."}), 400
     elif file_path:
-        if not os.path.exists(file_path):
+        if not Path(file_path).exists():
             return jsonify({"error": f"File not found at path: {file_path}. Please check the file path and try again."}), 404
 
         try:
@@ -847,7 +848,7 @@ def get_or_create_download_lock(file_path: str) -> threading.Lock:
     with download_locks_mutex:
         if file_path not in download_locks:
             download_locks[file_path] = threading.Lock()
-            logger.debug(f"🔐 Created download lock for: {os.path.basename(file_path)}")
+            logger.debug(f"🔐 Created download lock for: {Path(file_path).name}")
         return download_locks[file_path]
 
 @query_bp.route('/process-event', methods=['POST'])
@@ -885,8 +886,8 @@ def process_event():
             event_id, video_file, output_video_path, is_processed, ts, te, duration, camera_name, tracking_codes_str = event
 
             # Check if output file already exists (cached from previous trace)
-            if output_video_path and os.path.exists(output_video_path):
-                logger.info(f"✅ Event {event_id} already cut - using cached file: {os.path.basename(output_video_path)}")
+            if output_video_path and Path(output_video_path).exists():
+                logger.info(f"✅ Event {event_id} already cut - using cached file: {Path(output_video_path).name}")
                 return jsonify({
                     "status": "completed",
                     "output_path": output_video_path,
@@ -921,7 +922,7 @@ def process_event():
                     processing_tasks[task_id]["progress"] = 10
 
                     # Check if video file exists
-                    if not os.path.exists(video_file):
+                    if not Path(video_file).exists():
                         # Get file-specific lock to prevent duplicate downloads
                         file_lock = get_or_create_download_lock(video_file)
 
@@ -929,12 +930,12 @@ def process_event():
                         with file_lock:
                             # Double-check if file exists after acquiring lock
                             # (another thread may have already downloaded it)
-                            if os.path.exists(video_file):
-                                logger.info(f"✅ File already downloaded by another thread: {os.path.basename(video_file)}")
+                            if Path(video_file).exists():
+                                logger.info(f"✅ File already downloaded by another thread: {Path(video_file).name}")
                             else:
                                 # File still missing - proceed with download
                                 logger.warning(f"⚠️ Video file missing: {video_file}")
-                                logger.info(f"🔒 Acquired download lock for: {os.path.basename(video_file)}")
+                                logger.info(f"🔒 Acquired download lock for: {Path(video_file).name}")
 
                                 # Lookup file in downloaded_files table to get drive_file_id
                                 with safe_db_connection() as conn:
@@ -948,7 +949,7 @@ def process_event():
 
                                 if file_record and file_record[0]:  # Has drive_file_id
                                     drive_file_id, source_id, cam_name = file_record
-                                    logger.info(f"🔄 Re-downloading cloud file (force): {os.path.basename(video_file)}")
+                                    logger.info(f"🔄 Re-downloading cloud file (force): {Path(video_file).name}")
 
                                     processing_tasks[task_id]["status"] = "downloading"
                                     processing_tasks[task_id]["progress"] = 5
@@ -965,16 +966,16 @@ def process_event():
                                             raise Exception("Failed to get Drive client - check authentication")
 
                                         # Prepare file info for download
-                                        file_info = {'id': drive_file_id, 'title': os.path.basename(video_file)}
+                                        file_info = {'id': drive_file_id, 'title': Path(video_file).name}
 
                                         # Ensure parent directory exists
-                                        os.makedirs(os.path.dirname(video_file), exist_ok=True)
+                                        Path(video_file).parent.mkdir(parents=True, exist_ok=True)
 
                                         # Force download
                                         success = core.download_single_file(drive, file_info, video_file)
 
-                                        if success and os.path.exists(video_file):
-                                            logger.info(f"✅ File re-downloaded successfully: {os.path.basename(video_file)}")
+                                        if success and Path(video_file).exists():
+                                            logger.info(f"✅ File re-downloaded successfully: {Path(video_file).name}")
                                         else:
                                             raise Exception("Download failed or file not created")
 
@@ -993,8 +994,8 @@ def process_event():
 
                     # Create date-organized output directory
                     today = datetime.now().strftime("%Y-%m-%d")
-                    date_output_dir = os.path.join(output_dir, today)
-                    os.makedirs(date_output_dir, exist_ok=True)
+                    date_output_dir = str(Path(output_dir) / today)
+                    Path(date_output_dir).mkdir(parents=True, exist_ok=True)
 
                     # Parse tracking codes
                     tracking_codes = ast.literal_eval(tracking_codes_str) if tracking_codes_str else []
@@ -1003,7 +1004,7 @@ def process_event():
                     # Generate readable filename with timestamp
                     timestamp = datetime.now().strftime("%H%M%S")
                     output_filename = f"{tracking_code}_{camera_name}_{timestamp}.mp4"
-                    output_path = os.path.join(date_output_dir, output_filename)
+                    output_path = str(Path(date_output_dir) / output_filename)
 
                     # Get video FPS
                     processing_tasks[task_id]["status"] = "analyzing"
@@ -1077,10 +1078,10 @@ def process_event():
                         raise Exception(f"FFmpeg failed with code {process.returncode}")
 
                     # Verify output file exists
-                    if not os.path.exists(output_path):
+                    if not Path(output_path).exists():
                         raise Exception("Output file not created")
 
-                    file_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
+                    file_size = Path(output_path).stat().st_size / (1024 * 1024)  # MB
                     logger.info(f"✅ Video cut successfully: {output_filename} ({file_size:.1f}MB)")
 
                     # Update database
@@ -1155,7 +1156,7 @@ def play_video():
         if not video_path:
             return jsonify({"error": "Missing video_path"}), 400
 
-        if not os.path.exists(video_path):
+        if not Path(video_path).exists():
             return jsonify({"error": f"Video file not found: {video_path}"}), 404
 
         # Open video with default player
@@ -1170,8 +1171,8 @@ def play_video():
         else:  # Linux
             subprocess.run(["xdg-open", video_path])
 
-        logger.info(f"✅ Playing video: {os.path.basename(video_path)}")
-        return jsonify({"message": f"Playing video: {os.path.basename(video_path)}"}), 200
+        logger.info(f"✅ Playing video: {Path(video_path).name}")
+        return jsonify({"message": f"Playing video: {Path(video_path).name}"}), 200
 
     except Exception as e:
         logger.error(f"Error playing video: {e}")
@@ -1277,9 +1278,9 @@ def browse_location():
             return jsonify({"error": "Missing file_path"}), 400
 
         # Get the directory containing the file
-        if os.path.isfile(file_path):
-            directory = os.path.dirname(file_path)
-        elif os.path.isdir(file_path):
+        if Path(file_path).is_file():
+            directory = str(Path(file_path).parent)
+        elif Path(file_path).is_dir():
             directory = file_path
         else:
             return jsonify({"error": f"Path not found: {file_path}"}), 404
@@ -1297,7 +1298,7 @@ def browse_location():
             subprocess.run(["nautilus", directory])
 
         logger.info(f"✅ Opened directory: {directory}")
-        return jsonify({"message": f"Opened directory: {os.path.basename(directory)}"}), 200
+        return jsonify({"message": f"Opened directory: {Path(directory).name}"}), 200
 
     except Exception as e:
         logger.error(f"Error opening directory: {e}")
@@ -1320,7 +1321,7 @@ def browse_output():
             output_dir = result[0]
 
             # Check if directory exists
-            if not os.path.exists(output_dir):
+            if not Path(output_dir).exists():
                 return jsonify({"success": False, "error": f"Output directory not found: {output_dir}"}), 404
 
             # Open file explorer
@@ -1505,13 +1506,13 @@ def export_zoom_video():
             event_id, video_file, output_video_path, ts, te, duration, camera_name, tracking_codes_str = event
 
         # Use the cut video (output_video_path) if available, otherwise use original video
-        source_video = output_video_path if output_video_path and os.path.exists(output_video_path) else video_file
+        source_video = output_video_path if output_video_path and Path(output_video_path).exists() else video_file
 
         # Check if source video exists
-        if not os.path.exists(source_video):
+        if not Path(source_video).exists():
             return jsonify({"error": f"Video file not found: {source_video}. Please process the event first."}), 404
 
-        logger.info(f"Using cut video as source: {os.path.basename(source_video)}")
+        logger.info(f"Using cut video as source: {Path(source_video).name}")
 
         # Get output directory from config
         with safe_db_connection() as conn:
@@ -1522,8 +1523,8 @@ def export_zoom_video():
 
         # Create date-organized output directory
         today = datetime.now().strftime("%Y-%m-%d")
-        date_output_dir = os.path.join(output_dir, today)
-        os.makedirs(date_output_dir, exist_ok=True)
+        date_output_dir = str(Path(output_dir) / today)
+        Path(date_output_dir).mkdir(parents=True, exist_ok=True)
 
         # Parse tracking codes
         tracking_codes = ast.literal_eval(tracking_codes_str) if tracking_codes_str else []
@@ -1533,7 +1534,7 @@ def export_zoom_video():
         timestamp = datetime.now().strftime("%H%M%S")
         zoom_str = f"{zoom_factor:.1f}x".replace('.', '_')  # 2.5x -> 2_5x
         output_filename = f"{tracking_code}_{camera_name}_zoom_{zoom_str}_{timestamp}.mp4"
-        output_path = os.path.join(date_output_dir, output_filename)
+        output_path = str(Path(date_output_dir) / output_filename)
 
         # Calculate time range based on magnifier display timing
         # Note: PRE_DISPLAY_TIME (magnifier buffer) = BUFFER (cutting buffer) = 2s
@@ -1616,10 +1617,10 @@ def export_zoom_video():
             return jsonify({"error": f"Video cropping failed: {error_msg}"}), 500
 
         # Verify output file exists
-        if not os.path.exists(output_path):
+        if not Path(output_path).exists():
             return jsonify({"error": "Output file not created"}), 500
 
-        file_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
+        file_size = Path(output_path).stat().st_size / (1024 * 1024)  # MB
         logger.info(f"✅ Zoom video exported successfully: {output_filename} ({file_size:.1f}MB)")
 
         return jsonify({

@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, send_file, make_response
 from modules.technician.hand_detection import finalize_roi
 from modules.path_utils import get_paths
 import os
+from pathlib import Path
 import glob
 import json
 from modules.db_utils.safe_connection import safe_db_connection
@@ -14,7 +15,7 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 # Use centralized path configuration
 paths = get_paths()
 DB_PATH = paths["DB_PATH"]
-CAMERA_ROI_DIR = os.path.join(paths["VAR_DIR"], "cache", "roi_legacy")
+CAMERA_ROI_DIR = str(Path(paths["VAR_DIR"]) / "cache" / "roi_legacy")
 
 # ✅ FIXED: Proper OPTIONS handler with explicit return
 @roi_bp.before_request
@@ -47,7 +48,7 @@ def run_select_roi():
                 "error": "video_path and camera_id required"
             }), 400
         
-        if not os.path.exists(video_path):
+        if not Path(video_path).exists():
             return jsonify({
                 "success": False,
                 "error": f"Video file not found: {video_path}"
@@ -100,7 +101,7 @@ def finalize_roi_endpoint():
         if not video_path or not camera_id or not rois:
             return jsonify({"success": False, "error": "Thiếu videoPath, cameraId hoặc rois."}), 400
 
-        if not os.path.exists(video_path):
+        if not Path(video_path).exists():
             return jsonify({"success": False, "error": "Đường dẫn video không tồn tại."}), 404
 
         # Extract ROI areas from rois array (HTML5 Canvas approach)
@@ -183,15 +184,15 @@ def get_roi_frame():
         # Fallback: use the file parameter as-is with camera prefix
         file_name = f"camera_{camera_id}_{file}"
     
-    file_path = os.path.join(CAMERA_ROI_DIR, file_name)
+    file_path = str(Path(CAMERA_ROI_DIR) / file_name)
     logging.info(f"[GET-ROI-FRAME] Attempting to fetch file: {file_path}")
-    logging.info(f"[GET-ROI-FRAME] File exists: {os.path.exists(file_path)}")
+    logging.info(f"[GET-ROI-FRAME] File exists: {Path(file_path).exists()}")
 
-    if not os.path.exists(file_path):
+    if not Path(file_path).exists():
         logging.error(f"[GET-ROI-FRAME] File không tồn tại: {file_path}")
         # ✅ List available files for debugging
         try:
-            if os.path.exists(CAMERA_ROI_DIR):
+            if Path(CAMERA_ROI_DIR).exists():
                 available_files = os.listdir(CAMERA_ROI_DIR)
                 camera_files = [f for f in available_files if f.startswith(f"camera_{camera_id}")]
                 logging.info(f"[GET-ROI-FRAME] Available files for camera {camera_id}: {camera_files}")
@@ -206,7 +207,7 @@ def get_roi_frame():
             "error": "Không tìm thấy ảnh.", 
             "file_path": file_path,
             "camera_roi_dir": CAMERA_ROI_DIR,
-            "dir_exists": os.path.exists(CAMERA_ROI_DIR)
+            "dir_exists": Path(CAMERA_ROI_DIR).exists()
         }), 404
 
     try:
@@ -234,7 +235,7 @@ def get_final_roi_frame():
     if not camera_id:
         return jsonify({"success": False, "error": "Thiếu camera_id."}), 400
     
-    final_pattern = os.path.join(CAMERA_ROI_DIR, f"camera_{camera_id}_roi_final_*.jpg")
+    final_pattern = str(Path(CAMERA_ROI_DIR) / f"camera_{camera_id}_roi_final_*.jpg")
     final_files = glob.glob(final_pattern)
     logging.info(f"[GET-FINAL-ROI] Pattern: {final_pattern}")
     logging.info(f"[GET-FINAL-ROI] Files found for camera_id={camera_id}: {final_files}")
@@ -243,7 +244,7 @@ def get_final_roi_frame():
         logging.error(f"[GET-FINAL-ROI] Không tìm thấy file tổng hợp nào trong {CAMERA_ROI_DIR} với pattern {final_pattern}")
         # ✅ List all files for debugging
         try:
-            if os.path.exists(CAMERA_ROI_DIR):
+            if Path(CAMERA_ROI_DIR).exists():
                 all_files = os.listdir(CAMERA_ROI_DIR)
                 camera_files = [f for f in all_files if f.startswith(f"camera_{camera_id}")]
                 logging.info(f"[GET-FINAL-ROI] All files for camera {camera_id}: {camera_files}")
@@ -258,13 +259,13 @@ def get_final_roi_frame():
             "error": "Không tìm thấy ảnh tổng hợp.",
             "pattern": final_pattern,
             "camera_roi_dir": CAMERA_ROI_DIR,
-            "dir_exists": os.path.exists(CAMERA_ROI_DIR)
+            "dir_exists": Path(CAMERA_ROI_DIR).exists()
         }), 404
 
-    latest_file = max(final_files, key=os.path.getmtime)
+    latest_file = max(final_files, key=lambda f: Path(f).stat().st_mtime)
     logging.info(f"[GET-FINAL-ROI] Latest file selected: {latest_file}")
 
-    if not os.path.exists(latest_file):
+    if not Path(latest_file).exists():
         logging.error(f"[GET-FINAL-ROI] File mới nhất {latest_file} không tồn tại")
         return jsonify({"success": False, "error": "Không tìm thấy ảnh tổng hợp."}), 404
 
@@ -296,13 +297,13 @@ def debug_roi_paths():
             "base_dir": BASE_DIR,
             "camera_roi_dir": CAMERA_ROI_DIR,
             "db_path": DB_PATH,
-            "camera_roi_dir_exists": os.path.exists(CAMERA_ROI_DIR),
+            "camera_roi_dir_exists": Path(CAMERA_ROI_DIR).exists(),
             "expected_file_path": f"/Users/annhu/vtrack_app/V_Track/resources/output_clips/CameraROI/camera_{camera_id}_roi_packing.jpg",
-            "test_file_exists": os.path.exists(f"/Users/annhu/vtrack_app/V_Track/resources/output_clips/CameraROI/camera_{camera_id}_roi_packing.jpg")
+            "test_file_exists": Path(f"/Users/annhu/vtrack_app/V_Track/resources/output_clips/CameraROI/camera_{camera_id}_roi_packing.jpg").exists()
         }
         
         # List files in directory
-        if os.path.exists(CAMERA_ROI_DIR):
+        if Path(CAMERA_ROI_DIR).exists():
             all_files = os.listdir(CAMERA_ROI_DIR)
             camera_files = [f for f in all_files if f.startswith(f"camera_{camera_id}")]
             debug_info.update({

@@ -29,6 +29,7 @@ Performance Optimizations:
 """
 
 import os
+from pathlib import Path
 import sqlite3
 import json
 import time
@@ -111,14 +112,14 @@ def get_file_creation_time(file_path: str, camera_name: Optional[str] = None) ->
         # Check if file is a supported video format
         # Simple video file detection (replacing complex video_timezone_detector)
         video_extensions = ('.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.m4v')
-        if not os.path.isfile(file_path) or not file_path.lower().endswith(video_extensions):
+        if not Path(file_path).is_file() or not file_path.lower().endswith(video_extensions):
             # For non-video files, use filesystem time with system timezone
             user_timezone = _get_system_tz()
-            return datetime.fromtimestamp(os.path.getctime(file_path), tz=user_timezone)
+            return datetime.fromtimestamp(Path(file_path).stat().st_ctime, tz=user_timezone)
 
         # Use simple filesystem time with system timezone (fallback approach)
         user_timezone = _get_system_tz()
-        file_stat_time = os.path.getctime(file_path)
+        file_stat_time = Path(file_path).stat().st_ctime
         timezone_aware_time = datetime.fromtimestamp(file_stat_time, tz=user_timezone)
 
         logger.debug(f"Extracted timezone-aware creation time for {file_path}: {timezone_aware_time}")
@@ -129,11 +130,11 @@ def get_file_creation_time(file_path: str, camera_name: Optional[str] = None) ->
         # Safe fallback: use filesystem time with system timezone
         try:
             user_timezone = _get_system_tz()
-            return datetime.fromtimestamp(os.path.getctime(file_path), tz=user_timezone)
+            return datetime.fromtimestamp(Path(file_path).stat().st_ctime, tz=user_timezone)
         except Exception as fallback_error:
             logger.error(f"Fallback timezone retrieval failed for {file_path}: {fallback_error}")
             # Ultimate fallback: use system timezone
-            return datetime.fromtimestamp(os.path.getctime(file_path), tz=_get_system_tz())
+            return datetime.fromtimestamp(Path(file_path).stat().st_ctime, tz=_get_system_tz())
 
 def compute_chunk_interval(ctimes: List[float]) -> int:
     """Calculate median time interval between video files for processing estimation.
@@ -217,8 +218,8 @@ def scan_files(root_path: str, video_root: str, time_threshold: Optional[datetim
     # Walk directory tree and process each directory
     for root, dirs, files in os.walk(root_path):
         # Determine camera name from directory structure
-        relative_path = os.path.relpath(root, video_root)
-        camera_name = relative_path.split(os.sep)[0] if relative_path != "." else os.path.basename(video_root)
+        relative_path = str(Path(root).relative_to(video_root)) if Path(root) != Path(video_root) else "."
+        camera_name = relative_path.split("/")[0] if relative_path != "." else Path(video_root).name
         
         # Skip directories not in selected cameras list
         if selected_cameras and camera_name not in selected_cameras:
@@ -228,7 +229,7 @@ def scan_files(root_path: str, video_root: str, time_threshold: Optional[datetim
         # Process each video file in the directory
         for file in files:
             if file.lower().endswith(video_extensions):
-                file_path = os.path.join(root, file)
+                file_path = str(Path(root) / file)
                 try:
                     # Extract accurate creation time with timezone detection
                     file_ctime = get_file_creation_time(file_path, camera_name)
@@ -238,10 +239,10 @@ def scan_files(root_path: str, video_root: str, time_threshold: Optional[datetim
                     # Fallback to filesystem creation time with system timezone
                     try:
                         user_timezone = _get_system_tz()
-                        file_ctime = datetime.fromtimestamp(os.path.getctime(file_path), tz=user_timezone)
+                        file_ctime = datetime.fromtimestamp(Path(file_path).stat().st_ctime, tz=user_timezone)
                     except Exception:
                         # Ultimate fallback
-                        file_ctime = datetime.fromtimestamp(os.path.getctime(file_path), tz=_get_system_tz())
+                        file_ctime = datetime.fromtimestamp(Path(file_path).stat().st_ctime, tz=_get_system_tz())
 
                 logger.debug(f"Checking file {file_path}, ctime={file_ctime}, max_ctime={max_ctime}")
                 
@@ -315,7 +316,7 @@ def scan_files(root_path: str, video_root: str, time_threshold: Optional[datetim
                             continue
 
                 # File passes all filters - add to results
-                relative_path = os.path.relpath(file_path, video_root)
+                relative_path = str(Path(file_path).relative_to(video_root))
                 video_files.append(relative_path)
                 file_ctimes.append(file_ctime.timestamp())
                 logger.info(f"Found video file: {file_path}")
@@ -323,7 +324,7 @@ def scan_files(root_path: str, video_root: str, time_threshold: Optional[datetim
         # Track camera directory modification times if requested
         if camera_ctime_map is not None:
             user_timezone = _get_system_tz()
-            dir_ctime = datetime.fromtimestamp(os.path.getctime(root), tz=user_timezone)
+            dir_ctime = datetime.fromtimestamp(Path(root).stat().st_ctime, tz=user_timezone)
             camera_ctime_map[camera_name] = max(camera_ctime_map.get(camera_name, 0), dir_ctime.timestamp())
 
     # Log performance metrics and return results
@@ -376,10 +377,10 @@ def save_files_to_db(conn: Any, video_files: List[str], file_ctimes: List[float]
     
     for file_path, file_ctime in zip(video_files, file_ctimes):
         # Calculate absolute path based on scan type
-        if scan_action == "custom" and custom_path and os.path.isfile(custom_path):
+        if scan_action == "custom" and custom_path and Path(custom_path).is_file():
             absolute_path = custom_path
         else:
-            absolute_path = os.path.join(video_root, file_path)
+            absolute_path = str(Path(video_root) / file_path)
             
         # Convert timestamp to datetime object with system timezone
         user_timezone = _get_system_tz()
@@ -396,21 +397,21 @@ def save_files_to_db(conn: Any, video_files: List[str], file_ctimes: List[float]
             # Extract camera name from directory structure
             # Always use relative path from video_root for consistent camera detection
             try:
-                relative_path = os.path.relpath(absolute_path, video_root)
+                relative_path = str(Path(absolute_path).relative_to(video_root))
                 # Check if video is outside video_root
                 if relative_path.startswith(".."):
                     # Video is outside video_root, use parent folder
-                    camera_name = os.path.basename(os.path.dirname(absolute_path))
+                    camera_name = Path(absolute_path).parent.name
                     logger.info(f"Video outside video_root, using parent folder: {camera_name}")
                 elif relative_path == ".":
                     # Video is directly in video_root
-                    camera_name = os.path.basename(video_root)
+                    camera_name = Path(video_root).name
                 else:
                     # First level directory is camera name (e.g., Cloud_Cam1, Cam2N)
                     camera_name = relative_path.split(os.sep)[0]
             except ValueError:
                 # If relpath fails (different drives on Windows), fallback to basename
-                camera_name = os.path.basename(os.path.dirname(absolute_path))
+                camera_name = Path(absolute_path).parent.name
 
             # Validation: reject invalid camera names
             if camera_name in ['..', '.', 'Inputvideo', 'videos', 'resources', 'uploads']:
@@ -483,7 +484,7 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
 
-                if not os.path.exists(video_root):
+                if not Path(video_root).exists():
                     try:
                         os.makedirs(video_root, exist_ok=True)
                         logger.info(f"Created video root directory: {video_root}")
@@ -550,14 +551,14 @@ def list_files(video_root, scan_action, custom_path, days, db_path, default_scan
         file_ctimes = []
 
         if scan_action == "custom" and custom_path:
-            if not os.path.exists(custom_path):
+            if not Path(custom_path).exists():
                 raise Exception(f"Path does not exist: {custom_path}")
-            if os.path.isfile(custom_path) and custom_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv')):
-                file_name = os.path.basename(custom_path)
+            if Path(custom_path).is_file() and custom_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv')):
+                file_name = Path(custom_path).name
                 # Use camera_name parameter if provided, otherwise extract from path
                 if not camera_name:
-                    custom_dir = os.path.dirname(custom_path)
-                    camera_name = os.path.basename(custom_dir) if custom_dir else None
+                    custom_dir = str(Path(custom_path).parent)
+                    camera_name = Path(custom_dir).name if custom_dir else None
                 file_ctime = get_file_creation_time(custom_path, camera_name)
                 video_files.append(file_name)
                 file_ctimes.append(file_ctime.timestamp())

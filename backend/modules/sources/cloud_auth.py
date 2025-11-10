@@ -43,11 +43,11 @@ def _load_or_generate_oauth_encryption_key():
     """Load existing OAuth encryption key or generate new one with persistence"""
     try:
         # Define key file path
-        keys_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'keys')
+        keys_dir = str(Path(__file__).parent.parent.parent / 'keys')
         os.makedirs(keys_dir, exist_ok=True)
-        key_path = os.path.join(keys_dir, 'oauth_encryption.key')
+        key_path = str(Path(keys_dir) / 'oauth_encryption.key')
 
-        if os.path.exists(key_path):
+        if Path(key_path).exists():
             # Load existing key
             with open(key_path, 'rb') as f:
                 key = f.read()
@@ -116,7 +116,7 @@ class CloudAuthManager:
             base_dir (str): Base directory for credential storage
         """
         self.provider = provider
-        self.base_dir = base_dir or os.path.dirname(__file__)
+        self.base_dir = base_dir or str(Path(__file__).parent)
         
         # Authentication state
         self.auth_sessions = {}  # Active auth sessions
@@ -126,8 +126,8 @@ class CloudAuthManager:
         self.auth_lock = threading.Lock()
         
         # Credential file paths
-        self.credentials_dir = os.path.join(self.base_dir, 'credentials')
-        self.tokens_dir = os.path.join(self.base_dir, 'tokens')
+        self.credentials_dir = str(Path(self.base_dir) / 'credentials')
+        self.tokens_dir = str(Path(self.base_dir) / 'tokens')
         
         # Ensure directories exist
         os.makedirs(self.credentials_dir, exist_ok=True)
@@ -222,12 +222,9 @@ class CloudAuthManager:
         """Initiate Google Drive OAuth2 flow"""
         try:
             # Get client secrets file path
-            client_secrets_file = os.path.join(
-                self.credentials_dir, 
-                self.OAUTH_ENDPOINTS[self.provider]['client_secrets_file']
-            )
+            client_secrets_file = str(Path(self.credentials_dir) / self.OAUTH_ENDPOINTS[self.provider]['client_secrets_file'])
             
-            if not os.path.exists(client_secrets_file):
+            if not Path(client_secrets_file).exists():
                 return {
                     'success': False,
                     'message': f"Google credentials file not found: {client_secrets_file}",
@@ -490,7 +487,7 @@ class CloudAuthManager:
             user_email = user_info.get('email', 'unknown')
             email_hash = hashlib.sha256(user_email.encode()).hexdigest()[:16]
             token_filename = f"{self.provider}_{email_hash}.json"
-            token_filepath = os.path.join(self.tokens_dir, token_filename)
+            token_filepath = str(Path(self.tokens_dir) / token_filename)
             
             # Store encrypted credentials
             encrypted_storage = {
@@ -572,7 +569,7 @@ class CloudAuthManager:
                     return None
             
             # Load the first (or specified) credential file
-            token_filepath = os.path.join(self.tokens_dir, token_files[0])
+            token_filepath = str(Path(self.tokens_dir) / token_files[0])
             
             with open(token_filepath, 'r') as f:
                 credential_data = json.load(f)
@@ -710,8 +707,8 @@ class CloudAuthManager:
         try:
             email_hash = hashlib.sha256(user_email.encode()).hexdigest()[:16]
             token_filename = f"{self.provider}_{email_hash}.json"
-            token_filepath = os.path.join(self.tokens_dir, token_filename)
-            return os.path.exists(token_filepath)
+            token_filepath = str(Path(self.tokens_dir) / token_filename)
+            return Path(token_filepath).exists()
         except Exception:
             return False
 
@@ -748,9 +745,9 @@ class CloudAuthManager:
             # Load from encrypted storage
             email_hash = hashlib.sha256(user_email.encode()).hexdigest()[:16]
             token_filename = f"{self.provider}_{email_hash}.json"
-            token_filepath = os.path.join(self.tokens_dir, token_filename)
+            token_filepath = str(Path(self.tokens_dir) / token_filename)
             
-            if not os.path.exists(token_filepath):
+            if not Path(token_filepath).exists():
                 logger.warning(f"⚠️ No encrypted credentials found for: {user_email}")
                 return None
             
@@ -827,10 +824,10 @@ class CloudAuthManager:
             }
             
             # Write to audit log file
-            audit_log_path = os.path.join(self.base_dir, 'audit_logs')
+            audit_log_path = str(Path(self.base_dir) / 'audit_logs')
             os.makedirs(audit_log_path, exist_ok=True)
             
-            log_file = os.path.join(audit_log_path, f'auth_audit_{datetime.now().strftime("%Y%m")}.log')
+            log_file = str(Path(audit_log_path) / f'auth_audit_{datetime.now().strftime("%Y%m")}.log')
             with open(log_file, 'a') as f:
                 f.write(json.dumps(log_entry) + '\n')
             
@@ -864,9 +861,9 @@ class CloudAuthManager:
                 # Revoke specific user credentials
                 email_hash = hashlib.sha256(user_email.encode()).hexdigest()[:16]
                 token_filename = f"{self.provider}_{email_hash}.json"
-                token_filepath = os.path.join(self.tokens_dir, token_filename)
+                token_filepath = str(Path(self.tokens_dir) / token_filename)
                 
-                if os.path.exists(token_filepath):
+                if Path(token_filepath).exists():
                     os.remove(token_filepath)
                     revoked_count = 1
                     revoked_users.append(user_email)
@@ -886,7 +883,7 @@ class CloudAuthManager:
                 # Revoke all credentials for provider
                 for filename in os.listdir(self.tokens_dir):
                     if filename.startswith(f"{self.provider}_") and filename.endswith('.json'):
-                        filepath = os.path.join(self.tokens_dir, filename)
+                        filepath = str(Path(self.tokens_dir) / filename)
                         
                         # Try to get user email for audit log
                         try:
