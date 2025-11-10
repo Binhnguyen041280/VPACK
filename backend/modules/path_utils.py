@@ -83,8 +83,8 @@ def get_paths():
 
     # Determine BASE_DIR based on deployment mode
     if mode == 'development':
-        # Development: Use project root as base (var/ at root, not backend/var/)
-        base_dir = find_project_root(__file__)
+        # Development: Use backend/ as base (var/ at backend/var/)
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     elif mode == 'docker':
         # Docker: Use /app/ or custom base
@@ -110,10 +110,10 @@ def get_paths():
 
     # Database location depends on mode
     if mode == 'development':
-        # Development: database is in backend/database/
-        db_path = os.path.join(base_dir, "backend", "database", "events.db")
-        backend_dir = os.path.join(base_dir, "backend")
-        frontend_dir = os.path.join(base_dir, "frontend")
+        # Development: database is in backend/database/ (base_dir is already backend/)
+        db_path = os.path.join(base_dir, "database", "events.db")
+        backend_dir = base_dir
+        frontend_dir = os.path.join(os.path.dirname(base_dir), "frontend")
     else:
         # Docker/Production/Installed: database at base_dir/database/
         db_path = os.path.join(base_dir, "database", "events.db")
