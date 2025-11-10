@@ -1,14 +1,15 @@
 import os
 import sys
+from pathlib import Path
 
 
 def find_project_root(file_path):
     """Find the project root directory starting from file_path."""
-    current_path = os.path.dirname(os.path.abspath(file_path))
-    while current_path != os.path.dirname(current_path):
-        if "backend" in os.listdir(current_path):
-            return current_path
-        current_path = os.path.dirname(current_path)
+    current_path = Path(file_path).resolve().parent
+    while current_path != current_path.parent:
+        if "backend" in [p.name for p in current_path.iterdir()]:
+            return str(current_path)
+        current_path = current_path.parent
     raise RuntimeError("Project root directory not found.")
 
 
@@ -25,13 +26,13 @@ def get_deployment_mode():
         return env_mode
 
     # 2. Detect Docker environment
-    if os.path.exists("/.dockerenv") or os.getenv("VTRACK_IN_DOCKER") == "true":
+    if Path("/.dockerenv").exists() or os.getenv("VTRACK_IN_DOCKER") == "true":
         return 'docker'
 
     # 3. Check if running from source (has backend/ subfolder structure)
     try:
         base_dir = find_project_root(__file__)
-        if os.path.exists(os.path.join(base_dir, "backend")):
+        if (Path(base_dir) / "backend").exists():
             return 'development'
     except RuntimeError:
         pass
@@ -71,74 +72,75 @@ def get_paths():
             └── uploads/                 # User uploaded files
 
     Only BASE_DIR differs per mode:
-    - development: /path/to/V_Track/ (project root, so var/ is at root)
+    - development: /path/to/V_Track/backend/ (backend as base, var/ at backend/var/)
     - docker: /app/
     - production: /path/to/executable/
     - installed: ~/.local/share/vtrack/ (or platform equivalent)
 
     Returns:
-        dict: Path configuration for current deployment mode
+        dict: Path configuration for current deployment mode (all paths as strings)
     """
     mode = get_deployment_mode()
 
     # Determine BASE_DIR based on deployment mode
     if mode == 'development':
         # Development: Use backend/ as base (var/ at backend/var/)
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        base_dir = Path(__file__).resolve().parent.parent
 
     elif mode == 'docker':
         # Docker: Use /app/ or custom base
-        base_dir = os.getenv("VTRACK_BASE_DIR", "/app")
+        base_dir = Path(os.getenv("VTRACK_BASE_DIR", "/app"))
 
     elif mode == 'production':
         # Production EXE: Directory containing executable
         if getattr(sys, 'frozen', False):
-            base_dir = os.path.dirname(sys.executable)
+            base_dir = Path(sys.executable).parent
         else:
-            base_dir = os.getcwd()
+            base_dir = Path.cwd()
 
     else:  # installed
         # Installed: Use XDG/platform-specific directory
         try:
             from platformdirs import user_data_dir
-            base_dir = user_data_dir("vtrack", "VTrack")
+            base_dir = Path(user_data_dir("vtrack", "VTrack"))
         except ImportError:
-            base_dir = os.path.join(os.path.expanduser("~"), ".local", "share", "vtrack")
+            base_dir = Path.home() / ".local" / "share" / "vtrack"
 
     # Build unified path structure
-    var_dir = os.path.join(base_dir, "var")
+    var_dir = base_dir / "var"
 
     # Database location depends on mode
     if mode == 'development':
         # Development: database is in backend/database/ (base_dir is already backend/)
-        db_path = os.path.join(base_dir, "database", "events.db")
+        db_path = base_dir / "database" / "events.db"
         backend_dir = base_dir
-        frontend_dir = os.path.join(os.path.dirname(base_dir), "frontend")
+        frontend_dir = base_dir.parent / "frontend"
     else:
         # Docker/Production/Installed: database at base_dir/database/
-        db_path = os.path.join(base_dir, "database", "events.db")
+        db_path = base_dir / "database" / "events.db"
         backend_dir = base_dir
         frontend_dir = base_dir
 
+    # Return all paths as strings for backward compatibility
     return {
-        "BASE_DIR": base_dir,
+        "BASE_DIR": str(base_dir),
         "DEPLOYMENT_MODE": mode,
         # Database
-        "DB_PATH": db_path,
+        "DB_PATH": str(db_path),
         # Code directories (for compatibility)
-        "BACKEND_DIR": backend_dir,
-        "FRONTEND_DIR": frontend_dir,
+        "BACKEND_DIR": str(backend_dir),
+        "FRONTEND_DIR": str(frontend_dir),
         # Var subdirectories (unified structure)
-        "VAR_DIR": var_dir,
-        "CACHE_DIR": os.path.join(var_dir, "cache"),
-        "LOGS_DIR": os.path.join(var_dir, "logs"),
-        "TMP_DIR": os.path.join(var_dir, "tmp"),
-        "UPLOADS_DIR": os.path.join(var_dir, "uploads"),
+        "VAR_DIR": str(var_dir),
+        "CACHE_DIR": str(var_dir / "cache"),
+        "LOGS_DIR": str(var_dir / "logs"),
+        "TMP_DIR": str(var_dir / "tmp"),
+        "UPLOADS_DIR": str(var_dir / "uploads"),
         # Specific paths
-        "CLOUD_STAGING_DIR": os.path.join(var_dir, "cache", "cloud_downloads"),
+        "CLOUD_STAGING_DIR": str(var_dir / "cache" / "cloud_downloads"),
         # Legacy paths (kept for backward compatibility with old code)
         # DEPRECATED: CameraROI not used in current implementation
-        "CAMERA_ROI_DIR": os.path.join(var_dir, "cache", "roi_legacy"),
+        "CAMERA_ROI_DIR": str(var_dir / "cache" / "roi_legacy"),
         # Legacy flag
         "IS_DEVELOPMENT": mode in ['development', 'docker']
     }
@@ -149,7 +151,7 @@ def get_cloud_staging_path(source_name=None):
     Get cloud staging directory path (auto-managed by application)
 
     Follows web app best practices:
-    - Development: {project}/var/cache/cloud_downloads/
+    - Development: {project}/backend/var/cache/cloud_downloads/
     - Production: ~/.cache/vtrack/cloud_downloads/ (Linux)
                   ~/Library/Caches/VTrack/cloud_downloads/ (macOS)
                   %LOCALAPPDATA%\VTrack\Cache\cloud_downloads\ (Windows)
@@ -164,31 +166,31 @@ def get_cloud_staging_path(source_name=None):
         str: Full path to cloud staging directory
     """
     paths = get_paths()
-    staging_dir = paths["CLOUD_STAGING_DIR"]
+    staging_dir = Path(paths["CLOUD_STAGING_DIR"])
 
     # Create base staging directory if not exists
-    os.makedirs(staging_dir, exist_ok=True)
+    staging_dir.mkdir(parents=True, exist_ok=True)
 
     # If source name provided, create source subdirectory
     if source_name:
-        source_dir = os.path.join(staging_dir, source_name)
-        os.makedirs(source_dir, exist_ok=True)
-        return source_dir
+        source_dir = staging_dir / source_name
+        source_dir.mkdir(parents=True, exist_ok=True)
+        return str(source_dir)
 
-    return staging_dir
+    return str(staging_dir)
 
 
 def get_logs_dir():
     """Get application logs directory"""
     paths = get_paths()
-    logs_dir = paths["LOGS_DIR"]
-    os.makedirs(logs_dir, exist_ok=True)
-    return logs_dir
+    logs_dir = Path(paths["LOGS_DIR"])
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    return str(logs_dir)
 
 
 def get_tmp_dir():
     """Get application temporary directory"""
     paths = get_paths()
-    tmp_dir = paths["TMP_DIR"]
-    os.makedirs(tmp_dir, exist_ok=True)
-    return tmp_dir
+    tmp_dir = Path(paths["TMP_DIR"])
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    return str(tmp_dir)
