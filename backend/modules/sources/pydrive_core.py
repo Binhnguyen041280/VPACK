@@ -6,6 +6,7 @@ No error handling, no retry logic - just clean business operations
 """
 
 import os
+from pathlib import Path
 import json
 import logging
 import hashlib
@@ -94,12 +95,12 @@ class PyDriveCore:
                 return None
             
             # Load from encrypted file
-            tokens_dir = os.path.join(os.path.dirname(__file__), 'tokens')
+            tokens_dir = str(Path(__file__).parent / 'tokens')
             email_hash = hashlib.sha256(user_email.encode()).hexdigest()[:16]
             token_filename = f"google_drive_{email_hash}.json"
-            token_filepath = os.path.join(tokens_dir, token_filename)
+            token_filepath = str(Path(tokens_dir) / token_filename)
             
-            if not os.path.exists(token_filepath):
+            if not Path(token_filepath).exists():
                 logger.error(f"❌ Token file not found: {token_filepath}")
                 return None
             
@@ -211,9 +212,9 @@ class PyDriveCore:
             encrypted_data = encrypt_credentials(original_data)
             
             if encrypted_data:
-                tokens_dir = os.path.join(os.path.dirname(__file__), 'tokens')
+                tokens_dir = str(Path(__file__).parent / 'tokens')
                 email_hash = hashlib.sha256(user_email.encode()).hexdigest()[:16]
-                token_filepath = os.path.join(tokens_dir, f"google_drive_{email_hash}.json")
+                token_filepath = str(Path(tokens_dir) / f"google_drive_{email_hash}.json")
                 
                 storage_data = {
                     'encrypted_data': encrypted_data,
@@ -345,7 +346,7 @@ class PyDriveCore:
                     subfolder_id = subfolder['id']
 
                     # Build relative path
-                    new_relative_path = os.path.join(relative_path, subfolder_name) if relative_path else subfolder_name
+                    new_relative_path = str(Path(relative_path) / subfolder_name) if relative_path else subfolder_name
 
                     logger.info(f"🔍 Scanning subfolder: {new_relative_path}")
 
@@ -452,7 +453,7 @@ class PyDriveCore:
                     local_path,
                     int(file_info.get('fileSize', 0)),
                     datetime.now().isoformat(),
-                    os.path.splitext(file_info['title'])[1],
+                    Path(file_info['title']).suffix,
                     drive_file_id,
                     relative_path
                 ))
@@ -491,7 +492,7 @@ class PyDriveCore:
                 return {'success': True, 'files_downloaded': 0, 'total_size': 0}
 
             # Create folder path
-            folder_path = os.path.join(base_path, self._sanitize_filename(folder_name))
+            folder_path = str(Path(base_path) / self._sanitize_filename(folder_name))
             os.makedirs(folder_path, exist_ok=True)
 
             # Download new files
@@ -511,13 +512,13 @@ class PyDriveCore:
                 # Build full path preserving folder structure
                 if relative_path:
                     # Nested file: folder_path/relative_path/filename
-                    file_dir = os.path.join(folder_path, relative_path)
+                    file_dir = str(Path(folder_path) / relative_path)
                     os.makedirs(file_dir, exist_ok=True)
-                    file_path = os.path.join(file_dir, self._sanitize_filename(filename))
+                    file_path = str(Path(file_dir) / self._sanitize_filename(filename))
                     logger.info(f"📥 Downloading to nested path: {relative_path}/{filename}")
                 else:
                     # Root level file: folder_path/filename
-                    file_path = os.path.join(folder_path, self._sanitize_filename(filename))
+                    file_path = str(Path(folder_path) / self._sanitize_filename(filename))
                     logger.info(f"📥 Downloading to root: {filename}")
 
                 # Download file
@@ -651,7 +652,7 @@ class PyDriveCore:
                 ))
 
                 if cursor.rowcount > 0:
-                    logger.info(f"✅ Marked as processed: {os.path.basename(local_file_path)}")
+                    logger.info(f"✅ Marked as processed: {Path(local_file_path).name}")
                     return True
                 else:
                     logger.warning(f"⚠️ File not found in database: {local_file_path}")

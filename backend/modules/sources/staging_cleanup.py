@@ -48,9 +48,9 @@ class StagingCleanup:
             else:
                 # Clean all source directories
                 cleanup_paths = [
-                    os.path.join(self.staging_dir, d)
+                    str(Path(self.staging_dir) / d)
                     for d in os.listdir(self.staging_dir)
-                    if os.path.isdir(os.path.join(self.staging_dir, d))
+                    if Path(str(Path(self.staging_dir).is_dir() / d))
                 ]
 
             total_deleted = 0
@@ -60,22 +60,22 @@ class StagingCleanup:
             cutoff_time = time.time() - (self.max_age_days * 24 * 60 * 60)
 
             for path in cleanup_paths:
-                if not os.path.exists(path):
+                if not Path(path).exists():
                     continue
 
                 # Walk through directory tree
                 for root, dirs, files in os.walk(path, topdown=False):
                     for filename in files:
-                        file_path = os.path.join(root, filename)
+                        file_path = str(Path(root) / filename)
 
                         try:
                             # Check file age
-                            file_mtime = os.path.getmtime(file_path)
+                            file_mtime = Path(file_path).stat().st_mtime
 
                             if file_mtime < cutoff_time:
                                 # Check if file is in processed status
                                 if self._is_file_processed(file_path):
-                                    file_size = os.path.getsize(file_path)
+                                    file_size = Path(file_path).stat().st_size
                                     os.remove(file_path)
                                     total_deleted += 1
                                     total_size_freed += file_size
@@ -87,7 +87,7 @@ class StagingCleanup:
 
                     # Remove empty directories
                     for dirname in dirs:
-                        dir_path = os.path.join(root, dirname)
+                        dir_path = str(Path(root) / dirname)
                         try:
                             if not os.listdir(dir_path):  # Empty directory
                                 os.rmdir(dir_path)
@@ -188,7 +188,7 @@ class StagingCleanup:
 
             for file_id, file_path, filename, file_size in files_to_cleanup:
                 try:
-                    if os.path.exists(file_path):
+                    if Path(file_path).exists():
                         os.remove(file_path)
                         removed_count += 1
                         removed_size += file_size or 0
@@ -257,7 +257,7 @@ class StagingCleanup:
             file_count = 0
             source_stats = {}
 
-            if not os.path.exists(self.staging_dir):
+            if not Path(self.staging_dir).exists():
                 return {
                     'total_size_mb': 0,
                     'file_count': 0,
@@ -265,9 +265,9 @@ class StagingCleanup:
                 }
 
             for source_dir in os.listdir(self.staging_dir):
-                source_path = os.path.join(self.staging_dir, source_dir)
+                source_path = str(Path(self.staging_dir) / source_dir)
 
-                if not os.path.isdir(source_path):
+                if not Path(source_path).is_dir():
                     continue
 
                 source_size = 0
@@ -275,9 +275,9 @@ class StagingCleanup:
 
                 for root, dirs, files in os.walk(source_path):
                     for filename in files:
-                        file_path = os.path.join(root, filename)
+                        file_path = str(Path(root) / filename)
                         try:
-                            file_size = os.path.getsize(file_path)
+                            file_size = Path(file_path).stat().st_size
                             source_size += file_size
                             source_files += 1
                             total_size += file_size

@@ -6,6 +6,7 @@ to avoid code duplication and maintain DRY principle.
 """
 
 import os
+from pathlib import Path
 import json
 from typing import List, Dict, Any, Optional
 from modules.path_utils import get_paths
@@ -56,13 +57,13 @@ def detect_camera_folders(path: str) -> List[str]:
     """
     cameras = []
     
-    if not os.path.exists(path):
+    if not Path(path).exists():
         return cameras
     
     try:
         for item in os.listdir(path):
-            item_path = os.path.join(path, item)
-            if os.path.isdir(item_path):
+            item_path = str(Path(path) / item)
+            if Path(item_path).is_dir():
                 # Check if this looks like a camera folder
                 # Common camera folder patterns: Cam*, Camera*, Channel*, etc.
                 item_lower = item.lower()
@@ -106,12 +107,12 @@ def scan_subdirectories_as_cameras(path: str) -> Dict[str, Any]:
         return result
     
     # Check if path exists
-    if not os.path.exists(path):
+    if not Path(path).exists():
         result["message"] = f"Path does not exist: {path}"
         return result
     
     # Check if it's a directory
-    if not os.path.isdir(path):
+    if not Path(path).is_dir():
         result["message"] = f"Path is not a directory: {path}"
         return result
     
@@ -128,10 +129,10 @@ def scan_subdirectories_as_cameras(path: str) -> Dict[str, Any]:
     folders = []
     try:
         for item in os.listdir(path):
-            item_path = os.path.join(path, item)
+            item_path = str(Path(path) / item)
             
             # Only include directories (ignore files)
-            if os.path.isdir(item_path):
+            if Path(item_path).is_dir():
                 try:
                     # Test if we can access the directory
                     os.listdir(item_path)
@@ -185,10 +186,10 @@ def has_video_files(path: str, max_depth: int = 2) -> bool:
         
         try:
             for item in os.listdir(dir_path):
-                item_path = os.path.join(dir_path, item)
-                if os.path.isfile(item_path) and item.lower().endswith(video_extensions):
+                item_path = str(Path(dir_path) / item)
+                if Path(item_path).is_file() and item.lower().endswith(video_extensions):
                     return True
-                elif os.path.isdir(item_path) and depth < max_depth:
+                elif Path(item_path).is_dir() and depth < max_depth:
                     if check_directory(item_path, depth + 1):
                         return True
         except (PermissionError, OSError):
@@ -250,12 +251,12 @@ def load_config() -> Dict[str, str]:
     paths = get_paths()
     default_config = {
         "db_path": paths["DB_PATH"],
-        "input_path": os.path.join(paths["BASE_DIR"], "Inputvideo"),
-        "output_path": os.path.join(paths["BASE_DIR"], "output_clips")
+        "input_path": str(Path(paths["BASE_DIR"]) / "Inputvideo"),
+        "output_path": str(Path(paths["BASE_DIR"]) / "output_clips")
     }
 
-    CONFIG_FILE = os.path.join(paths["BASE_DIR"], "config.json")
-    if os.path.exists(CONFIG_FILE):
+    CONFIG_FILE = str(Path(paths["BASE_DIR"]) / "config.json")
+    if Path(CONFIG_FILE).exists():
         try:
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
