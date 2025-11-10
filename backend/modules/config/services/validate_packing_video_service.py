@@ -4,6 +4,7 @@ Validates video files for training purposes with duration requirements (1-5 minu
 """
 
 import os
+from pathlib import Path
 import cv2
 import time
 from typing import Dict, Any, Optional
@@ -34,14 +35,14 @@ def format_duration(seconds: float) -> str:
 def get_file_size_mb(file_path: str) -> float:
     """Get file size in megabytes"""
     try:
-        size_bytes = os.path.getsize(file_path)
+        size_bytes = Path(file_path).stat().st_size
         return round(size_bytes / (1024 * 1024), 2)
     except Exception:
         return 0.0
 
 def get_video_format(file_path: str) -> str:
     """Extract video format from file extension"""
-    _, ext = os.path.splitext(file_path.lower())
+    ext = Path(file_path.lower().suffix)
     return ext.lstrip('.') if ext else 'unknown'
 
 def validate_packing_video(file_path: str, video_type: str = "traditional") -> Dict[str, Any]:
@@ -61,7 +62,7 @@ def validate_packing_video(file_path: str, video_type: str = "traditional") -> D
     response = {
         "success": False,
         "video_file": {
-            "filename": os.path.basename(file_path) if file_path else "",
+            "filename": Path(file_path).name if file_path else "",
             "path": file_path,
             "duration_seconds": 0,
             "duration_formatted": "0s",
@@ -90,7 +91,7 @@ def validate_packing_video(file_path: str, video_type: str = "traditional") -> D
             return response
         
         # Check if file exists
-        if not os.path.exists(file_path):
+        if not Path(file_path).exists():
             response["video_file"]["error"] = "File does not exist"
             return response
         
@@ -113,7 +114,7 @@ def validate_packing_video(file_path: str, video_type: str = "traditional") -> D
         response["video_file"]["format"] = get_video_format(file_path)
         
         # Check file format
-        file_ext = os.path.splitext(file_path.lower())[1]
+        file_ext = Path(file_path).suffix.lower()
         if file_ext not in SUPPORTED_FORMATS:
             response["video_file"]["error"] = f"Unsupported video format. Supported formats: {', '.join(SUPPORTED_FORMATS)}"
             return response

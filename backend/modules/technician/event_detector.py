@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify
 import os
+from pathlib import Path
 import sqlite3
 import logging
 import ast
@@ -13,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 
 # Define BASE_DIR
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+BASE_DIR = str(Path(__file__).resolve().parent.parent.parent.parent)
 
 event_detector_bp = Blueprint('event_detector', __name__)
 
@@ -182,7 +183,7 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
     # Khởi tạo logger với context log_file
     logger = get_logger(__name__, {"log_file": log_file_path})
 
-    if not os.path.isfile(log_file_path):
+    if not Path(log_file_path).is_file():
         logger.warning(f"Log file not found: {log_file_path}, skipping.")
         return
 
@@ -484,7 +485,7 @@ def process_single_log(log_file_path):
     # Khởi tạo logger với context log_file
     logger = get_logger(__name__, {"log_file": log_file_path})
 
-    if not os.path.isfile(log_file_path):
+    if not Path(log_file_path).is_file():
         logger.warning(f"Log file not found: {log_file_path}, skipping.")
         return
 
@@ -528,10 +529,10 @@ def process_events():
 
                 # FIXED: Xử lý tất cả files trong cùng transaction/lock scope
                 for log_file in log_files:
-                    if not os.path.isfile(log_file):
+                    if not Path(log_file).is_file():
                         logger.warning(f"Log file not found, skipping: {log_file}")
                         continue
-                    if os.path.exists(log_file):
+                    if Path(log_file).exists():
                         logger.info(f"Starting to process file: {log_file}")
                         # FIXED: Gọi helper function với cursor hiện tại thay vì tạo mới
                         process_single_log_with_cursor(log_file, cursor, conn)

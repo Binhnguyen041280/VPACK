@@ -155,7 +155,7 @@ class VideoTimezonePerformanceBenchmarks:
     
     def _benchmark_video_scanning(self, test_dir: Optional[str], iterations: int) -> Dict[str, Any]:
         """Benchmark video file scanning performance."""
-        if not test_dir or not os.path.exists(test_dir):
+        if not test_dir or not Path(test_dir).exists():
             # Create temporary test environment
             test_dir = self._create_test_video_environment()
         
@@ -336,7 +336,7 @@ class VideoTimezonePerformanceBenchmarks:
             # Create sample video metadata files for testing
             for i in range(5):
                 video_name = f"test_video_{i}.mp4"
-                video_path = os.path.join(test_dir, video_name)
+                video_path = str(Path(test_dir) / video_name)
                 
                 # Create minimal video file for testing (just metadata)
                 # This is a placeholder - in real testing you'd use actual video files
@@ -369,9 +369,9 @@ class VideoTimezonePerformanceBenchmarks:
                 for root, dirs, files in os.walk(test_dir):
                     for file in files:
                         if file.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
-                            file_path = os.path.join(root, file)
+                            file_path = str(Path(root) / file)
                             # Simulate baseline creation time extraction
-                            file_ctime = datetime.fromtimestamp(os.path.getctime(file_path))
+                            file_ctime = datetime.fromtimestamp(Path(file_path).stat().st_ctime)
                             video_files.append((file_path, file_ctime))
                             files_processed += 1
             except Exception:
@@ -411,7 +411,7 @@ class VideoTimezonePerformanceBenchmarks:
                 for root, dirs, files in os.walk(test_dir):
                     for file in files:
                         if file.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
-                            file_path = os.path.join(root, file)
+                            file_path = str(Path(root) / file)
                             try:
                                 # Use enhanced creation time extraction
                                 file_ctime = get_file_creation_time(file_path, "TestCamera")

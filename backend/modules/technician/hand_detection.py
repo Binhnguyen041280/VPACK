@@ -3,12 +3,13 @@ import mediapipe as mp
 import time
 import logging
 import os
+from pathlib import Path
 import glob
 from datetime import datetime
 from typing import Dict, Any, Optional
 
 # Define BASE_DIR
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+BASE_DIR = str(Path(__file__).resolve().parent.parent.parent.parent)
 
 # Use centralized logging from config
 from modules.config.logging_config import get_logger
@@ -26,12 +27,12 @@ except AttributeError as e:
 FRAME_STEP = 5
 
 # Path for saving images
-CAMERA_ROI_DIR = os.path.join(BASE_DIR, "resources", "output_clips", "CameraROI")
+CAMERA_ROI_DIR = str(Path(BASE_DIR) / "resources" / "output_clips" / "CameraROI")
 
 def ensure_directory_exists(directory):
     """Ensure directory exists, create if not."""
     try:
-        if not os.path.exists(directory):
+        if not Path(directory).exists():
             os.makedirs(directory)
             logging.debug(f"Created directory: {directory}")
         # Check access permissions
@@ -75,7 +76,7 @@ def select_roi(video_path: str, camera_id: str, step: str = "packing") -> Dict[s
 
             # Save original frame if in packing step
             if step == "packing":
-                original_frame_path = os.path.join(CAMERA_ROI_DIR, f"camera_{camera_id}_original.jpg")
+                original_frame_path = str(Path(CAMERA_ROI_DIR) / f"camera_{camera_id}_original.jpg")
                 ret = cv2.imwrite(original_frame_path, frame)
                 if not ret:
                     logging.error(f"Cannot save original image at: {original_frame_path}")
@@ -145,7 +146,7 @@ def select_roi(video_path: str, camera_id: str, step: str = "packing") -> Dict[s
                 result = {
                     "success": True,
                     "roi": {"x": x, "y": y, "w": w, "h": h},
-                    "roi_frame": os.path.relpath(roi_frame_path, BASE_DIR),
+                    "roi_frame": str(Path(roi_frame_path).relative_to(BASE_DIR)),
                     "hand_detected": hand_detected
                 }
 
