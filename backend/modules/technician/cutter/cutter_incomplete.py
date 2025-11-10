@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import subprocess
 from .cutter_utils import generate_merged_filename, generate_output_filename
 from modules.path_utils import get_tmp_dir
@@ -71,25 +72,25 @@ def merge_incomplete_events(event_a, event_b, video_buffer, video_length_a, vide
     files_to_cleanup = []
 
     # Create temp_clips directory for temporary files in var/tmp
-    temp_clips_dir = os.path.join(get_tmp_dir(), "temp_clips")
-    if not os.path.exists(temp_clips_dir):
-        os.makedirs(temp_clips_dir)
+    temp_clips_dir = str(Path(get_tmp_dir()) / "temp_clips")
+    if not Path(temp_clips_dir).exists():
+        Path(temp_clips_dir).mkdir(parents=True, exist_ok=True)
 
     # If no pre-cut file, cut immediately and save to temp_clips_dir
-    if not temp_file_a or not os.path.exists(temp_file_a):
-        temp_file_a = os.path.join(temp_clips_dir, f"temp_a_{event_a.get('event_id')}_incomplete.mp4")
+    if not temp_file_a or not Path(temp_file_a).exists():
+        temp_file_a = str(Path(temp_clips_dir) / f"temp_a_{event_a.get('event_id')}_incomplete.mp4")
         if not cut_incomplete_event(event_a, video_buffer, video_length_a, temp_file_a):
             print(f"Error: Cannot cut temporary file for event {event_a.get('event_id')}")
             return None
-    if not temp_file_b or not os.path.exists(temp_file_b):
-        temp_file_b = os.path.join(temp_clips_dir, f"temp_b_{event_b.get('event_id')}_incomplete.mp4")
+    if not temp_file_b or not Path(temp_file_b).exists():
+        temp_file_b = str(Path(temp_clips_dir) / f"temp_b_{event_b.get('event_id')}_incomplete.mp4")
         if not cut_incomplete_event(event_b, video_buffer, video_length_b, temp_file_b):
             print(f"Error: Cannot cut temporary file for event {event_b.get('event_id')}")
             return None
 
     # Create optimized output filename based on temp_file_a and temp_file_b
-    file_name_a = os.path.basename(temp_file_a)
-    file_name_b = os.path.basename(temp_file_b)
+    file_name_a = Path(temp_file_a).name
+    file_name_b = Path(temp_file_b).name
     parts_a = file_name_a.split("_")
     parts_b = file_name_b.split("_")
 
@@ -112,10 +113,10 @@ def merge_incomplete_events(event_a, event_b, video_buffer, video_length_a, vide
     tracking_str = "-".join(tracking_codes) if tracking_codes else "unknown"
 
     # Create output filename
-    output_file = os.path.join(output_dir, f"{brand_name}_{tracking_str}_{time_str}.mp4")
+    output_file = str(Path(output_dir) / f"{brand_name}_{tracking_str}_{time_str}.mp4")
 
     # Concatenate videos A and B
-    concat_list_file = os.path.join(get_tmp_dir(), f"concat_list_{event_a.get('event_id')}.txt")
+    concat_list_file = str(Path(get_tmp_dir()) / f"concat_list_{event_a.get('event_id')}.txt")
     try:
         with open(concat_list_file, 'w') as f:
             f.write(f"file '{temp_file_a}'\nfile '{temp_file_b}'\n")
@@ -142,11 +143,11 @@ def merge_incomplete_events(event_a, event_b, video_buffer, video_length_a, vide
         print(f"Merged file {output_file} length: {duration} seconds")
 
         # Delete temporary files and concat_list after successful merge
-        if os.path.exists(temp_file_a):
+        if Path(temp_file_a).exists():
             os.remove(temp_file_a)
-        if os.path.exists(temp_file_b):
+        if Path(temp_file_b).exists():
             os.remove(temp_file_b)
-        if os.path.exists(concat_list_file):
+        if Path(concat_list_file).exists():
             os.remove(concat_list_file)
 
         return output_file
@@ -154,20 +155,20 @@ def merge_incomplete_events(event_a, event_b, video_buffer, video_length_a, vide
     except subprocess.CalledProcessError as e:
         print(f"Error merging videos: {e}")
         # Delete temporary files and concat_list in case of error
-        if os.path.exists(temp_file_a):
+        if Path(temp_file_a).exists():
             os.remove(temp_file_a)
-        if os.path.exists(temp_file_b):
+        if Path(temp_file_b).exists():
             os.remove(temp_file_b)
-        if os.path.exists(concat_list_file):
+        if Path(concat_list_file).exists():
             os.remove(concat_list_file)
         return None
     except Exception as e:
         print(f"Unknown error merging videos: {e}")
         # Delete temporary files and concat_list in case of error
-        if os.path.exists(temp_file_a):
+        if Path(temp_file_a).exists():
             os.remove(temp_file_a)
-        if os.path.exists(temp_file_b):
+        if Path(temp_file_b).exists():
             os.remove(temp_file_b)
-        if os.path.exists(concat_list_file):
+        if Path(concat_list_file).exists():
             os.remove(concat_list_file)
         return None

@@ -1,5 +1,6 @@
 import cv2
 import os
+from pathlib import Path
 import json
 import logging
 import queue
@@ -11,11 +12,11 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 # Use var/logs for application logs
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+BASE_DIR = str(Path(__file__).resolve().parent.parent.parent.parent)
 from modules.path_utils import get_logs_dir
 LOG_DIR = get_logs_dir()
 
-log_file_path = os.path.join(LOG_DIR, f"qr_detector_{datetime.now().strftime('%Y-%m-%d')}.log")
+log_file_path = str(Path(LOG_DIR) / f"qr_detector_{datetime.now().strftime('%Y-%m-%d')}.log")
 logging.basicConfig(
     filename=log_file_path,
     level=logging.DEBUG,
@@ -25,14 +26,14 @@ logger = logging.getLogger(__name__)
 logger.info("QR Detector logging initialized")
 
 # Path to WeChat QRCode model (relative)
-MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "models", "wechat_qr")
-DETECT_PROTO = os.path.join(MODEL_DIR, "detect.prototxt")
-DETECT_MODEL = os.path.join(MODEL_DIR, "detect.caffemodel")
-SR_PROTO = os.path.join(MODEL_DIR, "sr.prototxt")
-SR_MODEL = os.path.join(MODEL_DIR, "sr.caffemodel")
+MODEL_DIR = str(Path(__file__).resolve().parent.parent.parent / "models" / "wechat_qr")
+DETECT_PROTO = str(Path(MODEL_DIR) / "detect.prototxt")
+DETECT_MODEL = str(Path(MODEL_DIR) / "detect.caffemodel")
+SR_PROTO = str(Path(MODEL_DIR) / "sr.prototxt")
+SR_MODEL = str(Path(MODEL_DIR) / "sr.caffemodel")
 
 # Path for saving images
-CAMERA_ROI_DIR = os.path.join(BASE_DIR, "resources", "output_clips", "CameraROI")
+CAMERA_ROI_DIR = str(Path(BASE_DIR) / "resources" / "output_clips" / "CameraROI")
 
 def select_qr_roi(video_path, camera_id, roi_frame_path, step="mvd"):
     """
@@ -54,20 +55,20 @@ def select_qr_roi(video_path, camera_id, roi_frame_path, step="mvd"):
         # Check model file existence
         for model_file in [DETECT_PROTO, DETECT_MODEL, SR_PROTO, SR_MODEL]:
             logger.debug(f"[MVD] Checking model file: {model_file}")
-            if not os.path.exists(model_file):
+            if not Path(model_file).exists():
                 logger.error(f"[MVD] Model file not found: {model_file}")
                 cv2.destroyAllWindows()
                 return {"success": False, "error": f"Model file not found: {model_file}"}
 
         # Check image and video files
         logger.debug(f"[MVD] Checking temporary image: {roi_frame_path}")
-        if not os.path.exists(roi_frame_path):
+        if not Path(roi_frame_path).exists():
             logger.error(f"[MVD] Temporary image does not exist: {roi_frame_path}")
             cv2.destroyAllWindows()
             return {"success": False, "error": f"Temporary image does not exist: {roi_frame_path}"}
         
         logger.debug(f"[MVD] Checking video: {video_path}")
-        if not os.path.exists(video_path):
+        if not Path(video_path).exists():
             logger.error(f"[MVD] Video does not exist: {video_path}")
             cv2.destroyAllWindows()
             return {"success": False, "error": f"Video does not exist: {video_path}"}
@@ -321,7 +322,7 @@ def select_qr_roi(video_path, camera_id, roi_frame_path, step="mvd"):
         result = {
             "success": True,
             "rois": rois,
-            "roi_frame": os.path.relpath(roi_frame_path_new, BASE_DIR),
+            "roi_frame": str(Path(roi_frame_path_new).relative_to(BASE_DIR)),
             "qr_detected": qr_detected,
             "qr_detected_roi1": qr_detected_roi1,
             "qr_detected_roi2": qr_detected_roi2 if table_type == "standard" else False,
@@ -367,7 +368,7 @@ def detect_qr_at_time(video_path: str, time_seconds: float, roi_config: dict, ca
             return {"success": False, "error": f"Detection cancelled at {time_seconds}s"}
         
         # Validate parameters
-        if not os.path.exists(video_path):
+        if not Path(video_path).exists():
             return {"success": False, "error": f"Video file not found: {video_path}"}
         
         if not roi_config or not all(k in roi_config for k in ['x', 'y', 'w', 'h']):
@@ -375,7 +376,7 @@ def detect_qr_at_time(video_path: str, time_seconds: float, roi_config: dict, ca
         
         # Check model files exist
         for model_file in [DETECT_PROTO, DETECT_MODEL, SR_PROTO, SR_MODEL]:
-            if not os.path.exists(model_file):
+            if not Path(model_file).exists():
                 return {"success": False, "error": f"Model file not found: {model_file}"}
         
         # Check cancellation before model initialization
@@ -535,7 +536,7 @@ def preprocess_video_qr(video_path: str, roi_config: dict, fps: int = 5, progres
         logger.info(f"[QR-PREPROCESS] Starting video preprocessing at {fps}fps for {video_path}")
         
         # Validate inputs
-        if not os.path.exists(video_path):
+        if not Path(video_path).exists():
             return {"success": False, "error": f"Video file not found: {video_path}"}
         
         if not roi_config or not all(k in roi_config for k in ['x', 'y', 'w', 'h']):
@@ -747,7 +748,7 @@ def detect_qr_from_image(image_content: str) -> dict:
 
         # Check model files exist
         for model_file in [DETECT_PROTO, DETECT_MODEL, SR_PROTO, SR_MODEL]:
-            if not os.path.exists(model_file):
+            if not Path(model_file).exists():
                 return {"success": False, "error": f"Model file not found: {model_file}"}
 
         # Initialize WeChat QR detector

@@ -1,5 +1,6 @@
 import cv2
 import os
+from pathlib import Path
 import logging
 import sqlite3
 import threading
@@ -17,12 +18,12 @@ import math
 from modules.config.logging_config import get_logger
 
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "models", "wechat_qr")
-DETECT_PROTO = os.path.join(MODEL_DIR, "detect.prototxt")
-DETECT_MODEL = os.path.join(MODEL_DIR, "detect.caffemodel")
-SR_PROTO = os.path.join(MODEL_DIR, "sr.prototxt")
-SR_MODEL = os.path.join(MODEL_DIR, "sr.caffemodel")
+BASE_DIR = str(Path(__file__).resolve().parent.parent.parent.parent)
+MODEL_DIR = str(Path(__file__).resolve().parent.parent.parent / "models" / "wechat_qr")
+DETECT_PROTO = str(Path(MODEL_DIR) / "detect.prototxt")
+DETECT_MODEL = str(Path(MODEL_DIR) / "detect.caffemodel")
+SR_PROTO = str(Path(MODEL_DIR) / "sr.prototxt")
+SR_MODEL = str(Path(MODEL_DIR) / "sr.caffemodel")
 
 class FrameSamplerNoTrigger:
     def __init__(self):
@@ -55,7 +56,7 @@ class FrameSamplerNoTrigger:
 
     def setup_wechat_qr(self):
         for model_file in [DETECT_PROTO, DETECT_MODEL, SR_PROTO, SR_MODEL]:
-            if not os.path.exists(model_file):
+            if not Path(model_file).exists():
                 self.logger.error(f"Model file not found: {model_file}")
                 raise FileNotFoundError(f"Model file not found: {model_file}")
         try:
@@ -73,14 +74,14 @@ class FrameSamplerNoTrigger:
                 cursor = conn.cursor()
                 cursor.execute("SELECT input_path FROM processing_config WHERE id = 1")
                 result = cursor.fetchone()
-                self.video_root = result[0] if result else os.path.join(BASE_DIR, "Inputvideo")
+                self.video_root = result[0] if result else str(Path(BASE_DIR) / "Inputvideo")
                 cursor.execute("SELECT output_path FROM processing_config WHERE id = 1")
                 result = cursor.fetchone()
-                self.output_path = result[0] if result else os.path.join(BASE_DIR, "output_clips")
+                self.output_path = result[0] if result else str(Path(BASE_DIR) / "output_clips")
                 # Use var/logs for frame processing logs (application-managed)
                 from modules.path_utils import get_logs_dir
-                self.log_dir = os.path.join(get_logs_dir(), "frame_processing")
-                os.makedirs(self.log_dir, exist_ok=True)
+                self.log_dir = str(Path(get_logs_dir()) / "frame_processing")
+                Path(self.log_dir).mkdir(parents=True, exist_ok=True)
                 # Use zoneinfo for user timezone instead of hardcoded parsing
                 from modules.utils.simple_timezone import get_system_timezone_from_db
                 system_tz_str = get_system_timezone_from_db()
@@ -258,7 +259,7 @@ class FrameSamplerNoTrigger:
                     # Last resort: filesystem ctime
                     import os
                     self.logger.warning(f"All metadata methods failed: {e}, using filesystem ctime")
-                    file_timestamp = os.path.getctime(video_file)
+                    file_timestamp = Path(video_file).stat().st_ctime
                     local_time = datetime.fromtimestamp(file_timestamp, tz=self.video_timezone)
                     self.logger.info(f"Video start time from ctime (last resort): {local_time}")
                     return local_time
@@ -267,7 +268,7 @@ class FrameSamplerNoTrigger:
         while True:
             log_file, entry, timestamp = self.log_queue.get()
             with threading.Lock():
-                mode = 'w' if not os.path.exists(log_file) else 'a'
+                mode = 'w' if not Path(log_file).exists() else 'a'
                 with open(log_file, mode) as f:
                     if mode == 'w':
                         f.write(f"# Start: {timestamp['start']}, End: {timestamp['end']}, Start_Time: {timestamp['start_time']}, Camera_Name: {timestamp['camera']}, Video_File: {timestamp['video']}\n")
@@ -294,10 +295,10 @@ class FrameSamplerNoTrigger:
 
         if program_type == "custom":
             # Custom mode: Use "custom" folder
-            return os.path.join(self.log_dir, "custom")
+            return str(Path(self.log_dir) / "custom")
         else:
             # First Run & Default: Use camera name folder
-            return os.path.join(self.log_dir, camera_name)
+            return str(Path(self.log_dir) / camera_name)
 
     def _update_log_file(self, log_file, start_second, end_second, start_time, camera_name, video_file):
         timestamp = {
@@ -334,7 +335,7 @@ class FrameSamplerNoTrigger:
     def process_video(self, video_file, video_lock, get_packing_area_func, process_frame_func, frame_interval, start_time=0, end_time=None):
         with video_lock:
             self.logger.info(f"Processing video: {video_file} from {start_time}s to {end_time}s")
-            if not os.path.exists(video_file):
+            if not Path(video_file).exists():
                 self.logger.error(f"File '{video_file}' does not exist")
                 with db_rwlock.gen_wlock():
                     with safe_db_connection() as conn:
@@ -367,7 +368,7 @@ class FrameSamplerNoTrigger:
                         cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
                 return None
             self.logger.info(f"Video duration {video_file}: {total_seconds} seconds")
-            video_name = os.path.splitext(os.path.basename(video_file))[0]
+            video_name = Path(video_file).stem
             segment_duration = 300
             # Xác định các đoạn 300s chứa [start_time, end_time]
             end_time = total_seconds if end_time is None else min(end_time, total_seconds)
@@ -378,8 +379,8 @@ class FrameSamplerNoTrigger:
 
             # Get log directory based on program type
             camera_log_dir = self._get_log_directory(video_file, camera_name)
-            os.makedirs(camera_log_dir, exist_ok=True)
-            log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
+            Path(camera_log_dir).mkdir(parents=True, exist_ok=True)
+            log_file = str(Path(camera_log_dir) / f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
             log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
             # Bắt đầu từ khung hình tại start_time
             start_frame = int(start_time * self.fps)
@@ -439,8 +440,8 @@ class FrameSamplerNoTrigger:
 
                     # Get log directory based on program type
                     camera_log_dir = self._get_log_directory(video_file, camera_name)
-                    os.makedirs(camera_log_dir, exist_ok=True)
-                    log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
+                    Path(camera_log_dir).mkdir(parents=True, exist_ok=True)
+                    log_file = str(Path(camera_log_dir) / f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
                     log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
             if is_stable and stable_start is not None and (frame_count - stable_start) >= min_stable_frames * frame_interval:
                 start_second = round((stable_start - 1) / self.fps, 1)
@@ -491,8 +492,8 @@ class FrameSamplerNoTrigger:
 
                     # Get log directory based on program type
                     camera_log_dir = self._get_log_directory(video_file, camera_name)
-                    os.makedirs(camera_log_dir, exist_ok=True)
-                    log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
+                    Path(camera_log_dir).mkdir(parents=True, exist_ok=True)
+                    log_file = str(Path(camera_log_dir) / f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
                     log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
                 ts_frame = None
                 # Trường hợp đặc biệt: Te đầu tiên
@@ -570,8 +571,8 @@ class FrameSamplerNoTrigger:
 
                         # Get log directory based on program type
                         camera_log_dir = self._get_log_directory(video_file, camera_name)
-                        os.makedirs(camera_log_dir, exist_ok=True)
-                        log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
+                        Path(camera_log_dir).mkdir(parents=True, exist_ok=True)
+                        log_file = str(Path(camera_log_dir) / f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
                         log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
                     log_file_handle("On,", second_ts - 1)
                     log_file_handle("Off,", second_ts)
@@ -590,8 +591,8 @@ class FrameSamplerNoTrigger:
 
                             # Get log directory based on program type
                             camera_log_dir = self._get_log_directory(video_file, camera_name)
-                            os.makedirs(camera_log_dir, exist_ok=True)
-                            log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
+                            Path(camera_log_dir).mkdir(parents=True, exist_ok=True)
+                            log_file = str(Path(camera_log_dir) / f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
                             log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
                         log_file_handle("On,", second_ts - 1)
                         log_file_handle("Off,", second_ts)
