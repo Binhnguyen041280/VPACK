@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import json
+from pathlib import Path
 from modules.path_utils import get_paths
 from modules.db_utils.safe_connection import safe_db_connection
 import time
@@ -33,11 +34,11 @@ def _ensure_paths_initialized():
     globals()['paths'] = paths_dict
     globals()['BASE_DIR'] = paths_dict["BASE_DIR"]
     globals()['DB_PATH'] = paths_dict["DB_PATH"]
-    globals()['DB_DIR'] = os.path.dirname(paths_dict["DB_PATH"])
+    globals()['DB_DIR'] = str(Path(paths_dict["DB_PATH"]).parent)
     globals()['_paths_initialized'] = True
 
     # Ensure database directory exists
-    os.makedirs(globals()['DB_DIR'], exist_ok=True)
+    Path(globals()['DB_DIR']).mkdir(parents=True, exist_ok=True)
 
 # Đường dẫn mặc định - OS-aware paths for Canvas compatibility
 def get_default_storage_paths():
@@ -81,8 +82,8 @@ def _ensure_storage_paths_initialized():
 
     # Fallback to var/ directory if OS-specific paths fail
     try:
-        os.makedirs(os.path.dirname(input_dir), exist_ok=True)
-        os.makedirs(os.path.dirname(output_dir), exist_ok=True)
+        Path(input_dir).parent.mkdir(parents=True, exist_ok=True)
+        Path(output_dir).parent.mkdir(parents=True, exist_ok=True)
         # Update globals with OS-specific paths
         globals()['INPUT_VIDEO_DIR'] = input_dir
         globals()['OUTPUT_CLIPS_DIR'] = output_dir
@@ -91,8 +92,8 @@ def _ensure_storage_paths_initialized():
         # Ensure paths are initialized before accessing VAR_DIR
         _ensure_paths_initialized()
         # Update globals with fallback paths
-        globals()['INPUT_VIDEO_DIR'] = os.path.join(paths["VAR_DIR"], "input_videos")
-        globals()['OUTPUT_CLIPS_DIR'] = os.path.join(paths["VAR_DIR"], "output_clips")
+        globals()['INPUT_VIDEO_DIR'] = str(Path(paths["VAR_DIR"]) / "input_videos")
+        globals()['OUTPUT_CLIPS_DIR'] = str(Path(paths["VAR_DIR"]) / "output_clips")
 
 def get_db_connection():
     """
@@ -1477,5 +1478,5 @@ def cleanup_sync_integrity():
 
 if __name__ == "__main__":
     _ensure_paths_initialized()
-    os.makedirs(DB_DIR, exist_ok=True)
+    Path(DB_DIR).mkdir(parents=True, exist_ok=True)
     update_database()

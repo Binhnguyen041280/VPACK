@@ -1,37 +1,38 @@
 import sqlite3
 import os
+from pathlib import Path
 
 # Hàm tìm thư mục gốc dự án dựa trên tên thư mục
 def find_project_root(start_path):
-    current_path = os.path.abspath(start_path)
+    current_path = Path(start_path).resolve()
 
     # Check Docker first - if running in Docker, /app will be the root
     # We check if the current working directory is /app or we're under /app
-    if current_path.startswith("/app") and os.path.exists("/app/modules"):
+    if str(current_path).startswith("/app") and Path("/app/modules").exists():
         return "/app"
 
     # Try to find V_Track folder (development mode on host)
-    while os.path.basename(current_path) != "V_Track":
-        parent_path = os.path.dirname(current_path)
+    while current_path.name != "V_Track":
+        parent_path = current_path.parent
         if parent_path == current_path:  # Reached filesystem root
             break
         current_path = parent_path
 
     # If V_Track found, return it
-    if os.path.basename(current_path) == "V_Track":
-        return current_path
+    if current_path.name == "V_Track":
+        return str(current_path)
 
     # Fallback: If /app/modules exists (Docker structure)
-    if os.path.exists("/app/modules"):
+    if Path("/app/modules").exists():
         return "/app"
 
     # Last resort: use current working directory if ./backend exists
-    if os.path.exists("./backend"):
-        return os.getcwd()
+    if Path("./backend").exists():
+        return str(Path.cwd())
 
     # If we're in the backend directory itself (local development)
-    if os.path.exists("./modules"):
-        return os.path.dirname(os.path.dirname(os.path.abspath(start_path)))
+    if Path("./modules").exists():
+        return str(Path(start_path).resolve().parent.parent)
 
     raise ValueError("Could not find project root (V_Track directory or /app)")
 
@@ -55,7 +56,7 @@ def _ensure_db_initialized():
         return _cached_db_path
 
     # Create database directory
-    os.makedirs(os.path.dirname(DEFAULT_DB_PATH), exist_ok=True)
+    Path(DEFAULT_DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     _db_initialized = True
     _cached_db_path = DEFAULT_DB_PATH
     return _cached_db_path
@@ -72,7 +73,7 @@ def get_db_path():
         conn.close()
         # If we have a db_path from config, use it only if it exists
         # Otherwise use DEFAULT_DB_PATH (works for both Docker and dev)
-        if result and os.path.exists(result[0]):
+        if result and Path(result[0]).exists():
             return result[0]
         return DEFAULT_DB_PATH
     except Exception as e:
@@ -85,7 +86,9 @@ def get_db_connection():
     _ensure_db_initialized()
 
     db_path = get_db_path()
-    if not os.path.exists(db_path):
+    db_path_obj = Path(db_path)
+
+    if not db_path_obj.exists():
         raise FileNotFoundError(f"Database file not found: {db_path}")
     if not os.access(db_path, os.R_OK):
         raise PermissionError(f"No read permission for database: {db_path}")
