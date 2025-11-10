@@ -32,6 +32,7 @@ Thread Safety:
 
 from flask import Blueprint, request, jsonify
 import os
+from pathlib import Path
 import json
 import threading
 from datetime import datetime, timedelta, timezone
@@ -217,8 +218,8 @@ def program():
                 return jsonify({"error": "Custom path required for Custom"}), 400
             
             # Validate custom path exists
-            abs_path = os.path.abspath(custom_path)
-            if not os.path.exists(abs_path):
+            abs_path = str(Path(custom_path).resolve())
+            if not Path(abs_path).exists():
                 logger.error(f"Custom path {abs_path} does not exist")
                 return jsonify({"error": f"Custom path {abs_path} does not exist"}), 400
             try:
@@ -488,16 +489,16 @@ def get_camera_folders():
                 cursor = conn.cursor()
                 cursor.execute("SELECT input_path FROM processing_config WHERE id = 1")
                 result = cursor.fetchone()
-                video_root = result[0] if result else os.path.join(BASE_DIR, "Inputvideo")
+                video_root = result[0] if result else str(Path(BASE_DIR) / "Inputvideo")
 
-        if not os.path.exists(video_root):
+        if not Path(video_root).exists():
             logger.error(f"Directory {video_root} does not exist")
             return jsonify({"error": f"Directory {video_root} does not exist. Ensure the path is correct or create the directory."}), 400
 
         folders = []
         for folder_name in os.listdir(video_root):
-            folder_path = os.path.join(video_root, folder_name)
-            if os.path.isdir(folder_path):
+            folder_path = str(Path(video_root) / folder_name)
+            if Path(folder_path).is_dir():
                 folders.append({"name": folder_name, "path": folder_path})
         logger.info(f"Retrieved {len(folders)} camera folders")
         return jsonify({"folders": folders}), 200

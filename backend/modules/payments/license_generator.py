@@ -4,6 +4,7 @@ import json
 import base64
 import hashlib
 import os
+from pathlib import Path
 import platform
 import uuid
 import logging
@@ -35,15 +36,15 @@ class LicenseGenerator:
         """Load existing keys or generate new ones"""
         try:
             # Paths for key storage
-            keys_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'keys')
+            keys_dir = str(Path(__file__).parent / '..', '..', 'keys')
             os.makedirs(keys_dir, exist_ok=True)
             
-            private_key_path = os.path.join(keys_dir, 'license_private_key.pem')
-            public_key_path = os.path.join(keys_dir, 'license_public_key.pem')
-            fernet_key_path = os.path.join(keys_dir, 'license_fernet_key.key')
+            private_key_path = str(Path(keys_dir) / 'license_private_key.pem')
+            public_key_path = str(Path(keys_dir) / 'license_public_key.pem')
+            fernet_key_path = str(Path(keys_dir) / 'license_fernet_key.key')
             
             # Load or generate RSA keys
-            if os.path.exists(private_key_path) and os.path.exists(public_key_path):
+            if Path(private_key_path).exists() and Path(public_key_path).exists():
                 self._load_rsa_keys(private_key_path, public_key_path)
                 logger.info("Loaded existing RSA keys")
             else:
@@ -51,7 +52,7 @@ class LicenseGenerator:
                 logger.info("Generated new RSA keys")
             
             # Load or generate Fernet key
-            if os.path.exists(fernet_key_path):
+            if Path(fernet_key_path).exists():
                 with open(fernet_key_path, 'rb') as f:
                     self.fernet_key = f.read()
                 logger.info("Loaded existing Fernet key")

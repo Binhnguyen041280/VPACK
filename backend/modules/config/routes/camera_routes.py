@@ -3,6 +3,7 @@ from flask_cors import cross_origin
 from datetime import datetime
 import json
 import os
+from pathlib import Path
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.sources.video_source_manager import VideoSourceManager
 from ..utils import detect_camera_folders, has_video_files, extract_cameras_from_cloud_folders
@@ -59,7 +60,7 @@ def detect_cameras():
         if not path:
             return jsonify({"error": "Path is required"}), 400
         
-        if not os.path.exists(path):
+        if not Path(path).exists():
             return jsonify({"error": f"Path does not exist: {path}"}), 400
         
         # Detect camera folders
@@ -134,13 +135,13 @@ def get_cameras():
             if source_type == 'local':
                 # Local directory scanning
                 video_root = active_source['path']
-                if not os.path.exists(video_root):
+                if not Path(video_root).exists():
                     return jsonify({"error": f"Directory {video_root} does not exist. Ensure the path is correct or create the directory."}), 400
                 
                 # Detect camera folders
                 detected_cameras = detect_camera_folders(video_root)
                 for camera in detected_cameras:
-                    cameras.append({"name": camera, "path": os.path.join(video_root, camera)})
+                    cameras.append({"name": camera, "path": str(Path(video_root) / camera)})
             
             elif source_type in ['cloud', 'camera']:
                 # For other source types, use source name as camera
@@ -156,12 +157,12 @@ def get_cameras():
                 return jsonify({"error": "video_root not found in configuration. Please update via /save-config endpoint."}), 400
 
             video_root = result[0]
-            if not os.path.exists(video_root):
+            if not Path(video_root).exists():
                 return jsonify({"error": f"Directory {video_root} does not exist. Ensure the path is correct or create the directory."}), 400
 
             detected_cameras = detect_camera_folders(video_root)
             for camera in detected_cameras:
-                cameras.append({"name": camera, "path": os.path.join(video_root, camera)})
+                cameras.append({"name": camera, "path": str(Path(video_root) / camera)})
 
         return jsonify({"cameras": cameras}), 200
     except Exception as e:
@@ -278,7 +279,7 @@ def refresh_cameras():
         if source_type == 'local':
             # Local: Scan directories
             working_path = active_source['path']
-            if os.path.exists(working_path):
+            if Path(working_path).exists():
                 detected_cameras = detect_camera_folders(working_path)
                 cameras = detected_cameras
                 print(f"Local cameras detected: {cameras}")
@@ -384,7 +385,7 @@ def get_camera_status():
                 
             elif source['source_type'] == 'local':
                 working_path = source['path']
-                if os.path.exists(working_path):
+                if Path(working_path).exists():
                     source_cameras = detect_camera_folders(working_path)
         
         # Check sync status

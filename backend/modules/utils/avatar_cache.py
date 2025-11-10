@@ -3,6 +3,7 @@ Avatar Cache Service
 Cache user avatars locally for offline usage
 """
 import os
+from pathlib import Path
 import hashlib
 import requests
 from urllib.parse import urlparse
@@ -14,8 +15,8 @@ logger = get_logger(__name__)
 
 class AvatarCache:
     def __init__(self, cache_dir='static/avatars', base_url='http://localhost:8080'):
-        self.cache_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), cache_dir)
-        os.makedirs(self.cache_dir, exist_ok=True)
+        self.cache_dir = str(Path(__file__).parent.parent / cache_dir)
+        Path(self.cache_dir).mkdir(parents=True, exist_ok=True)
         self.cache_duration = timedelta(days=7)  # Cache for 7 days
         self.base_url = base_url
         
@@ -29,7 +30,7 @@ class AvatarCache:
         parsed_url = urlparse(url)
         path = parsed_url.path
         if '.' in path:
-            ext = os.path.splitext(path)[1].split('?')[0]  # Remove query params
+            ext = Path(path).suffix.split('?')[0]  # Remove query params
         else:
             ext = '.jpg'  # Default to jpg
             
@@ -37,18 +38,18 @@ class AvatarCache:
     
     def _is_cache_valid(self, cache_path):
         """Check if cached file exists and is not expired"""
-        if not os.path.exists(cache_path):
+        if not Path(cache_path).exists():
             return False
             
         # Check file age
-        file_time = datetime.fromtimestamp(os.path.getmtime(cache_path))
+        file_time = datetime.fromtimestamp(Path(cache_path).stat().st_mtime)
         return datetime.now() - file_time < self.cache_duration
     
     def get_cached_avatar_url(self, original_url, user_email):
         """Get cached avatar URL or download and cache if needed"""
         try:
             cache_filename = self._get_cache_filename(original_url, user_email)
-            cache_path = os.path.join(self.cache_dir, cache_filename)
+            cache_path = str(Path(self.cache_dir) / cache_filename)
             
             # Check if cache is valid
             if self._is_cache_valid(cache_path):
@@ -78,7 +79,7 @@ class AvatarCache:
         try:
             cleaned_count = 0
             for filename in os.listdir(self.cache_dir):
-                cache_path = os.path.join(self.cache_dir, filename)
+                cache_path = str(Path(self.cache_dir) / filename)
                 if not self._is_cache_valid(cache_path):
                     os.remove(cache_path)
                     cleaned_count += 1

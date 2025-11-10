@@ -4,6 +4,7 @@ Handles video streaming, frame extraction, and ROI processing for web-based conf
 """
 
 import os
+from pathlib import Path
 import cv2
 import json
 import base64
@@ -55,10 +56,10 @@ class ROIVideoService:
                 }
             
             # Normalize path
-            normalized_path = os.path.normpath(video_path)
+            normalized_path = str(Path(video_path))
             
             # Check if file exists
-            if not os.path.exists(normalized_path):
+            if not Path(normalized_path).exists():
                 return {
                     'valid': False,
                     'error': f'Video file does not exist: {normalized_path}',
@@ -66,7 +67,7 @@ class ROIVideoService:
                 }
             
             # Check if it's a file (not directory)
-            if not os.path.isfile(normalized_path):
+            if not Path(normalized_path).is_file():
                 return {
                     'valid': False,
                     'error': f'Path is not a file: {normalized_path}',
@@ -74,7 +75,7 @@ class ROIVideoService:
                 }
             
             # Check file extension
-            file_ext = os.path.splitext(normalized_path)[1].lower()
+            file_ext = Path(normalized_path).suffix.lower()
             if file_ext not in self.supported_formats:
                 return {
                     'valid': False,
@@ -87,7 +88,7 @@ class ROIVideoService:
                 }
             
             # Check file size
-            file_size = os.path.getsize(normalized_path)
+            file_size = Path(normalized_path).stat().st_size
             if file_size > self.max_video_size:
                 return {
                     'valid': False,
@@ -188,7 +189,7 @@ class ROIVideoService:
                     'success': True,
                     'metadata': {
                         'path': validation['path'],
-                        'filename': os.path.basename(validation['path']),
+                        'filename': Path(validation['path']).name,
                         'extension': validation['extension'],
                         'mime_type': validation['mime_type'],
                         'size_mb': validation['size_mb'],
