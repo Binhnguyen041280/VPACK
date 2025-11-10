@@ -4,6 +4,7 @@ import sys
 import time
 import uuid
 import glob
+from pathlib import Path
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from collections import defaultdict
@@ -20,7 +21,7 @@ class LogSizeFilter(logging.Filter):
         self.max_size = max_size
     
     def filter(self, record):
-        if os.path.exists(self.log_file) and os.path.getsize(self.log_file) > self.max_size:
+        if Path(self.log_file).exists() and Path(self.log_file).stat().st_size > self.max_size:
             if record.levelno < logging.INFO:
                 return False
             print("Log file size exceeds 500KB, switching to INFO level", file=sys.stderr)
@@ -198,8 +199,8 @@ class SafeRotatingFileHandler(RotatingFileHandler):
     def emit(self, record):
         try:
             # Emergency size check
-            if os.path.exists(self.baseFilename):
-                file_size = os.path.getsize(self.baseFilename)
+            if Path(self.baseFilename).exists():
+                file_size = Path(self.baseFilename).stat().st_size
                 if file_size > self.emergency_max_size:
                     # Force immediate rotation
                     self.doRollover()
@@ -229,19 +230,19 @@ def cleanup_old_logs(log_dir, app_name, keep_count=None, keep_days=None):
     """
     try:
         # Find all log files matching pattern (exclude symlinks)
-        pattern = os.path.join(log_dir, f"{app_name}_*.log")
-        log_files = [f for f in glob.glob(pattern) if not os.path.islink(f)]
+        pattern = str(Path(log_dir) / f"{app_name}_*.log")
+        log_files = [f for f in glob.glob(pattern) if not Path(f).is_symlink()]
 
         if keep_count is not None:
             # Development: Keep N most recent files
-            log_files.sort(key=os.path.getmtime, reverse=True)
+            log_files.sort(key=lambda f: Path(f).stat().st_mtime, reverse=True)
             files_to_delete = log_files[keep_count:]
 
             for old_file in files_to_delete:
                 try:
                     os.remove(old_file)
                     # Use print instead of logger (logger may not be initialized yet)
-                    print(f"Cleaned up old log: {os.path.basename(old_file)}", file=sys.stderr)
+                    print(f"Cleaned up old log: {Path(old_file).name}", file=sys.stderr)
                 except OSError:
                     pass  # Ignore errors during cleanup
 
@@ -251,9 +252,9 @@ def cleanup_old_logs(log_dir, app_name, keep_count=None, keep_days=None):
 
             for log_file in log_files:
                 try:
-                    if os.path.getmtime(log_file) < cutoff_time:
+                    if Path(log_file).stat().st_mtime < cutoff_time:
                         os.remove(log_file)
-                        print(f"Cleaned up old log: {os.path.basename(log_file)}", file=sys.stderr)
+                        print(f"Cleaned up old log: {Path(log_file).name}", file=sys.stderr)
                 except OSError:
                     pass  # Ignore errors during cleanup
 
@@ -287,14 +288,14 @@ def setup_logging(base_dir, app_name="app", log_level=logging.INFO):
     if is_dev:
         # Development: Per-run files with timestamp + session ID
         timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        log_file = os.path.join(log_dir, f"{app_name}_{timestamp}_s-{_SESSION_ID}.log")
+        log_file = str(Path(log_dir) / f"{app_name}_{timestamp}_s-{_SESSION_ID}.log")
 
         # Create/update 'latest.log' symlink to current run
-        latest_link = os.path.join(log_dir, "latest.log")
+        latest_link = str(Path(log_dir) / "latest.log")
         try:
-            if os.path.exists(latest_link) or os.path.islink(latest_link):
+            if Path(latest_link).exists() or Path(latest_link).is_symlink():
                 os.remove(latest_link)
-            os.symlink(os.path.basename(log_file), latest_link)
+            os.symlink(Path(log_file).name, latest_link)
         except OSError as e:
             print(f"Warning: Could not create latest.log symlink: {e}", file=sys.stderr)
 
@@ -302,7 +303,7 @@ def setup_logging(base_dir, app_name="app", log_level=logging.INFO):
         cleanup_old_logs(log_dir, app_name, keep_count=50)
     else:
         # Production: Daily consolidated files
-        log_file = os.path.join(log_dir, f"{app_name}_{datetime.now().strftime('%Y-%m-%d')}.log")
+        log_file = str(Path(log_dir) / f"{app_name}_{datetime.now().strftime('%Y-%m-%d')}.log")
 
         # Auto-cleanup: Remove files older than 30 days
         cleanup_old_logs(log_dir, app_name, keep_days=30)
@@ -344,7 +345,7 @@ def setup_logging(base_dir, app_name="app", log_level=logging.INFO):
     # Log initialization message with environment info
     mode = "DEV" if is_dev else "PROD"
     cleanup_info = "keep:50" if is_dev else "retain:30d"
-    root_logger.info(f"✅ Logging [{mode}] session:{_SESSION_ID} file:{os.path.basename(log_file)} (Rate:100/min, Dedup:5x, {cleanup_info})")
+    root_logger.info(f"✅ Logging [{mode}] session:{_SESSION_ID} file:{Path(log_file).name} (Rate:100/min, Dedup:5x, {cleanup_info})")
 
     return log_file
 
@@ -366,8 +367,8 @@ def setup_dual_logging(base_dir, app_name="app", general_level=logging.INFO, eve
     is_dev = is_development_mode()
 
     # === Create application subfolder ===
-    app_log_dir = os.path.join(log_dir, "application")
-    os.makedirs(app_log_dir, exist_ok=True)
+    app_log_dir = str(Path(log_dir) / "application")
+    Path(app_log_dir).mkdir(parents=True, exist_ok=True)
 
     # Clear any existing handlers
     root_logger = logging.getLogger()
@@ -380,7 +381,7 @@ def setup_dual_logging(base_dir, app_name="app", general_level=logging.INFO, eve
     else:
         app_log_filename = f"{app_name}_{datetime.now().strftime('%Y%m%d')}.log"
 
-    app_log_path = os.path.join(app_log_dir, app_log_filename)
+    app_log_path = str(Path(app_log_dir) / app_log_filename)
 
     app_handler = SafeRotatingFileHandler(
         app_log_path,
@@ -409,7 +410,7 @@ def setup_dual_logging(base_dir, app_name="app", general_level=logging.INFO, eve
     else:
         event_log_filename = f"event_processing_{datetime.now().strftime('%Y%m%d')}.log"
 
-    event_log_path = os.path.join(app_log_dir, event_log_filename)
+    event_log_path = str(Path(app_log_dir) / event_log_filename)
 
     event_handler = SafeRotatingFileHandler(
         event_log_path,
@@ -452,7 +453,7 @@ def setup_dual_logging(base_dir, app_name="app", general_level=logging.INFO, eve
     # === Symlink to latest (development only) ===
     if is_dev:
         # Symlink app.log (in application/ subfolder)
-        latest_app = os.path.join(app_log_dir, f"{app_name}_latest.log")
+        latest_app = str(Path(app_log_dir) / f"{app_name}_latest.log")
         if os.path.islink(latest_app):
             os.unlink(latest_app)
         try:
@@ -512,7 +513,7 @@ def get_logger(module_name, context=None, separate_log=None):
     if separate_log:
         # Use /var/logs directory
         log_dir = get_logs_dir()
-        log_file = os.path.join(log_dir, f"{separate_log}_{datetime.now().strftime('%Y-%m-%d')}.log")
+        log_file = str(Path(log_dir) / f"{separate_log}_{datetime.now().strftime('%Y-%m-%d')}.log")
 
         file_handler = RotatingFileHandler(log_file, maxBytes=500*1024, backupCount=5)
         file_handler.setFormatter(logging.Formatter(
