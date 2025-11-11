@@ -11,6 +11,7 @@ from typing import Dict, Optional, Tuple
 from datetime import datetime
 from cryptography.fernet import Fernet
 import os
+from pathlib import Path
 
 # AI SDK imports
 try:
@@ -38,10 +39,10 @@ logger = logging.getLogger(__name__)
 def _load_encryption_key():
     """Load OAuth encryption key for consistent encryption across the app"""
     try:
-        keys_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'keys')
-        key_path = os.path.join(keys_dir, 'oauth_encryption.key')
+        keys_dir = str(Path(__file__).parent / '..', '..', '..', 'keys')
+        key_path = str(Path(keys_dir) / 'oauth_encryption.key')
 
-        if os.path.exists(key_path):
+        if Path(key_path).exists():
             with open(key_path, 'rb') as f:
                 key = f.read()
             logger.info("✅ Using existing OAuth encryption key for AI")

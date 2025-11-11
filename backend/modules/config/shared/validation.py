@@ -8,6 +8,7 @@ used across the step-based configuration system.
 import re
 import json
 import os
+from pathlib import Path
 from typing import List, Dict, Any, Optional, Union, Tuple
 
 
@@ -222,10 +223,10 @@ def validate_output_path(output_path: str, create_if_missing: bool = False) -> T
             os.makedirs(output_path, exist_ok=True)
         
         # Check if path exists and is a directory
-        if not os.path.exists(output_path):
+        if not Path(output_path).exists():
             return False, f"Output directory does not exist: {output_path}"
         
-        if not os.path.isdir(output_path):
+        if not Path(output_path).is_dir():
             return False, f"Output path is not a directory: {output_path}"
         
         # Check write permissions

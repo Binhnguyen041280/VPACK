@@ -463,7 +463,7 @@ def setup_dual_logging(base_dir, app_name="app", general_level=logging.INFO, eve
             pass
 
         # Symlink event_processing.log (in application/ subfolder)
-        latest_event = os.path.join(app_log_dir, "event_processing_latest.log")
+        latest_event = str(Path(app_log_dir) / "event_processing_latest.log")
         if os.path.islink(latest_event):
             os.unlink(latest_event)
         try:

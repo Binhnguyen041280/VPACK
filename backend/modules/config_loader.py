@@ -1,5 +1,6 @@
 import sqlite3
 import os
+from pathlib import Path
 from modules.path_utils import get_paths
 from modules.db_utils.safe_connection import safe_db_connection
 
@@ -28,18 +29,18 @@ def get_processing_config():
 
     # fallback nếu lỗi hoặc DB trống
     return {
-        "INPUT_VIDEO_DIR": os.path.join(paths["BASE_DIR"], "resources/Inputvideo"),
-        "LOG_DIR": os.path.join(paths["BASE_DIR"], "resources/output_clips/LOG"),
+        "INPUT_VIDEO_DIR": str(Path(paths["BASE_DIR"]) / "resources/Inputvideo"),
+        "LOG_DIR": str(Path(paths["BASE_DIR"]) / "resources/output_clips/LOG"),
     }
 
 
 def get_log_path(file_name: str) -> str:
     """Trả về đường dẫn đầy đủ đến file trong LOG_DIR."""
     log_dir = get_processing_config()["LOG_DIR"]
-    return os.path.join(log_dir, file_name)
+    return str(Path(log_dir) / file_name)
 
 
 def get_input_path(file_name: str) -> str:
     """Trả về đường dẫn đầy đủ đến file trong INPUT_VIDEO_DIR."""
     input_dir = get_processing_config()["INPUT_VIDEO_DIR"]
-    return os.path.join(input_dir, file_name)
+    return str(Path(input_dir) / file_name)

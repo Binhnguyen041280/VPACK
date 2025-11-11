@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import sys
 from flask import Flask, jsonify, redirect, request
 from flask_cors import CORS
@@ -36,7 +37,7 @@ from modules.config.logging_config import setup_dual_logging, get_logger
 
 # ==================== SETUP DUAL LOGGING FIRST ====================
 # CRITICAL: Setup logging BEFORE other imports to capture all log messages
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = str(Path(__file__).resolve().parent.parent)
 log_paths = setup_dual_logging(
     BASE_DIR,
     app_name="app",
@@ -211,7 +212,7 @@ def initialize_license_system():
 
 # ==================== WEBAPP TEMPLATE CONFIGURATION ====================
 # Backend API only - webapp handled by React frontend
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = str(Path(__file__).resolve().parent.parent)
 
 from flask_session import Session
 import secrets
@@ -225,7 +226,7 @@ app.config.update(
     SESSION_COOKIE_SAMESITE='Lax',
     PERMANENT_SESSION_LIFETIME=timedelta(hours=24),
     SESSION_TYPE='filesystem',
-    SESSION_FILE_DIR=os.path.join(BASE_DIR, 'flask_session'),
+    SESSION_FILE_DIR=str(Path(BASE_DIR) / 'flask_session'),
     OAUTH_INSECURE_TRANSPORT=True,
 )
 
@@ -432,7 +433,7 @@ def serve_cached_avatar(filename):
     from flask import send_from_directory
     import os
     
-    avatar_dir = os.path.join(os.path.dirname(__file__), 'static', 'avatars')
+    avatar_dir = str(Path(__file__).parent / 'static', 'avatars')
     
     # Security: prevent directory traversal
     if '..' in filename or '/' in filename:

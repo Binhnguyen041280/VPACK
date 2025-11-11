@@ -278,15 +278,15 @@ def debug_credentials(source_id: int):
             }), 400
         
         # Step 3: Calculate file path
-        tokens_dir = os.path.join(os.path.dirname(__file__), 'tokens')
+        tokens_dir = str(Path(__file__).parent / 'tokens')
         email_hash = hashlib.sha256(user_email.encode()).hexdigest()[:16]
         token_filename = f"google_drive_{email_hash}.json"
-        token_filepath = os.path.join(tokens_dir, token_filename)
+        token_filepath = str(Path(tokens_dir) / token_filename)
         
         debug_info['step3_filepath'] = token_filepath
-        debug_info['step3_file_exists'] = os.path.exists(token_filepath)
+        debug_info['step3_file_exists'] = Path(token_filepath).exists()
         
-        if not os.path.exists(token_filepath):
+        if not Path(token_filepath).exists():
             return jsonify({
                 'success': False,
                 'error': f'Credentials file not found: {token_filepath}',

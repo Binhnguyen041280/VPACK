@@ -3,6 +3,7 @@
 import smtplib
 import ssl
 import os
+from pathlib import Path
 import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -30,7 +31,7 @@ class EmailSender:
         self.sender_email = self.smtp_username
         
         # Template configuration
-        template_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'templates', 'email')
+        template_dir = str(Path(__file__).parent / '..', '..', 'templates', 'email')
         os.makedirs(template_dir, exist_ok=True)
         
         self.jinja_env = Environment(
@@ -46,9 +47,9 @@ class EmailSender:
     def _ensure_email_templates(self, template_dir):
         """Ensure email templates exist"""
         try:
-            license_template_path = os.path.join(template_dir, 'license_delivery.html')
+            license_template_path = str(Path(template_dir) / 'license_delivery.html')
             
-            if not os.path.exists(license_template_path):
+            if not Path(license_template_path).exists():
                 default_template = self._get_default_license_template()
                 with open(license_template_path, 'w', encoding='utf-8') as f:
                     f.write(default_template)
