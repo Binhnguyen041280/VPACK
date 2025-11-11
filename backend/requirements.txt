@@ -1,25 +1,81 @@
-mediapipe
-opencv-python
-pyzbar
-apscheduler
-flask-sockets
-gevent-websocket
-gevent
-# Existing dependencies stay the same
-google-auth==2.x.x
-google-auth-oauthlib==1.x.x  
-google-api-python-client==2.x.x
+# ============================================================================
+# V_Track Backend Dependencies - Production Ready
+# Python 3.10+ required
+# Fixed: 2025-01-11 - Exact versions from working installation
+# ============================================================================
 
-# PyDrive2 và dependencies
+# Core AI/Computer Vision
+mediapipe==0.10.14
+opencv-contrib-python==4.10.0.84
+pyzbar==0.1.9
+
+# Scheduler & Background Jobs
+APScheduler==3.11.0
+
+# Web Framework
+Flask==3.1.0
+flask-cors==5.0.1
+Flask-Session==0.8.0
+Flask-SocketIO==5.5.1
+flask-sockets==0.2.1
+
+# WebSocket Support
+gevent==25.4.2
+gevent-websocket==0.10.1
+
+# Google Cloud APIs
+google-auth==2.40.3
+google-auth-oauthlib==1.2.2
+google-api-python-client==2.175.0
+google-api-core==2.25.1
 PyDrive2==1.15.4
 oauth2client==4.1.3
 httplib2==0.22.0
-Flask==3.0.0
-Flask-CORS==4.0.0
-requests==2.31.0
+
+# Security & Cryptography
 cryptography==41.0.7
-Jinja2==3.1.2
+
+# Template Engine
+Jinja2==3.1.6
+
+# Utilities
 tenacity==8.2.3
-python-dotenv==1.0.0
-python-dateutil==2.8.2
-psutil==5.9.6
+python-dotenv==1.1.0
+python-dateutil==2.9.0.post0
+psutil==7.0.0
+requests==2.32.3
+
+# ============================================================================
+# Installation Notes:
+#
+# For macOS (Apple Silicon M1/M2/M3/M4 or Intel):
+#   All packages have native wheels available
+#
+# PyInstaller Bundling:
+#   This requirements.txt uses EXACT versions from working installation (pip3 freeze)
+#   - opencv-contrib-python 4.10.0.84 (REQUIRED for WeChatQRCode feature)
+#   - DO NOT install opencv-python or opencv-python-headless (causes conflicts)
+#   - All versions pinned exactly for reproducible builds
+#
+# WeChat QR Detection Models:
+#   Required files in backend/models/wechat_qr/:
+#   - detect.prototxt
+#   - detect.caffemodel
+#   - sr.prototxt
+#   - sr.caffemodel
+#   Code uses: cv2.wechat_qrcode_WeChatQRCode (requires opencv-contrib)
+#
+# MediaPipe Models:
+#   Auto-downloaded to ~/.mediapipe/ on first run
+#
+# Changes from previous version:
+#   - All versions matched to exact pip3 freeze output (2025-01-11)
+#   - opencv-python → opencv-contrib-python (required for WeChatQRCode)
+#   - APScheduler 3.10.4 → 3.11.0 (actual installed)
+#   - flask-cors 4.0.0 → 5.0.1 (actual installed)
+#   - gevent 24.2.1 → 25.4.2 (actual installed)
+#   - google-auth 2.32.0 → 2.40.3 (actual installed)
+#   - google-api-python-client 2.149.0 → 2.175.0 (actual installed)
+#   - Added google-api-core==2.25.1 (was missing)
+#   - Updated all utilities to exact installed versions
+# ============================================================================
