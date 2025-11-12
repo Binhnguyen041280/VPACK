@@ -1,0 +1,167 @@
+# ============================================
+# VPACK - Docker Compose Configuration
+# ============================================
+# This docker-compose.yml provides multiple deployment options:
+# 1. Development: Hot-reload enabled
+# 2. Production: Optimized builds
+# 3. Separate services: Backend, Frontend, Database
+#
+# Usage:
+#   Development: docker-compose up
+#   Production:  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
+#   Build:       docker-compose build
+#   Stop:        docker-compose down
+
+version: '3.8'
+
+services:
+  # ============================================
+  # Backend Service (Flask + Python)
+  # ============================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend-builder
+    container_name: vpack-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Deployment configuration
+      - VTRACK_IN_DOCKER=true
+      - VTRACK_DEPLOYMENT_MODE=docker
+      - VTRACK_BASE_DIR=/app
+      - FLASK_ENV=${FLASK_ENV:-development}
+      - DEBUG=${DEBUG:-false}
+
+      # Secret key (override in .env)
+      - SECRET_KEY=${SECRET_KEY:-please-change-this-secret-key-in-production}
+
+      # Cloud Functions (override in .env)
+      - CLOUD_PAYMENT_URL=${CLOUD_PAYMENT_URL:-https://asia-southeast1-v-track-payments.cloudfunctions.net/create-payment}
+      - CLOUD_WEBHOOK_URL=${CLOUD_WEBHOOK_URL:-https://asia-southeast1-v-track-payments.cloudfunctions.net/webhook-handler}
+      - CLOUD_LICENSE_URL=${CLOUD_LICENSE_URL:-https://asia-southeast1-v-track-payments.cloudfunctions.net/license-service}
+
+      # Google OAuth (set in .env)
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+
+      # PayOS (set in .env)
+      - PAYOS_CLIENT_ID=${PAYOS_CLIENT_ID:-}
+      - PAYOS_API_KEY=${PAYOS_API_KEY:-}
+      - PAYOS_CHECKSUM_KEY=${PAYOS_CHECKSUM_KEY:-}
+
+      # Performance tuning
+      - MEDIAPIPE_DISABLE_GPU=1
+      - TF_CPP_MIN_LOG_LEVEL=3
+      - PYTHONWARNINGS=ignore
+      - PYTHONUNBUFFERED=1
+
+    volumes:
+      # Persist database
+      - vpack-database:/app/backend/VTrack_db.db
+      # Persist logs
+      - vpack-logs:/app/var/logs
+      # Persist uploads
+      - vpack-uploads:/app/var/uploads
+      # Persist cache
+      - vpack-cache:/app/var/cache
+      # Development: Mount source code for hot-reload
+      # - ./backend:/app/backend
+
+    networks:
+      - vpack-network
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    command: >
+      sh -c "cd /app/backend &&
+             python database.py &&
+             python app.py"
+
+  # ============================================
+  # Frontend Service (Next.js)
+  # ============================================
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend-builder
+    container_name: vpack-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - NEXT_PUBLIC_API_BASE_URL=http://backend:8080
+      - NEXT_PUBLIC_API_TIMEOUT=30000
+      - NEXT_TELEMETRY_DISABLED=1
+
+    volumes:
+      # Development: Mount source code for hot-reload
+      # - ./frontend:/app/frontend
+      # - /app/frontend/node_modules
+      # - /app/frontend/.next
+      pass
+
+    networks:
+      - vpack-network
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    command: npm run start
+
+  # ============================================
+  # Nginx Reverse Proxy (Optional)
+  # ============================================
+  # Uncomment to use nginx as reverse proxy
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: vpack-nginx
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./nginx/ssl:/etc/nginx/ssl:ro
+  #   networks:
+  #     - vpack-network
+  #   depends_on:
+  #     - backend
+  #     - frontend
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  vpack-database:
+    driver: local
+  vpack-logs:
+    driver: local
+  vpack-uploads:
+    driver: local
+  vpack-cache:
+    driver: local
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  vpack-network:
+    driver: bridge
