@@ -1,5 +1,5 @@
 # ============================================
-# VPACK - Docker Compose Configuration
+# ePACK - Docker Compose Configuration
 # ============================================
 # This docker-compose.yml provides multiple deployment options:
 # 1. Development: Hot-reload enabled
@@ -23,7 +23,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: backend-builder
-    container_name: vpack-backend
+    container_name: epack-backend
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -60,18 +60,18 @@ services:
 
     volumes:
       # Persist database
-      - vpack-database:/app/backend/VTrack_db.db
+      - epack-database:/app/backend/VTrack_db.db
       # Persist logs
-      - vpack-logs:/app/var/logs
+      - epack-logs:/app/var/logs
       # Persist uploads
-      - vpack-uploads:/app/var/uploads
+      - epack-uploads:/app/var/uploads
       # Persist cache
-      - vpack-cache:/app/var/cache
+      - epack-cache:/app/var/cache
       # Development: Mount source code for hot-reload
       # - ./backend:/app/backend
 
     networks:
-      - vpack-network
+      - epack-network
 
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/api/health', timeout=5)"]
@@ -93,7 +93,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: frontend-builder
-    container_name: vpack-frontend
+    container_name: epack-frontend
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -111,7 +111,7 @@ services:
       pass
 
     networks:
-      - vpack-network
+      - epack-network
 
     depends_on:
       backend:
@@ -132,7 +132,7 @@ services:
   # Uncomment to use nginx as reverse proxy
   # nginx:
   #   image: nginx:alpine
-  #   container_name: vpack-nginx
+  #   container_name: epack-nginx
   #   restart: unless-stopped
   #   ports:
   #     - "80:80"
@@ -141,7 +141,7 @@ services:
   #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
   #     - ./nginx/ssl:/etc/nginx/ssl:ro
   #   networks:
-  #     - vpack-network
+  #     - epack-network
   #   depends_on:
   #     - backend
   #     - frontend
@@ -150,18 +150,18 @@ services:
 # Volumes
 # ============================================
 volumes:
-  vpack-database:
+  epack-database:
     driver: local
-  vpack-logs:
+  epack-logs:
     driver: local
-  vpack-uploads:
+  epack-uploads:
     driver: local
-  vpack-cache:
+  epack-cache:
     driver: local
 
 # ============================================
 # Networks
 # ============================================
 networks:
-  vpack-network:
+  epack-network:
     driver: bridge

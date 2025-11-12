@@ -1,5 +1,5 @@
 # ============================================
-# VPACK - MANIFEST.in
+# ePACK - MANIFEST.in
 # ============================================
 # This file specifies additional files to include in the source distribution.
 # Files matched by these patterns will be included when building sdist packages.

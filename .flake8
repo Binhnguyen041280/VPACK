@@ -1,6 +1,6 @@
 [flake8]
 # ============================================
-# Flake8 Configuration for VPACK
+# Flake8 Configuration for ePACK
 # ============================================
 
 # Maximum line length

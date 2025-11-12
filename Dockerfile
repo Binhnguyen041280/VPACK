@@ -1,14 +1,14 @@
 # ============================================
-# VPACK - Multi-stage Docker Build
+# ePACK - Multi-stage Docker Build
 # ============================================
 # This Dockerfile creates a production-ready containerized
-# deployment of VPACK with both frontend and backend.
+# deployment of ePACK with both frontend and backend.
 #
 # Build:
-#   docker build -t vpack:latest .
+#   docker build -t epack:latest .
 #
 # Run:
-#   docker run -p 8080:8080 -p 3000:3000 vpack:latest
+#   docker run -p 8080:8080 -p 3000:3000 epack:latest
 #
 # Or use docker-compose:
 #   docker-compose up
@@ -72,8 +72,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # ============================================
 FROM python:3.10-slim
 
-LABEL maintainer="VPACK Team"
-LABEL description="VPACK - Video Processing and Analysis Container"
+LABEL maintainer="ePACK Team"
+LABEL description="ePACK - Video Processing and Analysis Container"
 LABEL version="1.0.0"
 
 WORKDIR /app

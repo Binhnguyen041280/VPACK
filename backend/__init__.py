@@ -1,8 +1,8 @@
 """
-VPACK - Intelligent Video Processing & Tracking System
+ePACK - Enterprise Video Processing & Analysis Container Kit
 
-A comprehensive desktop application for automated video processing,
-event detection, and tracking code analysis using AI-powered computer vision.
+A professional-grade desktop application for automated video processing,
+AI-powered event detection, and intelligent tracking analysis.
 """
 
 from backend._version import __version__, __version_info__, get_version

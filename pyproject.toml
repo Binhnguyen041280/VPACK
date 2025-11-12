@@ -3,14 +3,14 @@ requires = ["hatchling>=1.21.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "vpack"
-version = "2.1.0"
-description = "Intelligent Video Processing & Tracking System - Advanced desktop application for automated video processing, event detection, and tracking code analysis"
+name = "epack"
+version = "1.0.0"
+description = "ePACK - Enterprise Video Processing & Analysis Container Kit. Professional-grade desktop application for automated video processing, AI-powered event detection, and intelligent tracking analysis."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Commercial"}
 authors = [
-    {name = "V_Track Team", email = "support@vtrack.app"},
+    {name = "ePACK Team", email = "support@epack.app"},
 ]
 keywords = [
     "video-processing",
@@ -98,14 +98,14 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Binhnguyen041280/VPACK"
-Documentation = "https://github.com/Binhnguyen041280/VPACK/tree/main/docs"
-Repository = "https://github.com/Binhnguyen041280/VPACK"
-"Bug Tracker" = "https://github.com/Binhnguyen041280/VPACK/issues"
+Homepage = "https://github.com/Binhnguyen041280/ePACK"
+Documentation = "https://github.com/Binhnguyen041280/ePACK/tree/main/docs"
+Repository = "https://github.com/Binhnguyen041280/ePACK"
+"Bug Tracker" = "https://github.com/Binhnguyen041280/ePACK/issues"
 
 [project.scripts]
-vpack = "backend.app:main"
-vpack-server = "backend.app:main"
+epack = "backend.app:main"
+epack-server = "backend.app:main"
 
 [tool.hatchling.build.targets.wheel]
 packages = ["backend"]

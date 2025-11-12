@@ -1,4 +1,4 @@
-"""Gunicorn configuration for VPACK production deployment."""
+"""Gunicorn configuration for ePACK production deployment."""
 
 import multiprocessing
 import os

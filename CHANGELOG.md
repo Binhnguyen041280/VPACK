@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to VPACK will be documented in this file.
+All notable changes to ePACK will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Updated TypeScript from 4.9.5 to 5.7.2
-- Updated package.json name from "horizon-ai-template-pro" to "vpack"
+- Updated package.json name from "horizon-ai-template-pro" to "epack"
 - Improved Dockerfile with Gunicorn instead of Flask dev server
 - Enhanced docker-compose.yml with health checks
 - Split requirements.txt into prod/dev/test files
@@ -111,6 +111,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Links
 
-- [Repository](https://github.com/Binhnguyen041280/VPACK)
-- [Issues](https://github.com/Binhnguyen041280/VPACK/issues)
-- [Documentation](https://github.com/Binhnguyen041280/VPACK/tree/main/docs)
+- [Repository](https://github.com/Binhnguyen041280/ePACK)
+- [Issues](https://github.com/Binhnguyen041280/ePACK/issues)
+- [Documentation](https://github.com/Binhnguyen041280/ePACK/tree/main/docs)

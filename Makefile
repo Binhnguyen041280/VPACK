@@ -1,8 +1,8 @@
 # ============================================
-# VPACK - Makefile for Common Operations
+# ePACK - Makefile for Common Operations
 # ============================================
 # This Makefile provides convenient commands for
-# building, running, and managing VPACK.
+# building, running, and managing ePACK.
 #
 # Usage:
 #   make help           Show available commands
@@ -45,7 +45,7 @@ NC := \033[0m # No Color
 
 help: ## Show this help message
 	@echo "$(BLUE)╔════════════════════════════════════════════════════════════╗$(NC)"
-	@echo "$(BLUE)║$(NC)  VPACK - Makefile Commands"
+	@echo "$(BLUE)║$(NC)  ePACK - Makefile Commands"
 	@echo "$(BLUE)╚════════════════════════════════════════════════════════════╝$(NC)"
 	@echo ""
 	@echo "$(GREEN)Available targets:$(NC)"
@@ -87,7 +87,7 @@ install-dev: install ## Install development dependencies
 
 build: ## Build all components
 	@echo "$(BLUE)╔════════════════════════════════════════════════════════════╗$(NC)"
-	@echo "$(BLUE)║$(NC)  Building VPACK"
+	@echo "$(BLUE)║$(NC)  Building ePACK"
 	@echo "$(BLUE)╚════════════════════════════════════════════════════════════╝$(NC)"
 	@bash $(SCRIPTS_DIR)/build_all.sh
 
@@ -284,7 +284,7 @@ env-setup: ## Set up environment files from examples
 
 status: ## Show project status
 	@echo "$(BLUE)╔════════════════════════════════════════════════════════════╗$(NC)"
-	@echo "$(BLUE)║$(NC)  VPACK Status"
+	@echo "$(BLUE)║$(NC)  ePACK Status"
 	@echo "$(BLUE)╚════════════════════════════════════════════════════════════╝$(NC)"
 	@echo ""
 	@echo "$(BLUE)Dependencies:$(NC)"

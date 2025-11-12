@@ -14,11 +14,11 @@ We release patches for security vulnerabilities in the following versions:
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-If you discover a security vulnerability in VPACK, please report it responsibly:
+If you discover a security vulnerability in ePACK, please report it responsibly:
 
 ### Preferred Method
 
-Email your findings to: **security@vtrack.app** (or the project maintainer's email)
+Email your findings to: **security@epack.app** (or the project maintainer's email)
 
 ### What to Include
 
@@ -51,7 +51,7 @@ Please include as much information as possible:
 
 ### For Users
 
-1. **Keep VPACK updated** to the latest version
+1. **Keep ePACK updated** to the latest version
 2. **Use strong SECRET_KEY** in production (never use default)
 3. **Enable HTTPS** for production deployments
 4. **Restrict database access** to localhost only
@@ -214,7 +214,7 @@ When a security issue is reported:
 
 ## Security Hall of Fame
 
-We thank the following security researchers who have helped improve VPACK:
+We thank the following security researchers who have helped improve ePACK:
 
 *(No reports yet)*
 
@@ -222,7 +222,7 @@ We thank the following security researchers who have helped improve VPACK:
 
 For security-related questions or concerns:
 
-- **Email**: security@vtrack.app (or maintainer email)
+- **Email**: security@epack.app (or maintainer email)
 - **PGP Key**: [Link to PGP key if available]
 - **Response time**: 48 hours for initial response
 
@@ -235,4 +235,4 @@ For security-related questions or concerns:
 
 ---
 
-Thank you for helping keep VPACK and our users safe! 🔒
+Thank you for helping keep ePACK and our users safe! 🔒

@@ -888,7 +888,7 @@ def main():
         logger.error(f"Port {port} is already in use!")
         sys.exit(1)
 
-    logger.info(f"Starting V_Track Desktop Application on port {port}")
+    logger.info(f"Starting ePACK Desktop Application on port {port}")
 
     # Database already initialized at top of file
     # Initialize license system (non-blocking)
@@ -904,7 +904,7 @@ def main():
         print("💰 Pricing integration validated successfully")
 
     # Display startup information
-    print("🚀 V_Track Desktop App Starting...")
+    print("🚀 ePACK Desktop App Starting...")
     print(f"📡 Server: http://0.0.0.0:{port}")
     print("🔧 Core Features:")
     print("   ✅ Computer Vision Processing")

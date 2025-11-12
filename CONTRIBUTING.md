@@ -1,6 +1,6 @@
-# Contributing to VPACK
+# Contributing to ePACK
 
-Thank you for your interest in contributing to VPACK! This document provides guidelines and instructions for contributing to the project.
+Thank you for your interest in contributing to ePACK! This document provides guidelines and instructions for contributing to the project.
 
 ## Table of Contents
 
@@ -33,12 +33,12 @@ This project adheres to a code of conduct that all contributors are expected to 
 1. Fork the repository on GitHub
 2. Clone your fork locally:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/VPACK.git
-   cd VPACK
+   git clone https://github.com/YOUR_USERNAME/ePACK.git
+   cd ePACK
    ```
 3. Add the upstream repository:
    ```bash
-   git remote add upstream https://github.com/Binhnguyen041280/VPACK.git
+   git remote add upstream https://github.com/Binhnguyen041280/ePACK.git
    ```
 
 ## Development Setup
@@ -299,7 +299,7 @@ Brief description of changes
 
 ### Before Reporting
 
-1. Check if the bug has already been reported in [Issues](https://github.com/Binhnguyen041280/VPACK/issues)
+1. Check if the bug has already been reported in [Issues](https://github.com/Binhnguyen041280/ePACK/issues)
 2. Try the latest version to see if the bug still exists
 3. Collect relevant information (logs, screenshots, etc.)
 
@@ -325,7 +325,7 @@ If applicable, add screenshots.
 - OS: [e.g., macOS 12.0, Ubuntu 20.04]
 - Python version: [e.g., 3.10.5]
 - Node version: [e.g., 18.16.0]
-- VPACK version: [e.g., 2.1.0]
+- ePACK version: [e.g., 2.1.0]
 
 **Additional context**
 Any other relevant information.
@@ -360,8 +360,8 @@ Any other context, screenshots, or mockups.
 
 If you have questions about contributing, please:
 
-1. Check the [documentation](https://github.com/Binhnguyen041280/VPACK/tree/main/docs)
-2. Search existing [issues](https://github.com/Binhnguyen041280/VPACK/issues)
+1. Check the [documentation](https://github.com/Binhnguyen041280/ePACK/tree/main/docs)
+2. Search existing [issues](https://github.com/Binhnguyen041280/ePACK/issues)
 3. Create a new issue with the "question" label
 
-Thank you for contributing to VPACK! 🎉
+Thank you for contributing to ePACK! 🎉

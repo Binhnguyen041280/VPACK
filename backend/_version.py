@@ -1,13 +1,11 @@
-"""Version information for VPACK."""
+"""Version information for ePACK."""
 
-__version__ = "2.1.0"
+__version__ = "1.0.0"
 __version_info__ = tuple(int(x) for x in __version__.split("."))
 
 # Version history
 __version_history__ = {
-    "2.1.0": "Production-ready packaging and build automation",
-    "2.0.0": "Major refactor with multi-source support",
-    "1.0.0": "Initial release",
+    "1.0.0": "Initial release - Enterprise-grade video processing platform with production-ready infrastructure",
 }
 
 def get_version() -> str:
