@@ -217,6 +217,15 @@ from flask_session import Session
 import secrets
 
 # Configure session for OAuth compatibility
+# Docker-compatible session storage
+if os.getenv('VTRACK_IN_DOCKER') == 'true':
+    session_dir = os.getenv('VTRACK_SESSION_DIR', '/app/var/flask_session')
+else:
+    session_dir = os.path.join(BASE_DIR, 'flask_session')
+
+# Ensure directory exists and is writable
+os.makedirs(session_dir, exist_ok=True)
+
 app.config.update(
     SECRET_KEY=os.environ.get('SECRET_KEY', secrets.token_urlsafe(32)),
     SESSION_COOKIE_NAME='vtrack_session',
@@ -225,7 +234,7 @@ app.config.update(
     SESSION_COOKIE_SAMESITE='Lax',
     PERMANENT_SESSION_LIFETIME=timedelta(hours=24),
     SESSION_TYPE='filesystem',
-    SESSION_FILE_DIR=os.path.join(BASE_DIR, 'flask_session'),
+    SESSION_FILE_DIR=session_dir,
     OAUTH_INSECURE_TRANSPORT=True,
 )
 
