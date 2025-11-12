@@ -50,6 +50,16 @@ jobs:
           pip install -r backend/requirements.txt
           pip install pytest pytest-cov pytest-flask pytest-mock
 
+      - name: Prepare test video files
+        run: |
+          mkdir -p backend/tests/videos
+          # Create dummy MP4 files for testing (basic file presence tests)
+          # These are minimal files, not valid videos, but sufficient for file existence checks
+          echo "ftypisom" > backend/tests/videos/test_video_1.mp4
+          echo "ftypisom" > backend/tests/videos/test_video_2.mp4
+          echo "ftypisom" > backend/tests/videos/test_video_3.mp4
+          ls -lh backend/tests/videos/
+
       - name: Run backend tests
         working-directory: .
         run: |
