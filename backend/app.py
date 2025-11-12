@@ -879,7 +879,8 @@ def initialize_auto_sync():
     logger.info("🔄 Auto-sync initialization started")
 
 # ==================== APPLICATION STARTUP ====================
-if __name__ == "__main__":
+def main():
+    """Main entry point for VPACK application."""
     port = 8080
 
     # Check port availability
@@ -894,14 +895,14 @@ if __name__ == "__main__":
     license_ok = initialize_license_system()
     if not license_ok:
         logger.error("License initialization failed - continuing anyway")
-    
+
     # Validate pricing integration
     pricing_ok = validate_pricing_integration()
     if not pricing_ok:
         print("⚠️ Warning: Pricing service integration issues detected")
     else:
         print("💰 Pricing integration validated successfully")
-    
+
     # Display startup information
     print("🚀 V_Track Desktop App Starting...")
     print(f"📡 Server: http://0.0.0.0:{port}")
@@ -909,12 +910,12 @@ if __name__ == "__main__":
     print("   ✅ Computer Vision Processing")
     print("   ✅ Video File Batch Processing")
     print("   ✅ Cloud Storage Sync")
-    
+
     if PAYMENT_INTEGRATION_AVAILABLE:
         try:
             cloud_client = get_cloud_client()
             connection_test = cloud_client.test_connection()
-            
+
             if connection_test.get('success'):
                 print("   ✅ Cloud Payment Processing")
                 print("   ✅ License Management System")
@@ -934,7 +935,7 @@ if __name__ == "__main__":
     else:
         print("   ❌ Payment Processing (Not Available)")
         print("   ❌ License Management (Not Available)")
-    
+
     print(f"\n📍 Main Pages:")
     print(f"   🏠 Dashboard: http://0.0.0.0:{port}/")
     print(f"   💳 Payment: http://0.0.0.0:{port}/payment")
@@ -944,16 +945,16 @@ if __name__ == "__main__":
     print(f"   🔑 License Status: http://0.0.0.0:{port}/api/license-status")
     if PAYMENT_INTEGRATION_AVAILABLE:
         print(f"   💰 Pricing API: http://0.0.0.0:{port}/api/payment/packages")
-    
+
     # API Backend only - React frontend on port 3000
     print(f"\n🔗 Frontend: React app running on http://localhost:3000")
     print(f"🔗 Backend API: Flask running on http://localhost:8080")
-    
+
     print(f"\n⚡ Shutdown: Ctrl+C (immediate response)")
-    
+
     # Initialize auto-sync
     initialize_auto_sync()
-    
+
     try:
         app.run(
             host='0.0.0.0',
@@ -971,3 +972,7 @@ if __name__ == "__main__":
     finally:
         print("🔚 Application terminated")
         logger.info("Application terminated")
+
+
+if __name__ == "__main__":
+    main()

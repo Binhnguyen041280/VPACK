@@ -1,0 +1,65 @@
+[flake8]
+# ============================================
+# Flake8 Configuration for VPACK
+# ============================================
+
+# Maximum line length
+max-line-length = 100
+
+# Error codes to ignore
+ignore =
+    # E203: Whitespace before ':' (conflicts with black)
+    E203,
+    # W503: Line break before binary operator (conflicts with black)
+    W503,
+    # E501: Line too long (handled by black)
+    E501,
+    # W504: Line break after binary operator
+    W504,
+    # E402: Module level import not at top of file (for conditional imports)
+    E402
+
+# Files and directories to exclude
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    env,
+    build,
+    dist,
+    *.egg-info,
+    .tox,
+    .pytest_cache,
+    node_modules,
+    frontend,
+    .next,
+    out,
+    htmlcov,
+    coverage
+
+# Maximum complexity (McCabe)
+max-complexity = 15
+
+# Enable PyFlakes error codes
+select =
+    E,  # pycodestyle errors
+    W,  # pycodestyle warnings
+    F,  # pyflakes
+    C,  # mccabe complexity
+    B,  # bugbear
+
+# Docstring conventions (Google style)
+docstring-convention = google
+
+# Show source code for each error
+show-source = True
+
+# Show error codes in output
+show-pep8 = True
+
+# Count errors
+count = True
+
+# Statistics
+statistics = True

@@ -62,9 +62,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy requirements file
 COPY backend/requirements.txt /app/requirements.txt
 
-# Install Python dependencies
+# Install Python dependencies including gunicorn for production
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir gunicorn[gevent]==21.2.0
 
 # ============================================
 # STAGE 3: Production Image
@@ -91,8 +92,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=backend-builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
 COPY --from=backend-builder /usr/local/bin /usr/local/bin
 
-# Copy backend source
+# Copy backend source and gunicorn config
 COPY backend/ /app/backend/
+COPY backend/gunicorn.conf.py /app/backend/gunicorn.conf.py
 
 # Copy frontend build artifacts
 COPY --from=frontend-builder /app/frontend/.next /app/frontend/.next
@@ -137,12 +139,12 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # Initialize database on container start
 RUN cd /app/backend && python database.py
 
-# Default command: Start both backend and frontend
-# In production, you might want to use separate containers
-CMD ["sh", "-c", "cd /app/backend && python app.py & cd /app/frontend && npm run start"]
+# Default command: Start both backend (with Gunicorn) and frontend
+# In production, it's recommended to use separate containers via docker-compose
+CMD ["sh", "-c", "cd /app/backend && gunicorn --config gunicorn.conf.py app:app & cd /app/frontend && npm run start"]
 
-# Alternative: Use supervisor or docker-compose to manage processes
-# For production, it's recommended to split into separate containers:
-# - vpack-backend: Backend Flask API
-# - vpack-frontend: Frontend Next.js server
-# - vpack-nginx: Reverse proxy (optional)
+# For production deployment:
+# - Use docker-compose to run separate containers
+# - Backend: Gunicorn with gevent workers
+# - Frontend: Next.js production server
+# - Nginx: Reverse proxy (recommended)

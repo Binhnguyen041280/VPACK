@@ -83,7 +83,7 @@ services:
     command: >
       sh -c "cd /app/backend &&
              python database.py &&
-             python app.py"
+             gunicorn --config gunicorn.conf.py app:app"
 
   # ============================================
   # Frontend Service (Next.js)

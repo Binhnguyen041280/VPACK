@@ -1,0 +1,102 @@
+# ============================================
+# VPACK - MANIFEST.in
+# ============================================
+# This file specifies additional files to include in the source distribution.
+# Files matched by these patterns will be included when building sdist packages.
+
+# ============================================
+# DOCUMENTATION
+# ============================================
+include README.md
+include LICENSE
+include CHANGELOG.md
+include CONTRIBUTING.md
+include SECURITY.md
+
+# ============================================
+# CONFIGURATION FILES
+# ============================================
+include pyproject.toml
+include setup.cfg
+include .env.example
+include Makefile
+include Dockerfile
+include docker-compose.yml
+
+# Backend configuration
+include backend/.env.example
+include backend/config.json
+recursive-include backend/templates *
+recursive-include backend/static *
+
+# Frontend configuration
+include frontend/.env.example
+include frontend/package.json
+include frontend/package-lock.json
+include frontend/tsconfig.json
+include frontend/next.config.js
+
+# ============================================
+# AI MODELS & DATA FILES
+# ============================================
+# WeChat QR Detection Models (required for opencv-contrib WeChatQRCode)
+recursive-include backend/models/wechat_qr *.caffemodel
+recursive-include backend/models/wechat_qr *.prototxt
+
+# ============================================
+# SCRIPTS
+# ============================================
+recursive-include scripts *.sh
+recursive-include scripts *.py
+
+# ============================================
+# DOCUMENTATION
+# ============================================
+recursive-include docs *.md
+recursive-include docs *.png
+recursive-include docs *.jpg
+recursive-include docs *.svg
+recursive-include docs *.pdf
+
+# ============================================
+# TESTS (for sdist only, not wheel)
+# ============================================
+recursive-include tests *.py
+include pytest.ini
+include .coveragerc
+
+# ============================================
+# EXCLUDE PATTERNS
+# ============================================
+# Exclude compiled Python files
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude *$py.class
+
+# Exclude build artifacts
+global-exclude *.so
+global-exclude *.dylib
+global-exclude *.dll
+global-exclude *.egg-info
+
+# Exclude development files
+global-exclude .DS_Store
+global-exclude .git*
+global-exclude .vscode
+global-exclude .idea
+
+# Exclude logs and databases
+global-exclude *.log
+global-exclude *.db
+global-exclude *.sqlite
+global-exclude *.sqlite3
+
+# Exclude node modules and frontend build
+prune node_modules
+prune frontend/.next
+prune frontend/out
+prune frontend/node_modules
+
+# Exclude runtime data
+prune var
+prune backend/var

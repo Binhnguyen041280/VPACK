@@ -1,0 +1,60 @@
+VPACK Commercial License
+
+Copyright (c) 2023-2025 V_Track Team. All rights reserved.
+
+This software and associated documentation files (the "Software") are proprietary
+and confidential. You may not use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software without explicit written permission
+from the copyright holders.
+
+RESTRICTIONS:
+
+1. The Software is licensed, not sold. You receive a license to use the Software
+   subject to the terms and conditions of this License.
+
+2. You may not:
+   - Copy, modify, adapt, translate, or create derivative works of the Software
+   - Reverse engineer, decompile, disassemble, or attempt to derive source code
+   - Rent, lease, loan, sublicense, or distribute the Software
+   - Remove or alter any proprietary notices or labels on the Software
+   - Use the Software for any unlawful purpose
+
+3. The Software is provided "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+4. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+   DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+   OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+   USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+5. This license is effective until terminated. It will terminate immediately
+   without notice if you fail to comply with any provision of this License.
+
+CONTACT:
+
+For licensing inquiries, please contact:
+Email: support@vtrack.app
+Website: https://vtrack.app
+
+---
+
+THIRD-PARTY LICENSES:
+
+This Software includes third-party open source software components, each of
+which has its own copyright and its own applicable license conditions. Such
+third-party software is licensed under the terms of their respective licenses.
+
+See backend/requirements.txt and frontend/package.json for a list of
+third-party dependencies and their licenses.
+
+Major third-party components:
+- Flask: BSD-3-Clause License
+- Next.js: MIT License
+- OpenCV: Apache 2.0 License
+- MediaPipe: Apache 2.0 License
+- React: MIT License
+- Chakra UI: MIT License
+
+Full license texts for third-party components can be found in their
+respective package directories or online repositories.
