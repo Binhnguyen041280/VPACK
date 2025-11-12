@@ -3,6 +3,8 @@
  * Handles API calls for step-by-step configuration
  */
 
+import { API_BASE_URL } from '../config/api.config';
+
 interface BrandnameResponse {
   success: boolean;
   data: {
@@ -225,7 +227,7 @@ interface VideoValidationResponse {
 }
 
 class StepConfigService {
-  private baseUrl = 'http://localhost:8080/api/config';
+  private baseUrl = `${API_BASE_URL}/api/config`;
 
   /**
    * Fetch current brandname from backend

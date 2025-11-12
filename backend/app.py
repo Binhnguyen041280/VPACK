@@ -98,10 +98,27 @@ except ImportError as e:
     logger.warning(f"⚠️ Account system not available: {e}")
 
 # ==================== CLOUD FUNCTIONS INTEGRATION ====================
-# Set Cloud Function URLs
-os.environ.setdefault('CLOUD_PAYMENT_URL', 'https://asia-southeast1-v-track-payments.cloudfunctions.net/create-payment')
-os.environ.setdefault('CLOUD_WEBHOOK_URL', 'https://asia-southeast1-v-track-payments.cloudfunctions.net/webhook-handler')
-os.environ.setdefault('CLOUD_LICENSE_URL', 'https://asia-southeast1-v-track-payments.cloudfunctions.net/license-service')
+# Cloud Function URLs - must be configured via environment variables
+# For development, these can be set in .env file
+# For production, these must be set in deployment configuration
+
+# Default URLs for backwards compatibility (will be removed in future versions)
+_DEFAULT_PAYMENT_URL = 'https://asia-southeast1-v-track-payments.cloudfunctions.net/create-payment'
+_DEFAULT_WEBHOOK_URL = 'https://asia-southeast1-v-track-payments.cloudfunctions.net/webhook-handler'
+_DEFAULT_LICENSE_URL = 'https://asia-southeast1-v-track-payments.cloudfunctions.net/license-service'
+
+# Get URLs from environment or use defaults with warnings
+if 'CLOUD_PAYMENT_URL' not in os.environ:
+    logger.warning("⚠️ CLOUD_PAYMENT_URL not set in environment, using default")
+    os.environ['CLOUD_PAYMENT_URL'] = _DEFAULT_PAYMENT_URL
+
+if 'CLOUD_WEBHOOK_URL' not in os.environ:
+    logger.warning("⚠️ CLOUD_WEBHOOK_URL not set in environment, using default")
+    os.environ['CLOUD_WEBHOOK_URL'] = _DEFAULT_WEBHOOK_URL
+
+if 'CLOUD_LICENSE_URL' not in os.environ:
+    logger.warning("⚠️ CLOUD_LICENSE_URL not set in environment, using default")
+    os.environ['CLOUD_LICENSE_URL'] = _DEFAULT_LICENSE_URL
 
 # Import payment integration
 PAYMENT_INTEGRATION_AVAILABLE = False

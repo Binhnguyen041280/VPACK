@@ -7,6 +7,7 @@
  */
 
 import { retryOperation, parseApiError } from '../utils/errorHandler';
+import { API_BASE_URL } from '../config/api.config';
 
 export interface StartProgramParams {
   programType: 'first' | 'default' | 'custom';
@@ -62,7 +63,7 @@ export interface CameraResponse {
 }
 
 class ProgramService {
-  private readonly baseUrl = 'http://localhost:8080/api';
+  private readonly baseUrl = `${API_BASE_URL}/api`;
 
   /**
    * Map frontend program types to backend program names

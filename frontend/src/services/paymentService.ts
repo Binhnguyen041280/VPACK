@@ -1,13 +1,14 @@
-import { 
-  PricingResponse, 
-  CreatePaymentRequest, 
+import {
+  PricingResponse,
+  CreatePaymentRequest,
   CreatePaymentResponse,
   LicenseActivationRequest,
   LicenseActivationResponse,
   LicenseStatusResponse
 } from '@/types/account';
+import { API_BASE_URL } from '../config/api.config';
 
-const API_BASE = 'http://localhost:8080/api';
+const API_BASE = `${API_BASE_URL}/api`;
 
 export class PaymentService {
   /**
@@ -191,7 +192,7 @@ export class PaymentService {
 
     // Handle payment messages
     const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== 'http://localhost:8080') return;
+      if (event.origin !== API_BASE_URL) return;
 
       if (event.data.type === 'payment_flow_completed') {
         clearInterval(checkClosed);
