@@ -11,14 +11,47 @@ from modules.scheduler.db_sync import db_rwlock
 
 cutter_bp = Blueprint('cutter', __name__)
 
-with db_rwlock.gen_rlock():
-    with safe_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT output_path FROM processing_config LIMIT 1")
-        result = cursor.fetchone()
-        output_dir = result[0] if result and result[0] else os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../resources/output_clips")
-        if output_dir and not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+# Docker-compatible output directory initialization
+# Uses database config first, falls back to environment-aware defaults
+def get_output_directory():
+    """
+    Get output directory with Docker compatibility.
+
+    Priority:
+    1. Environment variable (VTRACK_OUTPUT_DIR) - takes precedence in Docker
+    2. Docker default (/app/resources/output) - when in Docker mode
+    3. Database configuration (processing_config.output_path) - local development only
+    4. Local development default (../../resources/output_clips)
+    """
+    # Docker mode: Use environment variable or Docker default (ignore database)
+    if os.getenv('VTRACK_IN_DOCKER') == 'true':
+        return os.getenv('VTRACK_OUTPUT_DIR', '/app/resources/output')
+
+    # Local development: Check database first
+    try:
+        with db_rwlock.gen_rlock():
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT output_path FROM processing_config LIMIT 1")
+                result = cursor.fetchone()
+                if result and result[0]:
+                    return result[0]
+    except Exception as e:
+        print(f"Warning: Could not read output_path from database: {e}")
+
+    # Local development fallback
+    return os.getenv('VTRACK_OUTPUT_DIR',
+                    os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../resources/output_clips"))
+
+# Initialize output directory at module load time
+output_dir = get_output_directory()
+try:
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+        print(f"✅ Created output directory: {output_dir}")
+except (OSError, PermissionError) as e:
+    print(f"⚠️ Warning: Could not create output directory {output_dir}: {e}")
+    print(f"   Videos may not be saved correctly. Please check permissions.")
 
 def get_video_duration(video_file):
     try:

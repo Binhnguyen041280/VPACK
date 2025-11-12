@@ -184,8 +184,15 @@ def health_check():
 def test_endpoint():
     """Test endpoint with sample video for development"""
     try:
-        # Use the test video from the project
-        test_video = "/Users/annhu/vtrack_app/V_Track/resources/Inputvideo/Cam1D/Cam1D_20250604_110517.mp4"
+        # Use the test video from the project (Docker-compatible path)
+        # In Docker: /app/resources/Inputvideo/Cam1D/...
+        # In local dev: use relative path from project root
+        if os.getenv('VTRACK_IN_DOCKER') == 'true':
+            test_video = "/app/resources/Inputvideo/Cam1D/Cam1D_20250604_110517.mp4"
+        else:
+            # Local development - use relative path
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            test_video = os.path.join(project_root, "resources/Inputvideo/Cam1D/Cam1D_20250604_110517.mp4")
         test_time = 5.0  # Test at 5 seconds
         
         # Test ROI (center area)

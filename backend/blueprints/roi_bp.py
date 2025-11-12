@@ -297,8 +297,8 @@ def debug_roi_paths():
             "camera_roi_dir": CAMERA_ROI_DIR,
             "db_path": DB_PATH,
             "camera_roi_dir_exists": os.path.exists(CAMERA_ROI_DIR),
-            "expected_file_path": f"/Users/annhu/vtrack_app/V_Track/resources/output_clips/CameraROI/camera_{camera_id}_roi_packing.jpg",
-            "test_file_exists": os.path.exists(f"/Users/annhu/vtrack_app/V_Track/resources/output_clips/CameraROI/camera_{camera_id}_roi_packing.jpg")
+            "expected_file_path": os.path.join(CAMERA_ROI_DIR, f"camera_{camera_id}_roi_packing.jpg"),
+            "test_file_exists": os.path.exists(os.path.join(CAMERA_ROI_DIR, f"camera_{camera_id}_roi_packing.jpg"))
         }
         
         # List files in directory
