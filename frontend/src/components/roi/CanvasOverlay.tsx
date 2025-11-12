@@ -44,9 +44,11 @@ interface HandLandmarks {
     y: number;
     z: number;
     x_orig: number;   // TC Gốc - pixel thực trong video gốc
-    y_orig: number;   // TC Gốc - pixel thực trong video gốc  
+    y_orig: number;   // TC Gốc - pixel thực trong video gốc
     x_norm: number;   // Reference normalized coordinates [0,1]
     y_norm: number;   // Reference normalized coordinates [0,1]
+    x_disp?: number;  // Optional display coordinates from backend
+    y_disp?: number;  // Optional display coordinates from backend
   }>>;
   confidence: number;
   hands_detected: number;
@@ -929,6 +931,7 @@ const CanvasOverlay: React.FC<CanvasOverlayProps> = ({
 };
 
 // Export interfaces for use in other components
-export type { HandLandmarks, QRDetection };
+// Note: QRDetection is already exported above as 'export interface QRDetection'
+export type { HandLandmarks };
 
 export default CanvasOverlay;

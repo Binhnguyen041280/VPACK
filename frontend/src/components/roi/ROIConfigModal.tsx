@@ -85,6 +85,8 @@ interface ROIConfigModalProps {
     rois: ROIData[];
     packingMethod: string;
     videoMetadata: VideoMetadata;
+    baseline_captured?: any;
+    baseline?: any;
   }) => void;
   onError?: (error: string) => void;
 }
@@ -537,8 +539,10 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
         }, 500);
       } else if (packingMethod === 'qr') {
         // QR method: only trigger when both ROIs are complete
-        const willHaveTrigger = rois.some(r => r.type === 'qr_trigger') || type === 'qr_trigger';
-        const willHavePacking = rois.some(r => r.type === 'packing_area') || type === 'packing_area';
+        // Note: Since we're inside `if (type === 'packing_area')` block,
+        // we know packing area just got created, so willHavePacking is true
+        const willHaveTrigger = rois.some(r => r.type === 'qr_trigger');
+        const willHavePacking = true; // We just created packing_area
         
         if (willHaveTrigger && willHavePacking) {
           console.log('QR method: both ROIs complete - triggering dual preprocessing');
@@ -912,13 +916,13 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
       
       if (packingMethod === 'traditional') {
         // Traditional: [handResponse, qrResponse]
-        handResult = await responses[0].json();
+        handResult = responses[0] ? await responses[0].json() : { success: false, canvas_landmarks: [] };
         qrResult = responses[1] ? await responses[1].json() : { success: false, canvas_qr_detections: [] };
         triggerResult = null;
-        
+
       } else if (packingMethod === 'qr') {
         // QR method: [handResponse, packingQRResponse, triggerQRResponse]
-        handResult = await responses[0].json();
+        handResult = responses[0] ? await responses[0].json() : { success: false, canvas_landmarks: [] };
         qrResult = responses[1] ? await responses[1].json() : { success: false, canvas_qr_detections: [] };
         triggerResult = responses[2] ? await responses[2].json() : { success: false, trigger_detected: false, trigger_text: null };
       }
@@ -1927,9 +1931,7 @@ const ROIConfigModal: React.FC<ROIConfigModalProps> = ({
                     currentROIType={packingMethod === 'traditional' ? 'packing_area' : (!rois.some(roi => roi.type === 'qr_trigger') ? 'qr_trigger' : 'packing_area')}
                     currentROILabel={packingMethod === 'traditional' ? 'Packing Area' : (!rois.some(roi => roi.type === 'qr_trigger') ? 'Trigger Area' : 'Packing Area')}
                     disabled={(packingMethod === 'traditional' && rois.some(roi => roi.type === 'packing_area')) || (packingMethod === 'qr' && rois.some(roi => roi.type === 'qr_trigger') && rois.some(roi => roi.type === 'packing_area'))}
-                    showLandmarks={isVideoPlaying && rois.length > 0}
-                    landmarks={handLandmarks}
-                    
+
                     // Hand landmarks props
                     handLandmarks={handLandmarks}
                     showHandLandmarks={isVideoPlaying && rois.length > 0}

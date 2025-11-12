@@ -55,7 +55,11 @@ const PricingPackagesGrid: React.FC<PricingPackagesGridProps> = ({
     if (!currentLicense) return '💳 PURCHASE';
 
     const isSamePlan = currentLicense.package_type === packageCode;
-    const isExpired = currentLicense.daysRemaining !== null && currentLicense.daysRemaining <= 0;
+
+    // Calculate if expired based on expires_at
+    const isExpired = currentLicense.expires_at
+      ? new Date(currentLicense.expires_at) < new Date()
+      : false;
 
     // If same plan and NOT expired, show as current
     if (isSamePlan && !isExpired) return '✅ CURRENT PLAN';
@@ -77,7 +81,11 @@ const PricingPackagesGrid: React.FC<PricingPackagesGridProps> = ({
     if (!currentLicense) return 'blue';
 
     const isSamePlan = currentLicense.package_type === packageCode;
-    const isExpired = currentLicense.daysRemaining !== null && currentLicense.daysRemaining <= 0;
+
+    // Calculate if expired based on expires_at
+    const isExpired = currentLicense.expires_at
+      ? new Date(currentLicense.expires_at) < new Date()
+      : false;
 
     // Current active plan (not expired)
     if (isSamePlan && !isExpired) return 'green';

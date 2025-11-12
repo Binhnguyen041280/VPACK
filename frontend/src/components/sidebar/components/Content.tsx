@@ -99,10 +99,10 @@ function SidebarContent(props: SidebarContent) {
           alignItems="center"
           flexShrink={0}
         >
-          <NextAvatar 
-            h="27px" 
-            w="27px" 
-            src={userInfo.avatar || null} 
+          <NextAvatar
+            h="27px"
+            w="27px"
+            src={userInfo.avatar || undefined} 
             style={{
               aspectRatio: '1',
               objectFit: 'cover',
@@ -123,9 +123,9 @@ function SidebarContent(props: SidebarContent) {
           minH="62px"
         >
           <NextAvatar 
-            h="34px" 
-            w="34px" 
-            src={userInfo.avatar || null} 
+            h="34px"
+            w="34px"
+            src={userInfo.avatar || undefined} 
             me="10px" 
             style={{
               aspectRatio: '1',

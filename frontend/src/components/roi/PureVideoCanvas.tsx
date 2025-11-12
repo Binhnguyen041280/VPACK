@@ -73,7 +73,7 @@ interface PureVideoCanvasProps {
   rois?: ROIData[];
   selectedROIId?: string | null;
   hoveredROIId?: string | null;
-  currentROIType?: string;
+  currentROIType?: ROIData['type'];
   currentROILabel?: string;
   disabled?: boolean;
   snapToGrid?: boolean;
@@ -87,9 +87,9 @@ interface PureVideoCanvasProps {
   showHandLandmarks?: boolean;
 
   // ROI callbacks
-  onROICreate?: (roi: ROIData) => void;
-  onROIUpdate?: (roiId: string, roi: ROIData) => void;
-  onROIDelete?: (roiId: string) => void;
+  onROICreate?: (roi: Omit<ROIData, 'id'>) => void;
+  onROIUpdate?: (id: string, roi: Partial<ROIData>) => void;
+  onROIDelete?: (id: string) => void;
   onROISelect?: (roiId: string | null) => void;
   onROIHover?: (roiId: string | null) => void;
 }
@@ -380,25 +380,21 @@ const PureVideoCanvas: React.FC<PureVideoCanvasProps> = ({
             videoHeight={videoMetadata.resolution.height}
             rois={rois}
             selectedROIId={selectedROIId}
-            hoveredROIId={hoveredROIId}
             currentROIType={currentROIType}
             currentROILabel={currentROILabel}
             disabled={disabled}
-            snapToGrid={snapToGrid}
-            gridSize={gridSize}
+            gridSnap={snapToGrid}
+            snapSize={gridSize}
             minROISize={minROISize}
-            showLandmarks={showLandmarks}
-            landmarks={landmarks}
-            
+
             // Hand landmarks props
             handLandmarks={handLandmarks}
             showHandLandmarks={showHandLandmarks}
-            
+
             onROICreate={onROICreate}
             onROIUpdate={onROIUpdate}
             onROIDelete={onROIDelete}
             onROISelect={onROISelect}
-            onROIHover={onROIHover}
           />
         </Box>
       )}

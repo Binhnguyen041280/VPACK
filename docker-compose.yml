@@ -1,0 +1,206 @@
+# ============================================================================
+# V_Track Application - Docker Compose Configuration (Production)
+# ============================================================================
+# Platform: linux/arm64 (Mac M1/M2/M3)
+# Backend: Flask Python app (vtrack-backend:phase2)
+# Frontend: Next.js 15 app (vtrack-frontend:phase3)
+# ============================================================================
+# Usage:
+#   1. Copy .env.docker.example to .env: cp .env.docker.example .env
+#   2. Configure environment variables in .env
+#   3. Ensure Docker images are built:
+#      - docker build -t vtrack-backend:phase2 ./backend
+#      - docker build -t vtrack-frontend:phase3 ./frontend
+#   4. Start services: docker-compose up -d
+#   5. Check status: docker-compose ps
+#   6. View logs: docker-compose logs -f
+#   7. Stop services: docker-compose down
+# ============================================================================
+
+services:
+  # ==========================================================================
+  # Backend Service - Flask Python API
+  # ==========================================================================
+  backend:
+    image: vtrack-backend:phase2
+    container_name: vtrack-backend
+    platform: linux/arm64
+
+    ports:
+      - "8080:8080"
+
+    # Load environment variables from .env file
+    env_file:
+      - .env
+
+    # Additional environment variables specific to Docker networking
+    environment:
+      - VTRACK_IN_DOCKER=true
+      - FLASK_HOST=0.0.0.0
+      - FLASK_PORT=8080
+      - FLASK_ENV=production
+      - FLASK_DEBUG=false
+      # Container paths for mounted volumes
+      - VTRACK_INPUT_DIR=/app/resources/input
+      - VTRACK_OUTPUT_DIR=/app/resources/output
+      - VTRACK_RESOURCES_DIR=/app/resources
+      - VTRACK_SESSION_DIR=/app/var/flask_session
+
+    # Persistent volumes for data storage
+    volumes:
+      # Database storage (SQLite files, backups)
+      - vtrack-db:/app/database
+      # Application logs
+      - vtrack-logs:/app/logs
+      # Flask session storage
+      - vtrack-sessions:/app/var/flask_session
+      # Cache directory
+      - vtrack-cache:/app/var/cache
+      # File uploads
+      - vtrack-uploads:/app/var/uploads
+      # Video input resources
+      - vtrack-input:/app/resources/input
+      # Video output/recordings
+      - vtrack-output:/app/resources/output
+
+    networks:
+      - vtrack-network
+
+    # Restart policy - restart unless manually stopped
+    restart: unless-stopped
+
+    # Health check - verify backend API is responding
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # Resource limits (optional - uncomment to enable)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2.0'
+    #       memory: 2G
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 512M
+
+  # ==========================================================================
+  # Frontend Service - Next.js 15 Web Application
+  # ==========================================================================
+  frontend:
+    image: vtrack-frontend:phase3
+    container_name: vtrack-frontend
+    platform: linux/arm64
+
+    ports:
+      - "3000:3000"
+
+    # Frontend environment variables
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      # API URL for frontend to communicate with backend
+      # Use service name 'backend' for internal container-to-container communication
+      - NEXT_PUBLIC_API_URL=http://backend:8080
+
+    networks:
+      - vtrack-network
+
+    # Wait for backend to be healthy before starting frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Health check - verify frontend is responding
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    # Resource limits (optional - uncomment to enable)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '1.0'
+    #       memory: 1G
+    #     reservations:
+    #       cpus: '0.25'
+    #       memory: 256M
+
+# ============================================================================
+# Networks
+# ============================================================================
+networks:
+  vtrack-network:
+    driver: bridge
+    name: vtrack-network
+
+# ============================================================================
+# Named Volumes - Persistent Data Storage
+# ============================================================================
+volumes:
+  # Database files and backups
+  vtrack-db:
+    driver: local
+    name: vtrack-db
+
+  # Application logs
+  vtrack-logs:
+    driver: local
+    name: vtrack-logs
+
+  # Flask session storage
+  vtrack-sessions:
+    driver: local
+    name: vtrack-sessions
+
+  # Cache directory
+  vtrack-cache:
+    driver: local
+    name: vtrack-cache
+
+  # File uploads
+  vtrack-uploads:
+    driver: local
+    name: vtrack-uploads
+
+  # Video input resources
+  vtrack-input:
+    driver: local
+    name: vtrack-input
+
+  # Video output and recordings
+  vtrack-output:
+    driver: local
+    name: vtrack-output
+
+# ============================================================================
+# Volume Management Commands
+# ============================================================================
+# List volumes:
+#   docker volume ls
+#
+# Inspect volume:
+#   docker volume inspect vtrack-db
+#
+# Backup volume data:
+#   docker run --rm -v vtrack-db:/data -v $(pwd)/backup:/backup alpine tar czf /backup/vtrack-db-backup.tar.gz -C /data .
+#
+# Restore volume data:
+#   docker run --rm -v vtrack-db:/data -v $(pwd)/backup:/backup alpine tar xzf /backup/vtrack-db-backup.tar.gz -C /data
+#
+# Remove all volumes (WARNING: Data loss!):
+#   docker-compose down -v
+#
+# Access volume data:
+#   docker run --rm -it -v vtrack-db:/data alpine sh
+# ============================================================================
