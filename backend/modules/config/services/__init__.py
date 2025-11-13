@@ -12,9 +12,9 @@ from .step4_packing_area_service import step4_packing_area_service
 from .step5_timing_service import step5_timing_service
 
 __all__ = [
-    'step1_brandname_service',
-    'step2_location_time_service',
-    'step3_video_source_service',
-    'step4_packing_area_service',
-    'step5_timing_service'
+    "step1_brandname_service",
+    "step2_location_time_service",
+    "step3_video_source_service",
+    "step4_packing_area_service",
+    "step5_timing_service",
 ]

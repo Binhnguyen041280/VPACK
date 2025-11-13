@@ -8,9 +8,11 @@ __version_history__ = {
     "1.0.0": "Initial release - Enterprise-grade video processing platform with production-ready infrastructure",
 }
 
+
 def get_version() -> str:
     """Get the current version string."""
     return __version__
+
 
 def get_version_info() -> tuple:
     """Get the version as a tuple of integers."""

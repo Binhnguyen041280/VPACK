@@ -14,6 +14,7 @@ from .license_manager import LicenseManager
 
 logger = logging.getLogger(__name__)
 
+
 def require_valid_license(f: Callable) -> Callable:
     """
     Decorator to protect API endpoints requiring valid license
@@ -35,6 +36,7 @@ def require_valid_license(f: Callable) -> Callable:
         - 403 Forbidden if license invalid with upgrade message
         - Original function result if license valid
     """
+
     @wraps(f)
     def decorated_function(*args: Any, **kwargs: Any) -> Any:
         try:
@@ -45,38 +47,50 @@ def require_valid_license(f: Callable) -> Callable:
             status_result = license_manager.get_license_status()
 
             # Check status
-            if status_result['status'] == 'valid':
+            if status_result["status"] == "valid":
                 # License is valid - allow access
                 logger.debug(f"✅ ALLOWED: {f.__name__} | Valid license")
                 return f(*args, **kwargs)
 
             # License is invalid - block access
-            reason = status_result.get('reason', 'unknown')
+            reason = status_result.get("reason", "unknown")
             message = _get_friendly_message(status_result)
 
-            logger.warning(f"🔒 BLOCKED: {f.__name__} | Status: {status_result['status']} | Reason: {reason}")
+            logger.warning(
+                f"🔒 BLOCKED: {f.__name__} | Status: {status_result['status']} | Reason: {reason}"
+            )
 
-            return jsonify({
-                'success': False,
-                'error': 'license_required',
-                'message': message,
-                'status': status_result['status'],
-                'reason': reason,
-                'upgrade_url': '/plan',
-                'blocked_endpoint': f.__name__
-            }), 403
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "license_required",
+                        "message": message,
+                        "status": status_result["status"],
+                        "reason": reason,
+                        "upgrade_url": "/plan",
+                        "blocked_endpoint": f.__name__,
+                    }
+                ),
+                403,
+            )
 
         except Exception as e:
             # Fail-safe: Block on error
             logger.error(f"🔒 BLOCKED: {f.__name__} | Guard error: {str(e)}")
 
-            return jsonify({
-                'success': False,
-                'error': 'license_check_failed',
-                'message': 'Unable to verify license. Please check your license status.',
-                'upgrade_url': '/plan',
-                'blocked_endpoint': f.__name__
-            }), 403
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "license_check_failed",
+                        "message": "Unable to verify license. Please check your license status.",
+                        "upgrade_url": "/plan",
+                        "blocked_endpoint": f.__name__,
+                    }
+                ),
+                403,
+            )
 
     return decorated_function
 
@@ -91,24 +105,26 @@ def _get_friendly_message(status_result: dict) -> str:
     Returns:
         User-friendly error message
     """
-    status = status_result.get('status', 'unknown')
-    reason = status_result.get('reason', '')
+    status = status_result.get("status", "unknown")
+    reason = status_result.get("reason", "")
 
     # Map status to friendly messages
     messages = {
-        'no_license': 'No license found. Please activate a license to use Trace features.',
-        'invalid': 'Your license is invalid or expired. Please activate a valid license to continue using Trace features.',
-        'error': 'Unable to verify your license. Please contact support if this issue persists.',
+        "no_license": "No license found. Please activate a license to use Trace features.",
+        "invalid": "Your license is invalid or expired. Please activate a valid license to continue using Trace features.",
+        "error": "Unable to verify your license. Please contact support if this issue persists.",
     }
 
     # Check for specific reasons
-    if reason == 'expired':
-        license_data = status_result.get('license', {})
-        expiry_date = license_data.get('expires_at', 'unknown')
-        return f'Your license expired on {expiry_date}. Please activate a valid license to continue using Trace features.'
+    if reason == "expired":
+        license_data = status_result.get("license", {})
+        expiry_date = license_data.get("expires_at", "unknown")
+        return f"Your license expired on {expiry_date}. Please activate a valid license to continue using Trace features."
 
     # Return mapped message or default
-    return messages.get(status, 'License verification failed. Please check your license status in Plan page.')
+    return messages.get(
+        status, "License verification failed. Please check your license status in Plan page."
+    )
 
 
 def check_license_status() -> dict:
@@ -135,19 +151,19 @@ def check_license_status() -> dict:
         status_result = license_manager.get_license_status()
 
         return {
-            'valid': status_result['status'] == 'valid',
-            'status': status_result['status'],
-            'message': _get_friendly_message(status_result),
-            'license': status_result.get('license')
+            "valid": status_result["status"] == "valid",
+            "status": status_result["status"],
+            "message": _get_friendly_message(status_result),
+            "license": status_result.get("license"),
         }
 
     except Exception as e:
         logger.error(f"License status check failed: {str(e)}")
         return {
-            'valid': False,
-            'status': 'error',
-            'message': 'Unable to verify license status',
-            'error': str(e)
+            "valid": False,
+            "status": "error",
+            "message": "Unable to verify license status",
+            "error": str(e),
         }
 
 
@@ -164,6 +180,7 @@ def require_license_feature(feature_name: str) -> Callable:
     Note: Currently simplified - checks valid license only
     Future: Can check specific features list
     """
+
     def decorator(f: Callable) -> Callable:
         @wraps(f)
         def decorated_function(*args: Any, **kwargs: Any) -> Any:
@@ -171,15 +188,22 @@ def require_license_feature(feature_name: str) -> Callable:
                 license_manager = LicenseManager()
                 status_result = license_manager.get_license_status()
 
-                if status_result['status'] != 'valid':
-                    logger.warning(f"🔒 BLOCKED: {f.__name__} | Feature: {feature_name} | No valid license")
-                    return jsonify({
-                        'success': False,
-                        'error': 'feature_requires_license',
-                        'message': f'Feature "{feature_name}" requires a valid license.',
-                        'feature': feature_name,
-                        'upgrade_url': '/account#plans'
-                    }), 403
+                if status_result["status"] != "valid":
+                    logger.warning(
+                        f"🔒 BLOCKED: {f.__name__} | Feature: {feature_name} | No valid license"
+                    )
+                    return (
+                        jsonify(
+                            {
+                                "success": False,
+                                "error": "feature_requires_license",
+                                "message": f'Feature "{feature_name}" requires a valid license.',
+                                "feature": feature_name,
+                                "upgrade_url": "/account#plans",
+                            }
+                        ),
+                        403,
+                    )
 
                 # Future: Check if license includes specific feature
                 # features = license_manager.get_license_features()
@@ -191,14 +215,20 @@ def require_license_feature(feature_name: str) -> Callable:
 
             except Exception as e:
                 logger.error(f"🔒 BLOCKED: {f.__name__} | Feature guard error: {str(e)}")
-                return jsonify({
-                    'success': False,
-                    'error': 'feature_check_failed',
-                    'message': 'Unable to verify license features.',
-                    'feature': feature_name
-                }), 403
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": "feature_check_failed",
+                            "message": "Unable to verify license features.",
+                            "feature": feature_name,
+                        }
+                    ),
+                    403,
+                )
 
         return decorated_function
+
     return decorator
 
 

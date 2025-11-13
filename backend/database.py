@@ -20,6 +20,7 @@ BASE_DIR = None
 DB_PATH = None
 DB_DIR = None
 
+
 def _ensure_paths_initialized():
     """Lazy initialization of paths configuration"""
     global _paths_initialized, paths, BASE_DIR, DB_PATH, DB_DIR
@@ -30,14 +31,15 @@ def _ensure_paths_initialized():
     paths_dict = get_paths()
 
     # Update global variables
-    globals()['paths'] = paths_dict
-    globals()['BASE_DIR'] = paths_dict["BASE_DIR"]
-    globals()['DB_PATH'] = paths_dict["DB_PATH"]
-    globals()['DB_DIR'] = os.path.dirname(paths_dict["DB_PATH"])
-    globals()['_paths_initialized'] = True
+    globals()["paths"] = paths_dict
+    globals()["BASE_DIR"] = paths_dict["BASE_DIR"]
+    globals()["DB_PATH"] = paths_dict["DB_PATH"]
+    globals()["DB_DIR"] = os.path.dirname(paths_dict["DB_PATH"])
+    globals()["_paths_initialized"] = True
 
     # Ensure database directory exists
-    os.makedirs(globals()['DB_DIR'], exist_ok=True)
+    os.makedirs(globals()["DB_DIR"], exist_ok=True)
+
 
 # Đường dẫn mặc định - OS-aware paths for Canvas compatibility
 def get_default_storage_paths():
@@ -54,10 +56,10 @@ def get_default_storage_paths():
     import os
 
     # DOCKER MODE: Check if running in Docker container
-    if os.getenv('VTRACK_IN_DOCKER') == 'true':
+    if os.getenv("VTRACK_IN_DOCKER") == "true":
         # Docker/container mode - use container-friendly paths
-        input_dir = os.getenv('VTRACK_INPUT_DIR', '/app/resources/input')
-        output_dir = os.getenv('VTRACK_OUTPUT_DIR', '/app/resources/output')
+        input_dir = os.getenv("VTRACK_INPUT_DIR", "/app/resources/input")
+        output_dir = os.getenv("VTRACK_OUTPUT_DIR", "/app/resources/output")
         return input_dir, output_dir
 
     # LOCAL DEVELOPMENT MODE: OS-specific paths
@@ -65,29 +67,31 @@ def get_default_storage_paths():
 
     if system == "windows":
         # Windows: C:\Users\%USERNAME%\Videos\VTrack
-        username = os.environ.get('USERNAME', 'User')
+        username = os.environ.get("USERNAME", "User")
         default_input = f"C:\\Users\\{username}\\Videos\\VTrack\\Input"
         default_output = f"C:\\Users\\{username}\\Videos\\VTrack\\Output"
     elif system == "darwin":  # macOS
         # Mac: /Users/%USER%/Movies/VTrack
-        username = os.environ.get('USER', 'user')
+        username = os.environ.get("USER", "user")
         default_input = f"/Users/{username}/Movies/VTrack/Input"
         default_output = f"/Users/{username}/Movies/VTrack/Output"
     else:  # Linux and others
         # Linux: /home/%USER%/Videos/VTrack
-        username = os.environ.get('USER', 'user')
+        username = os.environ.get("USER", "user")
         default_input = f"/home/{username}/Videos/VTrack/Input"
         default_output = f"/home/{username}/Videos/VTrack/Output"
 
     # Allow environment variable overrides even in local development
-    input_dir = os.getenv('VTRACK_INPUT_DIR', default_input)
-    output_dir = os.getenv('VTRACK_OUTPUT_DIR', default_output)
+    input_dir = os.getenv("VTRACK_INPUT_DIR", default_input)
+    output_dir = os.getenv("VTRACK_OUTPUT_DIR", default_output)
 
     return input_dir, output_dir
+
 
 # Lazy initialization: Get video storage paths only when needed
 INPUT_VIDEO_DIR = None
 OUTPUT_CLIPS_DIR = None
+
 
 def _ensure_storage_paths_initialized():
     """Lazy initialization of video storage paths"""
@@ -103,15 +107,16 @@ def _ensure_storage_paths_initialized():
         os.makedirs(os.path.dirname(input_dir), exist_ok=True)
         os.makedirs(os.path.dirname(output_dir), exist_ok=True)
         # Update globals with OS-specific paths
-        globals()['INPUT_VIDEO_DIR'] = input_dir
-        globals()['OUTPUT_CLIPS_DIR'] = output_dir
+        globals()["INPUT_VIDEO_DIR"] = input_dir
+        globals()["OUTPUT_CLIPS_DIR"] = output_dir
     except (OSError, PermissionError):
         print("⚠️ Cannot create OS-specific paths, falling back to var/ directories")
         # Ensure paths are initialized before accessing VAR_DIR
         _ensure_paths_initialized()
         # Update globals with fallback paths
-        globals()['INPUT_VIDEO_DIR'] = os.path.join(paths["VAR_DIR"], "input_videos")
-        globals()['OUTPUT_CLIPS_DIR'] = os.path.join(paths["VAR_DIR"], "output_clips")
+        globals()["INPUT_VIDEO_DIR"] = os.path.join(paths["VAR_DIR"], "input_videos")
+        globals()["OUTPUT_CLIPS_DIR"] = os.path.join(paths["VAR_DIR"], "output_clips")
+
 
 def get_db_connection():
     """
@@ -123,11 +128,11 @@ def get_db_connection():
     for attempt in range(5):  # Retry tối đa 5 lần
         try:
             conn = sqlite3.connect(DB_PATH, timeout=60.0)  # Tăng timeout lên 60 giây
-            conn.execute("PRAGMA busy_timeout = 60000")   # Busy timeout 60s
-            conn.execute("PRAGMA journal_mode = WAL")     # WAL mode cho concurrent reads/writes
-            conn.execute("PRAGMA synchronous = NORMAL")   # Balanced sync (nhanh hơn FULL)
-            conn.execute("PRAGMA temp_store = MEMORY")    # Temp data in memory (tăng speed)
-            conn.execute("PRAGMA foreign_keys = ON")      # Enforce FK nếu cần
+            conn.execute("PRAGMA busy_timeout = 60000")  # Busy timeout 60s
+            conn.execute("PRAGMA journal_mode = WAL")  # WAL mode cho concurrent reads/writes
+            conn.execute("PRAGMA synchronous = NORMAL")  # Balanced sync (nhanh hơn FULL)
+            conn.execute("PRAGMA temp_store = MEMORY")  # Temp data in memory (tăng speed)
+            conn.execute("PRAGMA foreign_keys = ON")  # Enforce FK nếu cần
             return conn
         except sqlite3.OperationalError as e:
             if "database is locked" in str(e) and attempt < 4:
@@ -136,6 +141,7 @@ def get_db_connection():
                 continue
             raise e
     raise sqlite3.OperationalError("Database locked after max retries")
+
 
 def update_database():
     """Update database schema with all required tables and indexes"""
@@ -151,21 +157,26 @@ def update_database():
             print("✅ WAL mode enabled for database")
 
             # ==================== CORE TABLES ====================
-            
+
             # 1. Program Status Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS program_status (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     key TEXT NOT NULL UNIQUE,
                     value TEXT NOT NULL
                 )
-            """)
+            """
+            )
             cursor.execute("SELECT COUNT(*) FROM program_status WHERE key = 'first_run_completed'")
             if cursor.fetchone()[0] == 0:
-                cursor.execute("INSERT INTO program_status (key, value) VALUES ('first_run_completed', 'false')")
+                cursor.execute(
+                    "INSERT INTO program_status (key, value) VALUES ('first_run_completed', 'false')"
+                )
 
             # 2. Processing Config Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS processing_config (
                     id INTEGER PRIMARY KEY,
                     input_path TEXT,
@@ -185,22 +196,29 @@ def update_database():
                     multiple_sources_enabled INTEGER DEFAULT 0,
                     camera_paths TEXT DEFAULT '{}'
                 )
-            """)
+            """
+            )
 
             # Add missing columns if needed
             try:
-                cursor.execute("ALTER TABLE processing_config ADD COLUMN camera_paths TEXT DEFAULT '{}'")
+                cursor.execute(
+                    "ALTER TABLE processing_config ADD COLUMN camera_paths TEXT DEFAULT '{}'"
+                )
                 print("✅ Added camera_paths column to processing_config")
             except sqlite3.OperationalError:
                 pass
 
             try:
-                cursor.execute("ALTER TABLE processing_config ADD COLUMN multiple_sources_enabled INTEGER DEFAULT 0")
+                cursor.execute(
+                    "ALTER TABLE processing_config ADD COLUMN multiple_sources_enabled INTEGER DEFAULT 0"
+                )
             except sqlite3.OperationalError:
                 pass
 
-
-            cursor.execute("UPDATE processing_config SET db_path = ?, run_default_on_start = 0 WHERE db_path IS NULL OR run_default_on_start IS NULL", (DB_PATH,))
+            cursor.execute(
+                "UPDATE processing_config SET db_path = ?, run_default_on_start = 0 WHERE db_path IS NULL OR run_default_on_start IS NULL",
+                (DB_PATH,),
+            )
 
             # Insert default data if empty
             cursor.execute("SELECT COUNT(*) FROM processing_config")
@@ -209,16 +227,36 @@ def update_database():
                 _ensure_paths_initialized()
                 _ensure_storage_paths_initialized()
 
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO processing_config (
                         id, input_path, output_path, storage_duration, min_packing_time,
                         max_packing_time, frame_rate, frame_interval, video_buffer, default_frame_mode,
                         selected_cameras, db_path, run_default_on_start, multiple_sources_enabled, camera_paths
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (1, INPUT_VIDEO_DIR, OUTPUT_CLIPS_DIR, 30, 10, 120, 30, 5, 2, "default", "[]", DB_PATH, 0, 0, "{}"))
+                """,
+                    (
+                        1,
+                        INPUT_VIDEO_DIR,
+                        OUTPUT_CLIPS_DIR,
+                        30,
+                        10,
+                        120,
+                        30,
+                        5,
+                        2,
+                        "default",
+                        "[]",
+                        DB_PATH,
+                        0,
+                        0,
+                        "{}",
+                    ),
+                )
 
             # 3. File List Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS file_list (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     program_type TEXT NOT NULL,
@@ -233,10 +271,12 @@ def update_database():
                     log_file_path TEXT,
                     camera_name TEXT
                 )
-            """)
+            """
+            )
 
             # 4. Frame Settings Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS frame_settings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     mode TEXT NOT NULL,
@@ -244,16 +284,21 @@ def update_database():
                     frame_interval INTEGER,
                     description TEXT
                 )
-            """)
+            """
+            )
             cursor.execute("SELECT COUNT(*) FROM frame_settings")
             if cursor.fetchone()[0] == 0:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO frame_settings (mode, frame_rate, frame_interval, description)
                     VALUES (?, ?, ?, ?)
-                """, ("default", 30, 5, "Chế độ mặc định từ giao diện"))
+                """,
+                    ("default", 30, 5, "Chế độ mặc định từ giao diện"),
+                )
 
             # 5. General Info Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS general_info (
                     id INTEGER PRIMARY KEY,
                     country TEXT,
@@ -264,9 +309,10 @@ def update_database():
                     to_time TEXT,
                     language TEXT
                 )
-            """)
+            """
+            )
             # ==================== TIMEZONE ENHANCEMENT ====================
-            
+
             # Add enhanced timezone columns to general_info
             timezone_columns = [
                 ("timezone_iana_name", "TEXT"),
@@ -276,12 +322,14 @@ def update_database():
                 ("timezone_validated", "INTEGER DEFAULT 0"),
                 ("timezone_updated_at", "TEXT"),
                 ("timezone_validation_warnings", "TEXT"),
-                ("language", "TEXT")
+                ("language", "TEXT"),
             ]
-            
+
             for col_name, col_definition in timezone_columns:
                 try:
-                    cursor.execute(f"ALTER TABLE general_info ADD COLUMN {col_name} {col_definition}")
+                    cursor.execute(
+                        f"ALTER TABLE general_info ADD COLUMN {col_name} {col_definition}"
+                    )
                     print(f"✅ Added {col_name} column to general_info")
                 except sqlite3.OperationalError as e:
                     if "duplicate column name" not in str(e).lower():
@@ -289,23 +337,42 @@ def update_database():
 
             cursor.execute("SELECT COUNT(*) FROM general_info")
             if cursor.fetchone()[0] == 0:
-                working_days = json.dumps(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
-                cursor.execute("""
+                working_days = json.dumps(
+                    ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+                )
+                cursor.execute(
+                    """
                     INSERT INTO general_info (
                         id, country, timezone, brand_name, working_days, from_time, to_time,
                         timezone_iana_name, timezone_display_name, timezone_utc_offset_hours,
                         timezone_format_type, timezone_validated, timezone_updated_at, language
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (1, "Vietnam", "Asia/Ho_Chi_Minh", "Alan_go", working_days, "00:00", "00:00",
-                      # Default timezone for first-time initialization - user can change via UI (Step 2)
-                      # Default time range 00:00-00:00 means 24/7 operation
-                      "Asia/Ho_Chi_Minh", "Vietnam (Ho Chi Minh City)", 7.0,
-                      "iana_standard", 1, datetime.now().isoformat(), "vi"))
+                """,
+                    (
+                        1,
+                        "Vietnam",
+                        "Asia/Ho_Chi_Minh",
+                        "Alan_go",
+                        working_days,
+                        "00:00",
+                        "00:00",
+                        # Default timezone for first-time initialization - user can change via UI (Step 2)
+                        # Default time range 00:00-00:00 means 24/7 operation
+                        "Asia/Ho_Chi_Minh",
+                        "Vietnam (Ho Chi Minh City)",
+                        7.0,
+                        "iana_standard",
+                        1,
+                        datetime.now().isoformat(),
+                        "vi",
+                    ),
+                )
 
             # ==================== PLATFORM MANAGEMENT TABLES ====================
 
             # 6. Platform Column Mappings Table (Simplified for intent-based approach)
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS platform_column_mappings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     platform_name TEXT NOT NULL UNIQUE,
@@ -316,7 +383,8 @@ def update_database():
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     is_active BOOLEAN DEFAULT 1
                 )
-            """)
+            """
+            )
 
             # No default data seeding - user will create platforms from their own data
             logger.info("Platform column mappings table ready for user-defined configurations")
@@ -324,7 +392,8 @@ def update_database():
             # ==================== VIDEO PROCESSING TABLES ====================
 
             # 7. Events Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS events (
                     event_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     ts INTEGER,
@@ -342,15 +411,16 @@ def update_database():
                     session_id TEXT,
                     output_file TEXT
                 )
-            """)
-            
+            """
+            )
+
             # Add timezone columns to events table
             events_timezone_columns = [
                 ("timezone_info", "TEXT"),
                 ("created_at_utc", "INTEGER"),
-                ("updated_at_utc", "INTEGER")
+                ("updated_at_utc", "INTEGER"),
             ]
-            
+
             for col_name, col_definition in events_timezone_columns:
                 try:
                     cursor.execute(f"ALTER TABLE events ADD COLUMN {col_name} {col_definition}")
@@ -363,7 +433,7 @@ def update_database():
             events_retry_columns = [
                 ("retry_needed", "INTEGER DEFAULT 0"),
                 ("retry_count", "INTEGER DEFAULT 0"),
-                ("status", "TEXT DEFAULT 'normal'")
+                ("status", "TEXT DEFAULT 'normal'"),
             ]
 
             for col_name, col_definition in events_retry_columns:
@@ -375,16 +445,19 @@ def update_database():
                         print(f"⚠️ Error adding {col_name}: {e}")
 
             # 7. Processed Logs Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS processed_logs (
                     log_file TEXT PRIMARY KEY,
                     processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     is_processed INTEGER DEFAULT 0
                 )
-            """)
+            """
+            )
 
             # 8. Packing Profiles Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS packing_profiles (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     profile_name TEXT NOT NULL,
@@ -398,23 +471,29 @@ def update_database():
                     margin INTEGER,
                     additional_params TEXT
                 )
-            """)
+            """
+            )
 
             # Add QR size columns for boundary extraction feature
             try:
-                cursor.execute("ALTER TABLE packing_profiles ADD COLUMN expected_mvd_qr_size TEXT DEFAULT NULL")
+                cursor.execute(
+                    "ALTER TABLE packing_profiles ADD COLUMN expected_mvd_qr_size TEXT DEFAULT NULL"
+                )
                 print("✅ Added expected_mvd_qr_size column to packing_profiles")
             except sqlite3.OperationalError:
                 pass  # Column already exists
 
             try:
-                cursor.execute("ALTER TABLE packing_profiles ADD COLUMN expected_trigger_qr_size TEXT DEFAULT NULL")
+                cursor.execute(
+                    "ALTER TABLE packing_profiles ADD COLUMN expected_trigger_qr_size TEXT DEFAULT NULL"
+                )
                 print("✅ Added expected_trigger_qr_size column to packing_profiles")
             except sqlite3.OperationalError:
                 pass  # Column already exists
 
             # 8.1. QR Detections Table (for Magnifying Glass feature)
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS qr_detections (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     event_id INTEGER NOT NULL,
@@ -427,10 +506,12 @@ def update_database():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (event_id) REFERENCES events(event_id) ON DELETE CASCADE
                 )
-            """)
+            """
+            )
 
             # 8.2. Camera Baseline Samples Table (for Health Check - captured during Step 4 ROI setup)
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS camera_baseline_samples (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     camera_name TEXT NOT NULL UNIQUE,
@@ -470,10 +551,12 @@ def update_database():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            """)
+            """
+            )
 
             # 8.3. Camera Health Check Results Table (for comparing against baseline)
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS camera_health_check_results (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     baseline_id INTEGER NOT NULL,
@@ -512,11 +595,14 @@ def update_database():
 
                     FOREIGN KEY (baseline_id) REFERENCES camera_baseline_samples(id) ON DELETE CASCADE
                 )
-            """)
+            """
+            )
 
             # Add decode_success column for boundary extraction feature
             try:
-                cursor.execute("ALTER TABLE qr_detections ADD COLUMN decode_success INTEGER DEFAULT 1")
+                cursor.execute(
+                    "ALTER TABLE qr_detections ADD COLUMN decode_success INTEGER DEFAULT 1"
+                )
                 print("✅ Added decode_success column to qr_detections")
             except sqlite3.OperationalError:
                 pass  # Column already exists
@@ -525,7 +611,9 @@ def update_database():
 
             # Add health check columns to file_list
             try:
-                cursor.execute("ALTER TABLE file_list ADD COLUMN health_check_failed INTEGER DEFAULT 0")
+                cursor.execute(
+                    "ALTER TABLE file_list ADD COLUMN health_check_failed INTEGER DEFAULT 0"
+                )
                 print("✅ Added health_check_failed column to file_list")
             except sqlite3.OperationalError:
                 pass  # Column already exists
@@ -538,56 +626,87 @@ def update_database():
 
             # Add health check columns to camera_health_check_results
             try:
-                cursor.execute("ALTER TABLE camera_health_check_results ADD COLUMN action_taken TEXT")
+                cursor.execute(
+                    "ALTER TABLE camera_health_check_results ADD COLUMN action_taken TEXT"
+                )
                 print("✅ Added action_taken column to camera_health_check_results")
             except sqlite3.OperationalError:
                 pass  # Column already exists
 
             try:
-                cursor.execute("ALTER TABLE camera_health_check_results ADD COLUMN check_type TEXT DEFAULT 'periodic'")
+                cursor.execute(
+                    "ALTER TABLE camera_health_check_results ADD COLUMN check_type TEXT DEFAULT 'periodic'"
+                )
                 print("✅ Added check_type column to camera_health_check_results")
             except sqlite3.OperationalError:
                 pass  # Column already exists
 
             # Add QR trigger bbox columns (for QR position tracking)
             try:
-                cursor.execute("ALTER TABLE camera_baseline_samples ADD COLUMN qr_trigger_bbox TEXT DEFAULT NULL")
+                cursor.execute(
+                    "ALTER TABLE camera_baseline_samples ADD COLUMN qr_trigger_bbox TEXT DEFAULT NULL"
+                )
                 print("✅ Added qr_trigger_bbox column to camera_baseline_samples")
             except sqlite3.OperationalError:
                 pass  # Column already exists
 
             try:
-                cursor.execute("ALTER TABLE camera_health_check_results ADD COLUMN qr_trigger_bbox TEXT DEFAULT NULL")
+                cursor.execute(
+                    "ALTER TABLE camera_health_check_results ADD COLUMN qr_trigger_bbox TEXT DEFAULT NULL"
+                )
                 print("✅ Added qr_trigger_bbox column to camera_health_check_results")
             except sqlite3.OperationalError:
                 pass  # Column already exists
 
             try:
-                cursor.execute("ALTER TABLE camera_health_check_results ADD COLUMN qr_position_offset_pct REAL DEFAULT NULL")
+                cursor.execute(
+                    "ALTER TABLE camera_health_check_results ADD COLUMN qr_position_offset_pct REAL DEFAULT NULL"
+                )
                 print("✅ Added qr_position_offset_pct column to camera_health_check_results")
             except sqlite3.OperationalError:
                 pass  # Column already exists
 
             # Create index for QR detections
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_qr_detections_event ON qr_detections(event_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_qr_detections_timestamp ON qr_detections(event_id, timestamp_seconds)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_qr_detections_decode_success ON qr_detections(decode_success, event_id)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_qr_detections_event ON qr_detections(event_id)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_qr_detections_timestamp ON qr_detections(event_id, timestamp_seconds)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_qr_detections_decode_success ON qr_detections(decode_success, event_id)"
+            )
 
             # Create indexes for camera baseline samples (health check feature)
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_baseline_camera ON camera_baseline_samples(camera_name)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_baseline_status ON camera_baseline_samples(status)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_baseline_created ON camera_baseline_samples(created_at)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_baseline_camera ON camera_baseline_samples(camera_name)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_baseline_status ON camera_baseline_samples(status)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_baseline_created ON camera_baseline_samples(created_at)"
+            )
 
             # Create indexes for camera health check results
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_health_check_baseline ON camera_health_check_results(baseline_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_health_check_camera ON camera_health_check_results(camera_name)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_health_check_status ON camera_health_check_results(overall_status)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_health_check_timestamp ON camera_health_check_results(check_timestamp)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_health_check_baseline ON camera_health_check_results(baseline_id)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_health_check_camera ON camera_health_check_results(camera_name)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_health_check_status ON camera_health_check_results(overall_status)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_health_check_timestamp ON camera_health_check_results(check_timestamp)"
+            )
 
             # ==================== TIMEZONE MANAGEMENT TABLES ====================
-            
+
             # 9. Timezone Metadata Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS timezone_metadata (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     system_timezone TEXT NOT NULL,
@@ -597,26 +716,36 @@ def update_database():
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 )
-            """)
-            
+            """
+            )
+
             # Initialize timezone metadata if empty
             cursor.execute("SELECT COUNT(*) FROM timezone_metadata")
             if cursor.fetchone()[0] == 0:
                 current_utc_timestamp = int(datetime.now().timestamp() * 1000)
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO timezone_metadata
                     (system_timezone, migration_version, migration_timestamp, utc_storage_enabled, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?)
-                """, (
-                    # Default timezone for first-time initialization - sync with general_info
-                    "Asia/Ho_Chi_Minh", 1, current_utc_timestamp, True, current_utc_timestamp, current_utc_timestamp
-                ))
+                """,
+                    (
+                        # Default timezone for first-time initialization - sync with general_info
+                        "Asia/Ho_Chi_Minh",
+                        1,
+                        current_utc_timestamp,
+                        True,
+                        current_utc_timestamp,
+                        current_utc_timestamp,
+                    ),
+                )
                 print("✅ Initialized timezone_metadata table")
 
             # ==================== VIDEO SOURCES & SYNC TABLES ====================
-            
+
             # 11. Video Sources Table (local + cloud only)
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS video_sources (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     source_type TEXT NOT NULL CHECK(source_type IN ('local', 'cloud')),
@@ -628,23 +757,30 @@ def update_database():
                     folder_depth INTEGER DEFAULT 0,
                     parent_folder_id TEXT
                 )
-            """)
+            """
+            )
 
             # Initialize predefined sources with fixed IDs if table is empty
             cursor.execute("SELECT COUNT(*) FROM video_sources")
             if cursor.fetchone()[0] == 0:
                 # Insert predefined sources with specific IDs
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO video_sources (id, source_type, name, path, config, active, created_at, folder_depth, parent_folder_id)
                     VALUES
                     (1, 'local', 'Local Storage', '', '{}', 0, datetime('now'), 0, ''),
                     (2, 'cloud', 'Google Storage', '', '{}', 0, datetime('now'), 0, '')
-                """)
-                print("✅ Initialized predefined sources: ID 1 (Local Storage), ID 2 (Google Storage)")
+                """
+                )
+                print(
+                    "✅ Initialized predefined sources: ID 1 (Local Storage), ID 2 (Google Storage)"
+                )
 
             # Add folder depth tracking columns if missing
             try:
-                cursor.execute("ALTER TABLE video_sources ADD COLUMN folder_depth INTEGER DEFAULT 0")
+                cursor.execute(
+                    "ALTER TABLE video_sources ADD COLUMN folder_depth INTEGER DEFAULT 0"
+                )
                 print("✅ Added folder_depth column to video_sources")
             except sqlite3.OperationalError:
                 pass
@@ -656,7 +792,8 @@ def update_database():
                 pass
 
             # 10. Camera Configurations Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS camera_configurations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     source_id INTEGER NOT NULL,
@@ -673,10 +810,12 @@ def update_database():
                     FOREIGN KEY (source_id) REFERENCES video_sources (id) ON DELETE CASCADE,
                     UNIQUE(source_id, camera_name)
                 )
-            """)
+            """
+            )
 
             # 11. Sync Status Table (Cloud sources auto-sync)
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS sync_status (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     source_id INTEGER NOT NULL,
@@ -699,7 +838,8 @@ def update_database():
                     FOREIGN KEY (source_id) REFERENCES video_sources (id) ON DELETE CASCADE,
                     UNIQUE(source_id)
                 )
-            """)
+            """
+            )
 
             # Add error tracking columns if missing
             try:
@@ -709,7 +849,9 @@ def update_database():
                 pass
 
             try:
-                cursor.execute("ALTER TABLE sync_status ADD COLUMN last_error_type TEXT DEFAULT NULL")
+                cursor.execute(
+                    "ALTER TABLE sync_status ADD COLUMN last_error_type TEXT DEFAULT NULL"
+                )
                 print("✅ Added last_error_type column to sync_status")
             except Exception:
                 pass
@@ -717,7 +859,8 @@ def update_database():
             cursor.execute("UPDATE sync_status SET error_count = 0 WHERE error_count IS NULL")
 
             # 12. Downloaded Files Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS downloaded_files (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     source_id INTEGER NOT NULL,
@@ -735,7 +878,8 @@ def update_database():
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (source_id) REFERENCES video_sources (id) ON DELETE CASCADE
                 )
-            """)
+            """
+            )
 
             # Add new columns for recursive folder support
             try:
@@ -763,7 +907,8 @@ def update_database():
                 pass  # Column already exists
 
             # 13. Last Downloaded File Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS last_downloaded_file (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     source_id INTEGER NOT NULL,
@@ -778,12 +923,14 @@ def update_database():
                     FOREIGN KEY (source_id) REFERENCES video_sources (id) ON DELETE CASCADE,
                     UNIQUE(source_id, camera_name)
                 )
-            """)
+            """
+            )
 
             # ==================== SECURITY & AUTH TABLES ====================
 
             # 15. Auth Audit Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS auth_audit (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     session_token TEXT,
@@ -797,10 +944,12 @@ def update_database():
                     metadata TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            """)
+            """
+            )
 
             # 16. User Profiles Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS user_profiles (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     gmail_address TEXT UNIQUE,
@@ -813,17 +962,22 @@ def update_database():
                     authentication_method TEXT DEFAULT 'gmail_only',
                     google_drive_connected BOOLEAN DEFAULT FALSE
                 )
-            """)
+            """
+            )
 
             # Add authentication tracking columns if they don't exist
             try:
-                cursor.execute("ALTER TABLE user_profiles ADD COLUMN authentication_method TEXT DEFAULT 'gmail_only'")
+                cursor.execute(
+                    "ALTER TABLE user_profiles ADD COLUMN authentication_method TEXT DEFAULT 'gmail_only'"
+                )
                 logger.info("✅ Added authentication_method column to user_profiles")
             except sqlite3.OperationalError:
                 pass
 
             try:
-                cursor.execute("ALTER TABLE user_profiles ADD COLUMN google_drive_connected BOOLEAN DEFAULT FALSE")
+                cursor.execute(
+                    "ALTER TABLE user_profiles ADD COLUMN google_drive_connected BOOLEAN DEFAULT FALSE"
+                )
                 logger.info("✅ Added google_drive_connected column to user_profiles")
             except sqlite3.OperationalError:
                 pass
@@ -831,7 +985,8 @@ def update_database():
             # ==================== AI USAGE TABLES ====================
 
             # 20. AI Configuration Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS ai_config (
                     user_email TEXT PRIMARY KEY,
                     ai_enabled INTEGER DEFAULT 0,
@@ -840,10 +995,12 @@ def update_database():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            """)
+            """
+            )
 
             # 21. AI Recovery Logs Table (tracking usage & cost)
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS ai_recovery_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_email TEXT NOT NULL,
@@ -858,20 +1015,28 @@ def update_database():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_email) REFERENCES ai_config(user_email)
                 )
-            """)
+            """
+            )
 
             # Create indexes for AI tables
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_config_user ON ai_config(user_email)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_logs_user ON ai_recovery_logs(user_email)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_logs_created ON ai_recovery_logs(created_at)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_logs_success ON ai_recovery_logs(success)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_ai_logs_user ON ai_recovery_logs(user_email)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_ai_logs_created ON ai_recovery_logs(created_at)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_ai_logs_success ON ai_recovery_logs(success)"
+            )
 
             print("✅ AI usage tables created successfully")
 
             # ==================== LICENSE MANAGEMENT TABLES ====================
-            
+
             # 17. Payment Transactions Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS payment_transactions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     app_trans_id TEXT UNIQUE NOT NULL,
@@ -883,10 +1048,12 @@ def update_database():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     completed_at TIMESTAMP
                 )
-            """)
+            """
+            )
 
             # 18. Licenses Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS licenses (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     license_key TEXT NOT NULL UNIQUE,
@@ -904,17 +1071,21 @@ def update_database():
                     max_activations INTEGER DEFAULT 1,
                     FOREIGN KEY (payment_transaction_id) REFERENCES payment_transactions(id)
                 )
-            """)
+            """
+            )
 
             # Add updated_at column if missing
             try:
-                cursor.execute("ALTER TABLE licenses ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                cursor.execute(
+                    "ALTER TABLE licenses ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                )
                 print("✅ Added updated_at column to licenses")
             except sqlite3.OperationalError:
                 pass
 
             # 19. License Activations Table
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS license_activations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     license_id INTEGER NOT NULL,
@@ -926,44 +1097,75 @@ def update_database():
                     FOREIGN KEY (license_id) REFERENCES licenses(id),
                     UNIQUE(license_id, machine_fingerprint)
                 )
-            """)
+            """
+            )
 
             # ==================== CREATE ALL INDEXES ====================
 
             # Core table indexes
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_te_event_id ON events(te, event_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_retry_needed ON events(retry_needed, retry_count)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_events_te_event_id ON events(te, event_id)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_events_retry_needed ON events(retry_needed, retry_count)"
+            )
 
             # Platform management indexes (simplified)
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_platform_mappings_name ON platform_column_mappings(platform_name)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_platform_mappings_active ON platform_column_mappings(is_active)")
-            
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_platform_mappings_name ON platform_column_mappings(platform_name)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_platform_mappings_active ON platform_column_mappings(is_active)"
+            )
+
             # ==================== TIMEZONE INDEXES ====================
-            
+
             # General info timezone indexes
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_general_info_timezone_iana ON general_info(timezone_iana_name)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_general_info_timezone_offset ON general_info(timezone_utc_offset_hours)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_general_info_timezone_validated ON general_info(timezone_validated)")
-            
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_general_info_timezone_iana ON general_info(timezone_iana_name)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_general_info_timezone_offset ON general_info(timezone_utc_offset_hours)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_general_info_timezone_validated ON general_info(timezone_validated)"
+            )
+
             # Events timezone indexes
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_timezone_camera ON events(camera_name, packing_time_start)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_packing_time_utc ON events(packing_time_start, packing_time_end)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_processed_timezone ON events(is_processed, packing_time_start, camera_name)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_created_utc ON events(created_at_utc)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_updated_utc ON events(updated_at_utc)")
-            
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_events_timezone_camera ON events(camera_name, packing_time_start)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_events_packing_time_utc ON events(packing_time_start, packing_time_end)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_events_processed_timezone ON events(is_processed, packing_time_start, camera_name)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_events_created_utc ON events(created_at_utc)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_events_updated_utc ON events(updated_at_utc)"
+            )
+
             # Timezone metadata indexes
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_timezone_metadata_migration_version ON timezone_metadata(migration_version)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_timezone_metadata_timestamp ON timezone_metadata(migration_timestamp)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_timezone_metadata_migration_version ON timezone_metadata(migration_version)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_timezone_metadata_timestamp ON timezone_metadata(migration_timestamp)"
+            )
 
             print("✅ Created timezone performance indexes")
-            
+
             # ==================== MIGRATE EXISTING TIMEZONE DATA ====================
-            
+
             # Migrate existing general_info timezone data if needed
-            cursor.execute("SELECT id, timezone, timezone_iana_name FROM general_info WHERE timezone_validated IS NULL OR timezone_validated = 0")
+            cursor.execute(
+                "SELECT id, timezone, timezone_iana_name FROM general_info WHERE timezone_validated IS NULL OR timezone_validated = 0"
+            )
             rows_to_migrate = cursor.fetchall()
-            
+
             if rows_to_migrate:
                 print(f"🔄 Migrating {len(rows_to_migrate)} existing timezone records...")
                 for row_id, current_timezone, iana_name in rows_to_migrate:
@@ -992,8 +1194,9 @@ def update_database():
                             display_name = "Vietnam (Ho Chi Minh City)"
                             offset_hours = 7.0
                             format_type = "legacy"
-                        
-                        cursor.execute("""
+
+                        cursor.execute(
+                            """
                             UPDATE general_info SET 
                                 timezone_iana_name = ?,
                                 timezone_display_name = ?,
@@ -1002,63 +1205,128 @@ def update_database():
                                 timezone_validated = 1,
                                 timezone_updated_at = ?
                             WHERE id = ?
-                        """, (iana_timezone, display_name, offset_hours, format_type, 
-                              datetime.now().isoformat(), row_id))
-                        
-                        print(f"✅ Migrated timezone for record {row_id}: {current_timezone} → {iana_timezone}")
-                        
+                        """,
+                            (
+                                iana_timezone,
+                                display_name,
+                                offset_hours,
+                                format_type,
+                                datetime.now().isoformat(),
+                                row_id,
+                            ),
+                        )
+
+                        print(
+                            f"✅ Migrated timezone for record {row_id}: {current_timezone} → {iana_timezone}"
+                        )
+
                     except Exception as e:
                         print(f"⚠️ Error migrating timezone for record {row_id}: {e}")
-                
+
                 print("✅ Timezone data migration completed")
-            
+
             # Video sources indexes
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_video_sources_folder_depth ON video_sources(folder_depth)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_video_sources_parent_folder ON video_sources(parent_folder_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_video_sources_source_type_active ON video_sources(source_type, active)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_video_sources_active ON video_sources(active)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_video_sources_source_type ON video_sources(source_type)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_video_sources_created_at ON video_sources(created_at)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_video_sources_folder_depth ON video_sources(folder_depth)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_video_sources_parent_folder ON video_sources(parent_folder_id)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_video_sources_source_type_active ON video_sources(source_type, active)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_video_sources_active ON video_sources(active)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_video_sources_source_type ON video_sources(source_type)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_video_sources_created_at ON video_sources(created_at)"
+            )
 
             # Downloaded files indexes for recursive folders
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_downloaded_files_drive_id ON downloaded_files(drive_file_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_downloaded_files_relative_path ON downloaded_files(source_id, relative_path)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_downloaded_files_processed ON downloaded_files(is_processed, download_timestamp)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_downloaded_files_drive_id ON downloaded_files(drive_file_id)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_downloaded_files_relative_path ON downloaded_files(source_id, relative_path)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_downloaded_files_processed ON downloaded_files(is_processed, download_timestamp)"
+            )
 
             # Camera configurations indexes
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_camera_configurations_source_id ON camera_configurations(source_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_camera_configurations_selected ON camera_configurations(is_selected)")
-            
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_camera_configurations_source_id ON camera_configurations(source_id)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_camera_configurations_selected ON camera_configurations(is_selected)"
+            )
+
             # Sync status indexes
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sync_status_source_id ON sync_status(source_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sync_status_next_sync ON sync_status(next_sync_timestamp)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_sync_status_source_error ON sync_status(source_id, error_count)")
-            
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sync_status_source_id ON sync_status(source_id)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sync_status_next_sync ON sync_status(next_sync_timestamp)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sync_status_source_error ON sync_status(source_id, error_count)"
+            )
+
             # Downloaded files indexes
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_downloaded_files_source_camera ON downloaded_files(source_id, camera_name)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_downloaded_files_timestamp ON downloaded_files(download_timestamp)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_downloaded_files_processed ON downloaded_files(is_processed)")
-            
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_downloaded_files_source_camera ON downloaded_files(source_id, camera_name)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_downloaded_files_timestamp ON downloaded_files(download_timestamp)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_downloaded_files_processed ON downloaded_files(is_processed)"
+            )
+
             # Last downloaded file indexes
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_last_downloaded_source_camera ON last_downloaded_file(source_id, camera_name)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_last_downloaded_timestamp ON last_downloaded_file(last_file_timestamp)")
-            
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_last_downloaded_source_camera ON last_downloaded_file(source_id, camera_name)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_last_downloaded_timestamp ON last_downloaded_file(last_file_timestamp)"
+            )
+
             # License indexes
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_email ON payment_transactions(customer_email)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_status ON payment_transactions(status)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_app_trans ON payment_transactions(app_trans_id)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_payment_email ON payment_transactions(customer_email)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_payment_status ON payment_transactions(status)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_payment_app_trans ON payment_transactions(app_trans_id)"
+            )
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_licenses_key ON licenses(license_key)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_licenses_email ON licenses(customer_email)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_licenses_email ON licenses(customer_email)"
+            )
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_licenses_status ON licenses(status)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_licenses_expires ON licenses(expires_at)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_licenses_created ON licenses(created_at)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_activations_license ON license_activations(license_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_activations_machine ON license_activations(machine_fingerprint)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_licenses_expires ON licenses(expires_at)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_licenses_created ON licenses(created_at)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_activations_license ON license_activations(license_id)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_activations_machine ON license_activations(machine_fingerprint)"
+            )
 
             # ==================== CREATE VIEWS ====================
-            
+
             # Active Cameras View
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE VIEW IF NOT EXISTS active_cameras AS
                 SELECT 
                     vs.id as source_id,
@@ -1075,10 +1343,12 @@ def update_database():
                 FROM video_sources vs
                 LEFT JOIN camera_configurations cc ON vs.id = cc.source_id
                 WHERE vs.active = 1 AND cc.is_selected = 1
-            """)
+            """
+            )
 
             # Sync Dashboard View (Cloud sources only)
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE VIEW IF NOT EXISTS sync_dashboard AS
                 SELECT 
                     vs.id as source_id,
@@ -1102,10 +1372,12 @@ def update_database():
                 GROUP BY vs.id, vs.name, vs.source_type, vs.path, ss.sync_enabled, 
                          ss.last_sync_timestamp, ss.next_sync_timestamp, ss.sync_interval_minutes,
                          ss.last_sync_status, ss.last_sync_message, ss.files_downloaded_count, ss.total_download_size_mb
-            """)
+            """
+            )
 
             # Camera Sync Status View (Cloud sources only)
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE VIEW IF NOT EXISTS camera_sync_status AS
                 SELECT 
                     vs.id as source_id,
@@ -1125,59 +1397,70 @@ def update_database():
                 LEFT JOIN sync_status ss ON vs.id = ss.source_id
                 WHERE vs.active = 1 AND vs.source_type = 'cloud'
                 ORDER BY vs.name, ldf.camera_name
-            """)
+            """
+            )
 
             # ==================== CREATE TRIGGERS ====================
 
             # Update platform mappings timestamp trigger
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TRIGGER IF NOT EXISTS update_platform_mappings_timestamp
                 AFTER UPDATE ON platform_column_mappings
                 FOR EACH ROW
                 BEGIN
                     UPDATE platform_column_mappings SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
                 END
-            """)
+            """
+            )
 
             # Update licenses timestamp trigger
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TRIGGER IF NOT EXISTS update_licenses_timestamp
                 AFTER UPDATE ON licenses
                 FOR EACH ROW
                 BEGIN
                     UPDATE licenses SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
                 END
-            """)
+            """
+            )
 
             # Update camera configurations timestamp trigger
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TRIGGER IF NOT EXISTS update_camera_configurations_timestamp
                 AFTER UPDATE ON camera_configurations
                 FOR EACH ROW
                 BEGIN
                     UPDATE camera_configurations SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
                 END
-            """)
+            """
+            )
 
             # Update sync status timestamp trigger
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TRIGGER IF NOT EXISTS update_sync_status_timestamp
                 AFTER UPDATE ON sync_status
                 FOR EACH ROW
                 BEGIN
                     UPDATE sync_status SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
                 END
-            """)
+            """
+            )
 
             # Update last downloaded file timestamp trigger
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TRIGGER IF NOT EXISTS update_last_downloaded_file_timestamp
                 AFTER UPDATE ON last_downloaded_file
                 FOR EACH ROW
                 BEGIN
                     UPDATE last_downloaded_file SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
                 END
-            """)
+            """
+            )
 
             conn.commit()
             # Use the initialized DB_PATH (from lazy init)
@@ -1204,7 +1487,9 @@ def update_database():
         print(f"❌ Error updating database: {e}")
         raise
 
+
 # ==================== HELPER FUNCTIONS FOR DATABASE OPERATIONS ====================
+
 
 def update_camera_paths(source_id: int, camera_paths: dict):
     """Update camera_paths in processing_config for a source"""
@@ -1212,57 +1497,68 @@ def update_camera_paths(source_id: int, camera_paths: dict):
         with safe_db_connection() as conn:
             cursor = conn.cursor()
             camera_paths_json = json.dumps(camera_paths)
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE processing_config 
                 SET camera_paths = ? 
                 WHERE id = 1
-            """, (camera_paths_json,))
+            """,
+                (camera_paths_json,),
+            )
             conn.commit()
         return True
     except Exception as e:
         print(f"Error updating camera paths: {e}")
         return False
 
+
 def initialize_sync_status(source_id: int, sync_enabled: bool = True, interval_minutes: int = 10):
     """Initialize sync status for a new source (Cloud sources only)"""
     try:
         with safe_db_connection() as conn:
             cursor = conn.cursor()
-            
+
             from datetime import datetime, timedelta
-            
+
             now = datetime.now()
             next_sync = now + timedelta(minutes=interval_minutes)
-            
-            cursor.execute("""
+
+            cursor.execute(
+                """
                 INSERT OR REPLACE INTO sync_status (
                     source_id, sync_enabled, last_sync_timestamp, next_sync_timestamp,
                     sync_interval_minutes, last_sync_status, last_sync_message
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                source_id, 
-                1 if sync_enabled else 0,
-                now.isoformat(),
-                next_sync.isoformat(),
-                interval_minutes,
-                'initialized',
-                'Auto-sync initialized'
-            ))
-            
+            """,
+                (
+                    source_id,
+                    1 if sync_enabled else 0,
+                    now.isoformat(),
+                    next_sync.isoformat(),
+                    interval_minutes,
+                    "initialized",
+                    "Auto-sync initialized",
+                ),
+            )
+
             conn.commit()
         return True
     except Exception as e:
         print(f"Error initializing sync status: {e}")
         return False
 
+
 def get_sync_status(source_id: int):
     """Get sync status for a source"""
     try:
         with safe_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT * FROM sync_status WHERE source_id = ?
-            """, (source_id,))
+            """,
+                (source_id,),
+            )
             result = cursor.fetchone()
             if result:
                 columns = [description[0] for description in cursor.description]
@@ -1272,187 +1568,214 @@ def get_sync_status(source_id: int):
         print(f"Error getting sync status: {e}")
         return None
 
-def update_last_downloaded_file(source_id: int, camera_name: str, latest_file_info: dict, total_count: int, total_size_mb: float):
+
+def update_last_downloaded_file(
+    source_id: int, camera_name: str, latest_file_info: dict, total_count: int, total_size_mb: float
+):
     """Update last downloaded file info for a camera"""
     try:
         with safe_db_connection() as conn:
             cursor = conn.cursor()
-            
+
             from datetime import datetime
-            
-            cursor.execute("""
+
+            cursor.execute(
+                """
                 INSERT OR REPLACE INTO last_downloaded_file (
                     source_id, camera_name, last_filename, last_file_timestamp,
                     last_download_time, total_files_count, total_size_mb
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                source_id,
-                camera_name,
-                latest_file_info['filename'],
-                latest_file_info['timestamp'].isoformat(),
-                datetime.now().isoformat(),
-                total_count,
-                total_size_mb
-            ))
-            
+            """,
+                (
+                    source_id,
+                    camera_name,
+                    latest_file_info["filename"],
+                    latest_file_info["timestamp"].isoformat(),
+                    datetime.now().isoformat(),
+                    total_count,
+                    total_size_mb,
+                ),
+            )
+
             conn.commit()
         return True
     except Exception as e:
         print(f"Error updating last downloaded file: {e}")
         return False
 
+
 def get_last_downloaded_timestamp(source_id: int, camera_name: str):
     """Get last downloaded file timestamp for a camera"""
     try:
         with safe_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT last_file_timestamp FROM last_downloaded_file 
                 WHERE source_id = ? AND camera_name = ?
-            """, (source_id, camera_name))
+            """,
+                (source_id, camera_name),
+            )
             result = cursor.fetchone()
             return result[0] if result else "1970-01-01T00:00:00"
     except Exception as e:
         print(f"Error getting last downloaded timestamp: {e}")
         return "1970-01-01T00:00:00"
 
+
 def get_camera_download_stats(source_id: int):
     """Get download statistics for all cameras of a source"""
     try:
         with safe_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT camera_name, last_filename, last_file_timestamp,
                        total_files_count, total_size_mb, last_download_time
                 FROM last_downloaded_file 
                 WHERE source_id = ?
                 ORDER BY camera_name
-            """, (source_id,))
-            
+            """,
+                (source_id,),
+            )
+
             results = cursor.fetchall()
             camera_stats = {}
             total_files = 0
             total_size = 0
-            
+
             for row in results:
-                camera_name, last_filename, last_timestamp, files_count, size_mb, last_download = row
+                camera_name, last_filename, last_timestamp, files_count, size_mb, last_download = (
+                    row
+                )
                 camera_stats[camera_name] = {
-                    'last_filename': last_filename,
-                    'last_timestamp': last_timestamp,
-                    'files_count': files_count or 0,
-                    'size_mb': size_mb or 0.0,
-                    'last_download': last_download
+                    "last_filename": last_filename,
+                    "last_timestamp": last_timestamp,
+                    "files_count": files_count or 0,
+                    "size_mb": size_mb or 0.0,
+                    "last_download": last_download,
                 }
                 total_files += files_count or 0
                 total_size += size_mb or 0.0
-            
+
             return {
-                'camera_stats': camera_stats,
-                'total_files': total_files,
-                'total_size_mb': total_size,
-                'cameras_count': len(camera_stats)
+                "camera_stats": camera_stats,
+                "total_files": total_files,
+                "total_size_mb": total_size,
+                "cameras_count": len(camera_stats),
             }
     except Exception as e:
         print(f"Error getting camera download stats: {e}")
-        return {
-            'camera_stats': {},
-            'total_files': 0,
-            'total_size_mb': 0.0,
-            'cameras_count': 0
-        }
+        return {"camera_stats": {}, "total_files": 0, "total_size_mb": 0.0, "cameras_count": 0}
 
-def create_source_with_folder_info(source_data: Optional[Dict] = None, selected_folders: Optional[List[Dict]] = None):
+
+def create_source_with_folder_info(
+    source_data: Optional[Dict] = None, selected_folders: Optional[List[Dict]] = None
+):
     """Create video source with lazy folder tree information"""
     try:
         with safe_db_connection() as conn:
             cursor = conn.cursor()
-            
+
             source_data = source_data or {}
-            source_type = source_data.get('source_type', 'local')
-            name = source_data.get('name', 'Unnamed Source')
-            path = source_data.get('path', '')
-            config = json.dumps(source_data.get('config', {}))
-            
-            if source_type == 'cloud' and selected_folders:
-                config_dict = source_data.get('config', {})
-                config_dict['selected_folders'] = selected_folders
-                config_dict['lazy_loading_enabled'] = True
+            source_type = source_data.get("source_type", "local")
+            name = source_data.get("name", "Unnamed Source")
+            path = source_data.get("path", "")
+            config = json.dumps(source_data.get("config", {}))
+
+            if source_type == "cloud" and selected_folders:
+                config_dict = source_data.get("config", {})
+                config_dict["selected_folders"] = selected_folders
+                config_dict["lazy_loading_enabled"] = True
                 config = json.dumps(config_dict)
-                folder_depth = selected_folders[0].get('depth', 4) if selected_folders else 4
-                parent_folder_id = selected_folders[0].get('parent_id', '') if selected_folders else ''
+                folder_depth = selected_folders[0].get("depth", 4) if selected_folders else 4
+                parent_folder_id = (
+                    selected_folders[0].get("parent_id", "") if selected_folders else ""
+                )
             else:
                 folder_depth = 0
-                parent_folder_id = ''
-            
-            cursor.execute("""
+                parent_folder_id = ""
+
+            cursor.execute(
+                """
                 INSERT INTO video_sources (
                     source_type, name, path, config, active, 
                     folder_depth, parent_folder_id
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (source_type, name, path, config, 1, folder_depth, parent_folder_id))
-            
+            """,
+                (source_type, name, path, config, 1, folder_depth, parent_folder_id),
+            )
+
             source_id = cursor.lastrowid
             conn.commit()
-            
+
             print(f"✅ Created source with lazy folder info: {name} (ID: {source_id})")
             return source_id
-        
+
     except Exception as e:
         print(f"❌ Error creating source with folder info: {e}")
         return None
+
 
 def get_sources_with_folder_info():
     """Get all sources with folder depth information"""
     try:
         with safe_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT id, source_type, name, path, config, active, 
                        folder_depth, parent_folder_id, created_at
                 FROM video_sources 
                 WHERE active = 1
                 ORDER BY created_at DESC
-            """)
-            
+            """
+            )
+
             sources = []
             for row in cursor.fetchall():
                 source = {
-                    'id': row[0],
-                    'source_type': row[1],
-                    'name': row[2],
-                    'path': row[3],
-                    'config': json.loads(row[4]) if row[4] else {},
-                    'active': row[5],
-                    'folder_depth': row[6],
-                    'parent_folder_id': row[7],
-                    'created_at': row[8]
+                    "id": row[0],
+                    "source_type": row[1],
+                    "name": row[2],
+                    "path": row[3],
+                    "config": json.loads(row[4]) if row[4] else {},
+                    "active": row[5],
+                    "folder_depth": row[6],
+                    "parent_folder_id": row[7],
+                    "created_at": row[8],
                 }
                 sources.append(source)
-            
+
             return sources
-        
+
     except Exception as e:
         print(f"❌ Error getting sources with folder info: {e}")
         return []
+
 
 def update_source_folder_depth(source_id, folder_depth, parent_folder_id: str = ""):
     """Update folder depth for existing source"""
     try:
         with safe_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE video_sources 
                 SET folder_depth = ?, parent_folder_id = ?
                 WHERE id = ?
-            """, (folder_depth, parent_folder_id or '', source_id))
+            """,
+                (folder_depth, parent_folder_id or "", source_id),
+            )
             conn.commit()
-            
+
             print(f"✅ Updated folder depth for source {source_id}: depth={folder_depth}")
             return True
-        
+
     except Exception as e:
         print(f"❌ Error updating folder depth: {e}")
         return False
+
 
 def cleanup_sync_integrity():
     """Clean up sync_status table to match only active cloud sources"""
@@ -1461,38 +1784,44 @@ def cleanup_sync_integrity():
         try:
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
-                
+
                 cursor.execute("DELETE FROM sync_status")
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT id FROM video_sources 
                     WHERE active = 1 AND source_type = 'cloud'
-                """)
-                
+                """
+                )
+
                 cloud_sources = cursor.fetchall()
-                
+
                 for (source_id,) in cloud_sources:
                     try:
                         initialize_sync_status(source_id, sync_enabled=True, interval_minutes=2)
                     except Exception as init_error:
-                        logger.warning(f"⚠️ Failed to initialize sync for source {source_id}: {init_error}")
+                        logger.warning(
+                            f"⚠️ Failed to initialize sync for source {source_id}: {init_error}"
+                        )
                         continue
-                
+
                 conn.commit()
-                
+
                 logger.info(f"✅ Sync integrity cleaned - {len(cloud_sources)} cloud sources")
                 return True
-            
+
         except Exception as e:
             if "database is locked" in str(e) and attempt < max_retries - 1:
                 logger.warning(f"⚠️ Database locked on cleanup attempt {attempt + 1}, retrying...")
                 import time
+
                 time.sleep(2)
                 continue
             else:
                 logger.error(f"❌ Sync cleanup failed after {attempt + 1} attempts: {e}")
                 return False
-    
+
     return False
+
 
 if __name__ == "__main__":
     _ensure_paths_initialized()

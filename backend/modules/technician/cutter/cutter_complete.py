@@ -1,5 +1,6 @@
 import subprocess
 
+
 def cut_complete_event(event, video_buffer, video_length, output_file):
     """Cut video for complete event (has both ts and te)."""
     ts = event.get("ts")
@@ -17,13 +18,18 @@ def cut_complete_event(event, video_buffer, video_length, output_file):
     try:
         cmd = [
             "ffmpeg",
-            "-i", video_file,
-            "-ss", str(start_time),
-            "-t", str(duration),
-            "-c:v", "copy",
-            "-c:a", "copy",
+            "-i",
+            video_file,
+            "-ss",
+            str(start_time),
+            "-t",
+            str(duration),
+            "-c:v",
+            "copy",
+            "-c:a",
+            "copy",
             "-y",
-            output_file
+            output_file,
         ]
         subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         print(f"Video cut: {output_file}")

@@ -37,22 +37,24 @@ class CleanupService:
             dict: Cleanup statistics
         """
         results = {
-            'application_logs': self._cleanup_application_logs(),
-            'cloud_cache': self._cleanup_cloud_cache(),
-            'old_output_logs': self._cleanup_old_output_logs()
+            "application_logs": self._cleanup_application_logs(),
+            "cloud_cache": self._cleanup_cloud_cache(),
+            "old_output_logs": self._cleanup_old_output_logs(),
         }
 
         # Calculate totals
-        total_deleted = sum(r.get('deleted', 0) for r in results.values())
-        total_freed_mb = sum(r.get('freed_mb', 0) for r in results.values())
+        total_deleted = sum(r.get("deleted", 0) for r in results.values())
+        total_freed_mb = sum(r.get("freed_mb", 0) for r in results.values())
 
-        logger.info(f"✅ System cleanup: {total_deleted} files deleted, {total_freed_mb:.2f} MB freed")
+        logger.info(
+            f"✅ System cleanup: {total_deleted} files deleted, {total_freed_mb:.2f} MB freed"
+        )
 
         return {
-            'success': True,
-            'total_deleted': total_deleted,
-            'total_freed_mb': total_freed_mb,
-            'details': results
+            "success": True,
+            "total_deleted": total_deleted,
+            "total_freed_mb": total_freed_mb,
+            "details": results,
         }
 
     def _cleanup_application_logs(self) -> Dict:
@@ -64,7 +66,7 @@ class CleanupService:
             patterns=["*.log", "*.log.*"],
             exclude_patterns=["*_latest.log"],
             max_age_days=1,
-            name="var/logs/application"
+            name="var/logs/application",
         )
 
     def _cleanup_cloud_cache(self) -> Dict:
@@ -77,7 +79,7 @@ class CleanupService:
             exclude_patterns=[],
             max_age_days=1,
             name="var/cache/cloud_downloads",
-            recursive=True
+            recursive=True,
         )
 
     def _cleanup_old_output_logs(self) -> Dict:
@@ -89,7 +91,7 @@ class CleanupService:
             patterns=["*.log", "*.log.*"],
             exclude_patterns=[],
             max_age_days=0,  # Delete all
-            name="resources/output_clips/LOG"
+            name="resources/output_clips/LOG",
         )
 
     def cleanup_output_files(self) -> Dict:
@@ -106,19 +108,17 @@ class CleanupService:
             # Get configuration from database
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT output_path, storage_duration
                     FROM processing_config
                     WHERE id = 1
-                """)
+                """
+                )
                 result = cursor.fetchone()
 
             if not result:
-                return {
-                    'deleted': 0,
-                    'freed_mb': 0,
-                    'error': 'No processing config found'
-                }
+                return {"deleted": 0, "freed_mb": 0, "error": "No processing config found"}
 
             output_path, storage_duration = result
             output_dir = Path(output_path)
@@ -126,9 +126,9 @@ class CleanupService:
             if not output_dir.exists():
                 logger.warning(f"Output path does not exist: {output_path}")
                 return {
-                    'deleted': 0,
-                    'freed_mb': 0,
-                    'error': f'Output path not found: {output_path}'
+                    "deleted": 0,
+                    "freed_mb": 0,
+                    "error": f"Output path not found: {output_path}",
                 }
 
             # Cleanup with configured retention
@@ -139,19 +139,17 @@ class CleanupService:
                 exclude_patterns=["CameraROI/*", "LOG/*"],
                 max_age_days=days_to_keep,
                 name=f"output_files (retention: {days_to_keep}d)",
-                recursive=True
+                recursive=True,
             )
 
-            logger.info(f"✅ Output cleanup: {result['deleted']} files deleted, {result['freed_mb']:.2f} MB freed")
+            logger.info(
+                f"✅ Output cleanup: {result['deleted']} files deleted, {result['freed_mb']:.2f} MB freed"
+            )
             return result
 
         except Exception as e:
             logger.error(f"❌ Output cleanup failed: {e}")
-            return {
-                'deleted': 0,
-                'freed_mb': 0,
-                'error': str(e)
-            }
+            return {"deleted": 0, "freed_mb": 0, "error": str(e)}
 
     def _clean_directory(
         self,
@@ -160,7 +158,7 @@ class CleanupService:
         exclude_patterns: List[str],
         max_age_days: int,
         name: str,
-        recursive: bool = False
+        recursive: bool = False,
     ) -> Dict:
         """
         Generic directory cleanup function.
@@ -178,7 +176,7 @@ class CleanupService:
         """
         if not path.exists():
             logger.debug(f"Path does not exist: {path}")
-            return {'deleted': 0, 'freed_mb': 0}
+            return {"deleted": 0, "freed_mb": 0}
 
         # Calculate cutoff time
         cutoff_time = time.time() - (max_age_days * 86400)
@@ -220,17 +218,11 @@ class CleanupService:
             if deleted_count > 0:
                 logger.info(f"✅ Cleaned {name}: {deleted_count} files, {freed_mb:.2f} MB freed")
 
-            return {
-                'deleted': deleted_count,
-                'freed_mb': freed_mb
-            }
+            return {"deleted": deleted_count, "freed_mb": freed_mb}
 
         except Exception as e:
             logger.error(f"❌ Cleanup {name} failed: {e}")
-            return {
-                'deleted': 0,
-                'freed_mb': 0
-            }
+            return {"deleted": 0, "freed_mb": 0}
 
 
 # Global instance

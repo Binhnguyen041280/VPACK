@@ -10,23 +10,28 @@ from datetime import datetime, timezone, timedelta
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import frame_sampler_event, db_rwlock
 from zoneinfo import ZoneInfo
+
 # Removed video_timezone_detector - using simple timezone operations
 import math
 from modules.config.logging_config import get_logger
 
 # Health check imports
-from modules.technician.camera_health_checker import (
-    should_run_health_check,
-    run_health_check
+from modules.technician.camera_health_checker import should_run_health_check, run_health_check
+
+
+BASE_DIR = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
-
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "models", "wechat_qr")
+MODEL_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "models",
+    "wechat_qr",
+)
 DETECT_PROTO = os.path.join(MODEL_DIR, "detect.prototxt")
 DETECT_MODEL = os.path.join(MODEL_DIR, "detect.caffemodel")
 SR_PROTO = os.path.join(MODEL_DIR, "sr.prototxt")
 SR_MODEL = os.path.join(MODEL_DIR, "sr.caffemodel")
+
 
 class FrameSamplerTrigger:
     def __init__(self):
@@ -36,7 +41,7 @@ class FrameSamplerTrigger:
         self.setup_wechat_qr()
 
         # QR size tracking for future alternative detection methods
-        self.expected_mvd_qr_size = None      # {"width": 57, "height": 58}
+        self.expected_mvd_qr_size = None  # {"width": 57, "height": 58}
         self.expected_trigger_qr_size = None  # {"width": 176, "height": 181}
         self.current_camera = None
 
@@ -70,17 +75,25 @@ class FrameSamplerTrigger:
                 self.output_path = result[0] if result else os.path.join(BASE_DIR, "output_clips")
                 # Use var/logs for frame processing logs (application-managed)
                 from modules.path_utils import get_logs_dir
+
                 self.log_dir = os.path.join(get_logs_dir(), "frame_processing")
                 os.makedirs(self.log_dir, exist_ok=True)
                 # Use zoneinfo for user timezone instead of hardcoded parsing
                 from modules.utils.simple_timezone import get_system_timezone_from_db
+
                 system_tz_str = get_system_timezone_from_db()
                 self.video_timezone = ZoneInfo(system_tz_str)
                 self.logger.info(f"Using system timezone from config: {system_tz_str}")
-                cursor.execute("SELECT frame_rate, frame_interval, min_packing_time FROM processing_config WHERE id = 1")
+                cursor.execute(
+                    "SELECT frame_rate, frame_interval, min_packing_time FROM processing_config WHERE id = 1"
+                )
                 result = cursor.fetchone()
-                self.fps, self.frame_interval, self.min_packing_time = result if result else (30, 5, 5)
-            self.logger.info(f"Config loaded: video_root={self.video_root}, output_path={self.output_path}, timezone={self.video_timezone}, fps={self.fps}, frame_interval={self.frame_interval}, min_packing_time={self.min_packing_time}")
+                self.fps, self.frame_interval, self.min_packing_time = (
+                    result if result else (30, 5, 5)
+                )
+            self.logger.info(
+                f"Config loaded: video_root={self.video_root}, output_path={self.output_path}, timezone={self.video_timezone}, fps={self.fps}, frame_interval={self.frame_interval}, min_packing_time={self.min_packing_time}"
+            )
 
     def get_packing_area(self, camera_name):
         """Get 2 ROI areas for QR trigger method.
@@ -94,11 +107,14 @@ class FrameSamplerTrigger:
         with db_rwlock.gen_rlock():
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT packing_area, qr_trigger_area, jump_time_ratio
                     FROM packing_profiles
                     WHERE profile_name = ?
-                """, (camera_name,))
+                """,
+                    (camera_name,),
+                )
                 result = cursor.fetchone()
 
         if not result:
@@ -117,7 +133,9 @@ class FrameSamplerTrigger:
         # Parse qr_trigger_area ROI (QR method only)
         qr_trigger_area = self._parse_roi(qr_trigger_raw, "qr_trigger_area", camera_name)
 
-        self.logger.info(f"Loaded ROIs: packing_area={packing_area}, qr_trigger_area={qr_trigger_area}")
+        self.logger.info(
+            f"Loaded ROIs: packing_area={packing_area}, qr_trigger_area={qr_trigger_area}"
+        )
 
         return packing_area, qr_trigger_area
 
@@ -132,8 +150,8 @@ class FrameSamplerTrigger:
 
         try:
             # Handle tuple string format: "(x,y,w,h)"
-            if isinstance(roi_raw, str) and roi_raw.startswith('(') and roi_raw.endswith(')'):
-                x, y, w, h = map(int, roi_raw.strip('()').split(','))
+            if isinstance(roi_raw, str) and roi_raw.startswith("(") and roi_raw.endswith(")"):
+                x, y, w, h = map(int, roi_raw.strip("()").split(","))
                 return (x, y, w, h)
 
             # Handle JSON formats
@@ -146,8 +164,12 @@ class FrameSamplerTrigger:
 
             # JSON object: {"x": x, "y": y, "w": w, "h": h}
             if isinstance(parsed, dict):
-                return (parsed.get('x', 0), parsed.get('y', 0),
-                       parsed.get('w', 0), parsed.get('h', 0))
+                return (
+                    parsed.get("x", 0),
+                    parsed.get("y", 0),
+                    parsed.get("w", 0),
+                    parsed.get("h", 0),
+                )
 
             self.logger.error(f"Invalid {field_name} format for {camera_name}: {roi_raw}")
             return None
@@ -168,10 +190,13 @@ class FrameSamplerTrigger:
         with db_rwlock.gen_rlock():
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT expected_mvd_qr_size, expected_trigger_qr_size
                     FROM packing_profiles WHERE profile_name = ?
-                """, (camera_name,))
+                """,
+                    (camera_name,),
+                )
                 result = cursor.fetchone()
 
                 if result:
@@ -204,10 +229,10 @@ class FrameSamplerTrigger:
 
         # If we have expected sizes from database, use them with distance comparison
         if self.expected_mvd_qr_size and self.expected_trigger_qr_size:
-            mvd_w = self.expected_mvd_qr_size['width']
-            mvd_h = self.expected_mvd_qr_size['height']
-            trigger_w = self.expected_trigger_qr_size['width']
-            trigger_h = self.expected_trigger_qr_size['height']
+            mvd_w = self.expected_mvd_qr_size["width"]
+            mvd_h = self.expected_mvd_qr_size["height"]
+            trigger_w = self.expected_trigger_qr_size["width"]
+            trigger_h = self.expected_trigger_qr_size["height"]
 
             # Calculate Manhattan distance to MVD and TimeGo sizes
             mvd_diff = abs(w - mvd_w) + abs(h - mvd_h)
@@ -241,8 +266,8 @@ class FrameSamplerTrigger:
 
         # Only update if size changed significantly (>10%)
         if self.expected_mvd_qr_size:
-            old_w = self.expected_mvd_qr_size['width']
-            change_ratio = abs(new_size['width'] - old_w) / old_w
+            old_w = self.expected_mvd_qr_size["width"]
+            change_ratio = abs(new_size["width"] - old_w) / old_w
             if change_ratio < 0.1:
                 return  # Change too small, ignore
 
@@ -250,11 +275,14 @@ class FrameSamplerTrigger:
         with db_rwlock.gen_wlock():
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("""
+                cursor.execute(
+                    """
                     UPDATE packing_profiles
                     SET expected_mvd_qr_size = ?
                     WHERE profile_name = ?
-                """, (json.dumps(new_size), self.current_camera))
+                """,
+                    (json.dumps(new_size), self.current_camera),
+                )
                 conn.commit()
 
         self.expected_mvd_qr_size = new_size
@@ -264,7 +292,16 @@ class FrameSamplerTrigger:
 
     def get_video_duration(self, video_file):
         try:
-            cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", video_file]
+            cmd = [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                video_file,
+            ]
             result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             return float(result.stdout.strip())
         except Exception:
@@ -276,12 +313,14 @@ class FrameSamplerTrigger:
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 # Exclude files that failed health checks (status='health_check_failed')
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT file_path FROM file_list
                     WHERE is_processed = 0
                     AND status NOT IN ('completed', 'health_check_failed')
                     ORDER BY priority DESC, created_at ASC
-                """)
+                """
+                )
                 video_files = [row[0] for row in cursor.fetchall()]
         if not video_files:
             self.logger.info("No video files found (excluding completed and health_check_failed).")
@@ -336,7 +375,9 @@ class FrameSamplerTrigger:
 
                 # DEBUG: Log all detected QR codes
                 if len(packing_texts) > 0:
-                    self.logger.debug(f"Frame {frame_count}: Detected {len(packing_texts)} QR codes, texts={packing_texts}")
+                    self.logger.debug(
+                        f"Frame {frame_count}: Detected {len(packing_texts)} QR codes, texts={packing_texts}"
+                    )
 
                 # Process each detected QR code
                 for i, text in enumerate(packing_texts):
@@ -373,11 +414,13 @@ class FrameSamplerTrigger:
                                     bbox_x_local + offset_x,
                                     bbox_y_local + offset_y,
                                     bbox_w,
-                                    bbox_h
+                                    bbox_h,
                                 )
 
-                                self.logger.debug(f"QR bbox calculated: local=({bbox_x_local},{bbox_y_local},{bbox_w},{bbox_h}), "
-                                                f"offset=({offset_x},{offset_y}), full={mvd_bbox}")
+                                self.logger.debug(
+                                    f"QR bbox calculated: local=({bbox_x_local},{bbox_y_local},{bbox_w},{bbox_h}), "
+                                    f"offset=({offset_x},{offset_y}), full={mvd_bbox}"
+                                )
                         break  # Found decoded MVD, stop searching
 
                 # Return boundary points for empty event processing
@@ -387,13 +430,19 @@ class FrameSamplerTrigger:
                     if mvd_index is not None:
                         # MVD decoded successfully → use its boundary
                         boundary_points = packing_points[mvd_index]
-                        self.logger.debug(f"Frame {frame_count}: Using MVD boundary (mvd_index={mvd_index})")
+                        self.logger.debug(
+                            f"Frame {frame_count}: Using MVD boundary (mvd_index={mvd_index})"
+                        )
                     elif non_timego_index is not None:
                         # MVD detected but decode failed → use non-TimeGo boundary
                         boundary_points = packing_points[non_timego_index]
-                        self.logger.debug(f"Frame {frame_count}: Using non-TimeGo boundary (non_timego_index={non_timego_index}, decode failed)")
+                        self.logger.debug(
+                            f"Frame {frame_count}: Using non-TimeGo boundary (non_timego_index={non_timego_index}, decode failed)"
+                        )
                     else:
-                        self.logger.debug(f"Frame {frame_count}: Only TimeGo detected, skipping boundary")
+                        self.logger.debug(
+                            f"Frame {frame_count}: Only TimeGo detected, skipping boundary"
+                        )
                     # else: Only TimeGo detected → boundary_points stays None (skip)
 
             return state, mvd, mvd_bbox, boundary_points
@@ -419,8 +468,21 @@ class FrameSamplerTrigger:
         """
         try:
             # Primary: Read metadata using ffprobe
-            result = subprocess.check_output(['ffprobe', '-v', 'quiet', '-show_entries', 'format_tags=creation_time', '-of', 'default=noprint_wrappers=1:nokey=1', video_file])
-            utc_time = datetime.strptime(result.decode().strip(), '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
+            result = subprocess.check_output(
+                [
+                    "ffprobe",
+                    "-v",
+                    "quiet",
+                    "-show_entries",
+                    "format_tags=creation_time",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    video_file,
+                ]
+            )
+            utc_time = datetime.strptime(result.decode().strip(), "%Y-%m-%dT%H:%M:%S.%fZ").replace(
+                tzinfo=timezone.utc
+            )
             local_time = utc_time.astimezone(self.video_timezone)
             self.logger.info(f"Video start time from metadata: {local_time}")
             return local_time
@@ -429,8 +491,13 @@ class FrameSamplerTrigger:
 
             # Fallback 1: exiftool CreateDate
             try:
-                result = subprocess.check_output(['exiftool', '-CreateDate', '-d', '%Y-%m-%d %H:%M:%S', video_file])
-                naive_time = datetime.strptime(result.decode().split('CreateDate')[1].strip().split('\n')[0].strip(), '%Y-%m-%d %H:%M:%S')
+                result = subprocess.check_output(
+                    ["exiftool", "-CreateDate", "-d", "%Y-%m-%d %H:%M:%S", video_file]
+                )
+                naive_time = datetime.strptime(
+                    result.decode().split("CreateDate")[1].strip().split("\n")[0].strip(),
+                    "%Y-%m-%d %H:%M:%S",
+                )
                 local_time = naive_time.replace(tzinfo=self.video_timezone)
                 self.logger.info(f"Video start time from exiftool CreateDate: {local_time}")
                 return local_time
@@ -439,14 +506,20 @@ class FrameSamplerTrigger:
 
                 # Fallback 2: exiftool FileCreateDate
                 try:
-                    result = subprocess.check_output(['exiftool', '-FileCreateDate', '-d', '%Y-%m-%d %H:%M:%S', video_file])
-                    naive_time = datetime.strptime(result.decode().split('FileCreateDate')[1].strip().split('\n')[0].strip(), '%Y-%m-%d %H:%M:%S')
+                    result = subprocess.check_output(
+                        ["exiftool", "-FileCreateDate", "-d", "%Y-%m-%d %H:%M:%S", video_file]
+                    )
+                    naive_time = datetime.strptime(
+                        result.decode().split("FileCreateDate")[1].strip().split("\n")[0].strip(),
+                        "%Y-%m-%d %H:%M:%S",
+                    )
                     local_time = naive_time.replace(tzinfo=self.video_timezone)
                     self.logger.info(f"Video start time from exiftool FileCreateDate: {local_time}")
                     return local_time
                 except (subprocess.CalledProcessError, IndexError) as e:
                     # Last resort: filesystem ctime
                     import os
+
                     self.logger.warning(f"All metadata methods failed: {e}, using filesystem ctime")
                     file_timestamp = os.path.getctime(video_file)
                     local_time = datetime.fromtimestamp(file_timestamp, tz=self.video_timezone)
@@ -466,7 +539,9 @@ class FrameSamplerTrigger:
         with db_rwlock.gen_rlock():
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT program_type FROM file_list WHERE file_path = ?", (video_file,))
+                cursor.execute(
+                    "SELECT program_type FROM file_list WHERE file_path = ?", (video_file,)
+                )
                 result = cursor.fetchone()
                 program_type = result[0] if result and result[0] else "default"
 
@@ -477,16 +552,23 @@ class FrameSamplerTrigger:
             # First Run & Default: Use camera name folder
             return os.path.join(self.log_dir, camera_name)
 
-    def _update_log_file(self, log_file, start_second, end_second, start_time, camera_name, video_file):
-        log_file_handle = open(log_file, 'w')
-        log_file_handle.write(f"# Start: {start_second}, End: {end_second}, Start_Time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}, Camera_Name: {camera_name}, Video_File: {video_file}\n")
+    def _update_log_file(
+        self, log_file, start_second, end_second, start_time, camera_name, video_file
+    ):
+        log_file_handle = open(log_file, "w")
+        log_file_handle.write(
+            f"# Start: {start_second}, End: {end_second}, Start_Time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}, Camera_Name: {camera_name}, Video_File: {video_file}\n"
+        )
         log_file_handle.flush()
         with db_rwlock.gen_wlock():
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT 1 FROM processed_logs WHERE log_file = ?", (log_file,))
                 if not cursor.fetchone():
-                    cursor.execute("INSERT INTO processed_logs (log_file, is_processed) VALUES (?, 0)", (log_file,))
+                    cursor.execute(
+                        "INSERT INTO processed_logs (log_file, is_processed) VALUES (?, 0)",
+                        (log_file,),
+                    )
         return log_file_handle
 
     # ============== EMPTY EVENT PROCESSING METHODS ==============
@@ -511,14 +593,29 @@ class FrameSamplerTrigger:
                 frame_sampler_event.clear()
                 continue
             for video_file in video_files:
-                log_file = self.process_video(video_file, self.video_lock, self.get_packing_area, self.process_frame, self.frame_interval)
+                log_file = self.process_video(
+                    video_file,
+                    self.video_lock,
+                    self.get_packing_area,
+                    self.process_frame,
+                    self.frame_interval,
+                )
                 if log_file:
                     self.logger.info(f"Completed processing video {video_file}, log at {log_file}")
                 else:
                     self.logger.error(f"Failed to process video {video_file}")
             frame_sampler_event.clear()
 
-    def process_video(self, video_file, video_lock, get_packing_area_func, process_frame_func, frame_interval, start_time=0, end_time=None):
+    def process_video(
+        self,
+        video_file,
+        video_lock,
+        get_packing_area_func,
+        process_frame_func,
+        frame_interval,
+        start_time=0,
+        end_time=None,
+    ):
         with video_lock:
             self.logger.info(f"Processing video: {video_file} from {start_time}s to {end_time}s")
 
@@ -526,12 +623,17 @@ class FrameSamplerTrigger:
             with db_rwlock.gen_rlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("SELECT health_check_failed, status FROM file_list WHERE file_path = ?", (video_file,))
+                    cursor.execute(
+                        "SELECT health_check_failed, status FROM file_list WHERE file_path = ?",
+                        (video_file,),
+                    )
                     result = cursor.fetchone()
                     if result:
                         health_check_failed, status = result
-                        if health_check_failed == 1 or status == 'health_check_failed':
-                            self.logger.error(f"[HEALTH] Skipping {video_file} - already marked as health_check_failed")
+                        if health_check_failed == 1 or status == "health_check_failed":
+                            self.logger.error(
+                                f"[HEALTH] Skipping {video_file} - already marked as health_check_failed"
+                            )
                             return None
 
             if not os.path.exists(video_file):
@@ -539,13 +641,21 @@ class FrameSamplerTrigger:
                 with db_rwlock.gen_wlock():
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
-                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("error", video_file))
+                        cursor.execute(
+                            "UPDATE file_list SET status = ? WHERE file_path = ?",
+                            ("error", video_file),
+                        )
                 return None
             with db_rwlock.gen_wlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("frame sampling...", video_file))
-                    cursor.execute("SELECT camera_name FROM file_list WHERE file_path = ?", (video_file,))
+                    cursor.execute(
+                        "UPDATE file_list SET status = ? WHERE file_path = ?",
+                        ("frame sampling...", video_file),
+                    )
+                    cursor.execute(
+                        "SELECT camera_name FROM file_list WHERE file_path = ?", (video_file,)
+                    )
                     result = cursor.fetchone()
                     camera_name = result[0] if result and result[0] else "CamTest"
 
@@ -559,9 +669,12 @@ class FrameSamplerTrigger:
             with db_rwlock.gen_rlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("SELECT health_check_message, health_check_failed FROM file_list WHERE file_path = ?", (video_file,))
+                    cursor.execute(
+                        "SELECT health_check_message, health_check_failed FROM file_list WHERE file_path = ?",
+                        (video_file,),
+                    )
                     result = cursor.fetchone()
-                    health_metadata_json = result[0] if result else '{}'
+                    health_metadata_json = result[0] if result else "{}"
                     health_check_failed = result[1] if result else 0
 
             # Parse health metadata
@@ -571,78 +684,97 @@ class FrameSamplerTrigger:
                 health_metadata = {}
 
             # If health check is required and not yet done, execute it now
-            if health_metadata.get('health_check_required') and not health_metadata.get('health_check_done'):
+            if health_metadata.get("health_check_required") and not health_metadata.get(
+                "health_check_done"
+            ):
                 self.logger.info(f"[HEALTH] Executing health check for {camera_name}")
 
                 # Run health check (new function handles baseline lookup, first TimeGo detection, and UPDATE logic)
-                health_result = run_health_check(
-                    camera_name=camera_name,
-                    video_path=video_file
-                )
+                health_result = run_health_check(camera_name=camera_name, video_path=video_file)
 
-                if health_result.get('success'):
+                if health_result.get("success"):
                     # Update health metadata with result
-                    health_metadata.update({
-                        "health_check_done": True,
-                        "health_check_status": health_result.get('status'),
-                        "health_check_metrics": health_result.get('metrics'),
-                        "timestamp": datetime.now(timezone.utc).isoformat()
-                    })
+                    health_metadata.update(
+                        {
+                            "health_check_done": True,
+                            "health_check_status": health_result.get("status"),
+                            "health_check_metrics": health_result.get("metrics"),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }
+                    )
                 else:
                     # Health check failed or skipped (no baseline)
-                    self.logger.warning(f"[HEALTH] ⚠️ Health check skipped for {camera_name}: {health_result.get('error')}")
-                    health_metadata.update({
-                        "health_check_done": False,
-                        "health_check_error": health_result.get('error'),
-                        "timestamp": datetime.now(timezone.utc).isoformat()
-                    })
+                    self.logger.warning(
+                        f"[HEALTH] ⚠️ Health check skipped for {camera_name}: {health_result.get('error')}"
+                    )
+                    health_metadata.update(
+                        {
+                            "health_check_done": False,
+                            "health_check_error": health_result.get("error"),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }
+                    )
 
-                if health_result.get('success'):
+                if health_result.get("success"):
 
                     # Handle health check result
-                    if health_result.get('status') == 'CRITICAL':
+                    if health_result.get("status") == "CRITICAL":
                         # CRITICAL (<70%) → PAUSE processing
-                        self.logger.error(f"[HEALTH] 🛑 CRITICAL - Pausing processing for {camera_name}")
-                        metrics = health_result.get('metrics', {})
-                        self.logger.error(f"[HEALTH] QR degradation: {metrics.get('qr_readable', {}).get('degradation_pct', 'N/A')}%")
+                        self.logger.error(
+                            f"[HEALTH] 🛑 CRITICAL - Pausing processing for {camera_name}"
+                        )
+                        metrics = health_result.get("metrics", {})
+                        self.logger.error(
+                            f"[HEALTH] QR degradation: {metrics.get('qr_readable', {}).get('degradation_pct', 'N/A')}%"
+                        )
 
                         # Update file_list with health_check_failed=1 and mark as blocked (health_check_failed)
                         # Mark as is_processed=1 to prevent re-queueing, but use special status to indicate health failure
                         with db_rwlock.gen_wlock():
                             with safe_db_connection() as conn:
                                 cursor = conn.cursor()
-                                cursor.execute("""
+                                cursor.execute(
+                                    """
                                     UPDATE file_list
                                     SET health_check_failed = 1,
                                         health_check_message = ?,
                                         is_processed = 0,
                                         status = 'health_check_failed'
                                     WHERE file_path = ?
-                                """, (json.dumps(health_metadata), video_file))
+                                """,
+                                    (json.dumps(health_metadata), video_file),
+                                )
                                 conn.commit()
 
                         # STOP processing this video
-                        self.logger.error(f"[HEALTH] Skipping video {video_file} due to CRITICAL health check")
+                        self.logger.error(
+                            f"[HEALTH] Skipping video {video_file} due to CRITICAL health check"
+                        )
                         return None
 
-                    elif health_result.get('status') == 'CAUTION':
+                    elif health_result.get("status") == "CAUTION":
                         # CAUTION (70-84%) → Warning + Continue
-                        metrics = health_result.get('metrics', {})
-                        self.logger.warning(f"[HEALTH] ⚠️ CAUTION - QR degradation: {metrics.get('qr_readable', {}).get('degradation_pct', 'N/A')}%")
+                        metrics = health_result.get("metrics", {})
+                        self.logger.warning(
+                            f"[HEALTH] ⚠️ CAUTION - QR degradation: {metrics.get('qr_readable', {}).get('degradation_pct', 'N/A')}%"
+                        )
 
                         # Mark health check done but keep health_check_failed=0
                         with db_rwlock.gen_wlock():
                             with safe_db_connection() as conn:
                                 cursor = conn.cursor()
-                                cursor.execute("""
+                                cursor.execute(
+                                    """
                                     UPDATE file_list
                                     SET health_check_failed = 0,
                                         health_check_message = ?
                                     WHERE file_path = ?
-                                """, (json.dumps(health_metadata), video_file))
+                                """,
+                                    (json.dumps(health_metadata), video_file),
+                                )
                                 conn.commit()
 
-                    elif health_result.get('status') == 'OK':
+                    elif health_result.get("status") == "OK":
                         # OK (≥85%) → Continue normally
                         self.logger.info(f"[HEALTH] ✅ Camera health OK - no degradation detected")
 
@@ -650,17 +782,22 @@ class FrameSamplerTrigger:
                         with db_rwlock.gen_wlock():
                             with safe_db_connection() as conn:
                                 cursor = conn.cursor()
-                                cursor.execute("""
+                                cursor.execute(
+                                    """
                                     UPDATE file_list
                                     SET health_check_failed = 0,
                                         health_check_message = ?
                                     WHERE file_path = ?
-                                """, (json.dumps(health_metadata), video_file))
+                                """,
+                                    (json.dumps(health_metadata), video_file),
+                                )
                                 conn.commit()
 
                 else:
                     # No TimeGo found - skip health check, continue processing
-                    self.logger.warning(f"[HEALTH] No TimeGo found - skipping health check, continuing processing")
+                    self.logger.warning(
+                        f"[HEALTH] No TimeGo found - skipping health check, continuing processing"
+                    )
                     health_metadata["health_check_done"] = True
                     health_metadata["health_check_status"] = "SKIPPED"
                     health_metadata["health_check_message"] = "No TimeGo detected"
@@ -668,12 +805,15 @@ class FrameSamplerTrigger:
                     with db_rwlock.gen_wlock():
                         with safe_db_connection() as conn:
                             cursor = conn.cursor()
-                            cursor.execute("""
+                            cursor.execute(
+                                """
                                 UPDATE file_list
                                 SET health_check_failed = 0,
                                     health_check_message = ?
                                 WHERE file_path = ?
-                            """, (json.dumps(health_metadata), video_file))
+                            """,
+                                (json.dumps(health_metadata), video_file),
+                            )
                             conn.commit()
 
             # ========== END HEALTH CHECK ==========
@@ -684,7 +824,10 @@ class FrameSamplerTrigger:
                 with db_rwlock.gen_wlock():
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
-                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("error", video_file))
+                        cursor.execute(
+                            "UPDATE file_list SET status = ? WHERE file_path = ?",
+                            ("error", video_file),
+                        )
             start_time_obj = self._get_video_start_time(video_file, camera_name)
             packing_area, qr_trigger_area = get_packing_area_func(camera_name)
             total_seconds = self.get_video_duration(video_file)
@@ -693,7 +836,10 @@ class FrameSamplerTrigger:
                 with db_rwlock.gen_wlock():
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
-                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("error", video_file))
+                        cursor.execute(
+                            "UPDATE file_list SET status = ? WHERE file_path = ?",
+                            ("error", video_file),
+                        )
                 return None
             self.logger.info(f"Video duration {video_file}: {total_seconds} seconds")
             video_name = os.path.splitext(os.path.basename(video_file))[0]
@@ -708,8 +854,18 @@ class FrameSamplerTrigger:
             # Get log directory based on program type
             camera_log_dir = self._get_log_directory(video_file, camera_name)
             os.makedirs(camera_log_dir, exist_ok=True)
-            log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
-            log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
+            log_file = os.path.join(
+                camera_log_dir,
+                f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt",
+            )
+            log_file_handle = self._update_log_file(
+                log_file,
+                current_start_second,
+                current_end_second,
+                start_time_obj + timedelta(seconds=current_start_second),
+                camera_name,
+                video_file,
+            )
             # Start from frame at start_time
             start_frame = int(start_time * self.fps)
             end_frame = int(end_time * self.fps)
@@ -738,29 +894,37 @@ class FrameSamplerTrigger:
                     x, y, w, h = packing_area
                     frame_height, frame_width = original_frame.shape[:2]
                     if w > 0 and h > 0 and y + h <= frame_height and x + w <= frame_width:
-                        frame_packing = original_frame[y:y + h, x:x + w]
+                        frame_packing = original_frame[y : y + h, x : x + w]
                         packing_offset = (x, y)  # Store offset for bbox calculation
                     else:
-                        self.logger.warning(f"Invalid packing_area for frame {frame_count}: {packing_area}, frame size: {frame_width}x{frame_height}")
+                        self.logger.warning(
+                            f"Invalid packing_area for frame {frame_count}: {packing_area}, frame size: {frame_width}x{frame_height}"
+                        )
 
                 # Crop trigger area (for TimeGo detection)
                 if qr_trigger_area:
                     x, y, w, h = qr_trigger_area
                     frame_height, frame_width = original_frame.shape[:2]
                     if w > 0 and h > 0 and y + h <= frame_height and x + w <= frame_width:
-                        frame_trigger = original_frame[y:y + h, x:x + w]
+                        frame_trigger = original_frame[y : y + h, x : x + w]
                     else:
-                        self.logger.warning(f"Invalid qr_trigger_area for frame {frame_count}: {qr_trigger_area}, frame size: {frame_width}x{frame_height}")
+                        self.logger.warning(
+                            f"Invalid qr_trigger_area for frame {frame_count}: {qr_trigger_area}, frame size: {frame_width}x{frame_height}"
+                        )
 
                 frame_count += 1
                 if frame_count % frame_interval != 0:
                     continue
-                if (frame_packing is None or frame_packing.size == 0) and (frame_trigger is None or frame_trigger.size == 0):
+                if (frame_packing is None or frame_packing.size == 0) and (
+                    frame_trigger is None or frame_trigger.size == 0
+                ):
                     self.logger.warning(f"Both ROI frames empty for frame {frame_count}, skipping")
                     continue
 
                 # Process both ROIs separately (with packing_offset for bbox calculation)
-                state, mvd, mvd_bbox, boundary_points = process_frame_func(frame_packing, frame_trigger, frame_count, packing_offset)
+                state, mvd, mvd_bbox, boundary_points = process_frame_func(
+                    frame_packing, frame_trigger, frame_count, packing_offset
+                )
                 second_in_video = (frame_count - 1) / self.fps
                 second = round(second_in_video)
 
@@ -775,8 +939,18 @@ class FrameSamplerTrigger:
                     # Get log directory based on program type
                     camera_log_dir = self._get_log_directory(video_file, camera_name)
                     os.makedirs(camera_log_dir, exist_ok=True)
-                    log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
-                    log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
+                    log_file = os.path.join(
+                        camera_log_dir,
+                        f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt",
+                    )
+                    log_file_handle = self._update_log_file(
+                        log_file,
+                        current_start_second,
+                        current_end_second,
+                        start_time_obj + timedelta(seconds=current_start_second),
+                        camera_name,
+                        video_file,
+                    )
                 if second >= start_time and second <= end_time:
                     # Ghi MVD ngay nếu có và khác last_mvd
                     if mvd and mvd != last_mvd:
@@ -784,7 +958,9 @@ class FrameSamplerTrigger:
                         if mvd_bbox is not None:
                             bbox_x, bbox_y, bbox_w, bbox_h = mvd_bbox
                             log_line = f"{second},{state},{mvd},bbox:[{bbox_x},{bbox_y},{bbox_w},{bbox_h}]\n"
-                            self.logger.info(f"Log second {second}: state={state}, mvd={mvd}, bbox={mvd_bbox}")
+                            self.logger.info(
+                                f"Log second {second}: state={state}, mvd={mvd}, bbox={mvd_bbox}"
+                            )
                         else:
                             log_line = f"{second},{state},{mvd}\n"
                             self.logger.info(f"Log second {second}: state={state}, mvd={mvd}")
@@ -814,12 +990,16 @@ class FrameSamplerTrigger:
 
                                 log_line = f"{second},{final_state},\n"
                                 log_file_handle.write(log_line)
-                                self.logger.info(f"Log second {second}: {frame_states_str}: {final_state}")
+                                self.logger.info(
+                                    f"Log second {second}: {frame_states_str}: {final_state}"
+                                )
                                 log_file_handle.flush()
                                 # Jump logic removed for safety - scan all frames sequentially
                                 last_state = final_state
                         else:
-                            self.logger.info(f"Skipped second {second}: {frame_states_str}, on_count={on_count}, off_count={off_count}")
+                            self.logger.info(
+                                f"Skipped second {second}: {frame_states_str}, on_count={on_count}, off_count={off_count}"
+                            )
                             log_file_handle.flush()
                         frame_states = []
                         mvd_list = []
@@ -828,6 +1008,9 @@ class FrameSamplerTrigger:
             with db_rwlock.gen_wlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("UPDATE file_list SET is_processed = 1, status = ? WHERE file_path = ?", ("completed", video_file))
+                    cursor.execute(
+                        "UPDATE file_list SET is_processed = 1, status = ? WHERE file_path = ?",
+                        ("completed", video_file),
+                    )
             self.logger.info(f"Completed processing video: {video_file}")
             return log_file

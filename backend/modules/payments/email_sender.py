@@ -14,49 +14,47 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
+
 class EmailSender:
     """
     Automated email sender for V_track license delivery
     Supports HTML templates, attachments, và retry logic
     """
-    
+
     def __init__(self):
         # SMTP Configuration từ environment variables
-        self.smtp_host = os.getenv('SMTP_HOST', 'smtp.gmail.com')
-        self.smtp_port = int(os.getenv('SMTP_PORT', '587'))
-        self.smtp_username = os.getenv('SMTP_USERNAME')
-        self.smtp_password = os.getenv('SMTP_PASSWORD')
-        self.sender_name = os.getenv('SENDER_NAME', 'V_track License System')
+        self.smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+        self.smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        self.smtp_username = os.getenv("SMTP_USERNAME")
+        self.smtp_password = os.getenv("SMTP_PASSWORD")
+        self.sender_name = os.getenv("SENDER_NAME", "V_track License System")
         self.sender_email = self.smtp_username
-        
+
         # Template configuration
-        template_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'templates', 'email')
+        template_dir = os.path.join(os.path.dirname(__file__), "..", "..", "templates", "email")
         os.makedirs(template_dir, exist_ok=True)
-        
-        self.jinja_env = Environment(
-            loader=FileSystemLoader(template_dir),
-            autoescape=True
-        )
-        
+
+        self.jinja_env = Environment(loader=FileSystemLoader(template_dir), autoescape=True)
+
         # Create default templates if not exist
         self._ensure_email_templates(template_dir)
-        
+
         logger.info(f"Email sender initialized - SMTP: {self.smtp_host}:{self.smtp_port}")
-    
+
     def _ensure_email_templates(self, template_dir):
         """Ensure email templates exist"""
         try:
-            license_template_path = os.path.join(template_dir, 'license_delivery.html')
-            
+            license_template_path = os.path.join(template_dir, "license_delivery.html")
+
             if not os.path.exists(license_template_path):
                 default_template = self._get_default_license_template()
-                with open(license_template_path, 'w', encoding='utf-8') as f:
+                with open(license_template_path, "w", encoding="utf-8") as f:
                     f.write(default_template)
                 logger.info("Created default license email template")
-                
+
         except Exception as e:
             logger.error(f"Template creation error: {str(e)}")
-    
+
     def _get_default_license_template(self):
         """Get default HTML email template"""
         return """<!DOCTYPE html>
@@ -139,27 +137,24 @@ class EmailSender:
     </div>
 </body>
 </html>"""
-    
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=4, max=10)
-    )
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     def _send_email_with_retry(self, message):
         """Send email với retry logic"""
         try:
             # Create secure connection
             context = ssl.create_default_context()
-            
+
             with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
                 server.starttls(context=context)
                 server.login(self.smtp_username, self.smtp_password)
-                
+
                 # Send email
                 text = message.as_string()
-                server.sendmail(self.sender_email, message['To'], text)
-                
-            return {'success': True}
-            
+                server.sendmail(self.sender_email, message["To"], text)
+
+            return {"success": True}
+
         except smtplib.SMTPAuthenticationError as e:
             logger.error(f"SMTP authentication failed: {str(e)}")
             raise Exception(f"Email authentication failed: {str(e)}")
@@ -169,58 +164,52 @@ class EmailSender:
         except Exception as e:
             logger.error(f"Email sending error: {str(e)}")
             raise
-    
+
     def send_license_email(self, recipient, subject, content):
         """
         Send license delivery email
-        
+
         Args:
             recipient (str): Recipient email address
             subject (str): Email subject
             content (dict): Email content data
-            
+
         Returns:
             dict: Sending result
         """
         try:
             if not self.smtp_username or not self.smtp_password:
-                return {
-                    'success': False,
-                    'error': 'SMTP credentials not configured'
-                }
-            
+                return {"success": False, "error": "SMTP credentials not configured"}
+
             # Render email template
-            template = self.jinja_env.get_template('license_delivery.html')
+            template = self.jinja_env.get_template("license_delivery.html")
             html_content = template.render(**content)
-            
+
             # Create email message
-            message = MIMEMultipart('alternative')
-            message['Subject'] = subject
-            message['From'] = f"{self.sender_name} <{self.sender_email}>"
-            message['To'] = recipient
-            
+            message = MIMEMultipart("alternative")
+            message["Subject"] = subject
+            message["From"] = f"{self.sender_name} <{self.sender_email}>"
+            message["To"] = recipient
+
             # Add HTML content
-            html_part = MIMEText(html_content, 'html', 'utf-8')
+            html_part = MIMEText(html_content, "html", "utf-8")
             message.attach(html_part)
-            
+
             # Add plain text fallback
             text_content = self._create_text_fallback(content)
-            text_part = MIMEText(text_content, 'plain', 'utf-8')
+            text_part = MIMEText(text_content, "plain", "utf-8")
             message.attach(text_part)
-            
+
             # Send email with retry
             result = self._send_email_with_retry(message)
-            
+
             logger.info(f"License email sent successfully to {recipient}")
             return result
-            
+
         except Exception as e:
             logger.error(f"Failed to send license email to {recipient}: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e)
-            }
-    
+            return {"success": False, "error": str(e)}
+
     def _create_text_fallback(self, content):
         """Create plain text version of email"""
         text_content = f"""
@@ -257,100 +246,89 @@ V_track License System
 Automated license delivery
         """
         return text_content.strip()
-    
+
     def send_test_email(self, recipient, test_content=None):
         """Send test email để kiểm tra SMTP configuration"""
         try:
             if test_content is None:
                 test_content = {
-                    'customer_email': recipient,
-                    'license_key': 'TEST-LICENSE-KEY-123456789',
-                    'product_type': 'desktop',
-                    'features': ['full_access', 'priority_support'],
-                    'expiry_date': '2025-12-31',
-                    'transaction_id': 'TEST_TRANSACTION',
-                    'amount': 500000,
-                    'purchase_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    "customer_email": recipient,
+                    "license_key": "TEST-LICENSE-KEY-123456789",
+                    "product_type": "desktop",
+                    "features": ["full_access", "priority_support"],
+                    "expiry_date": "2025-12-31",
+                    "transaction_id": "TEST_TRANSACTION",
+                    "amount": 500000,
+                    "purchase_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 }
-            
+
             subject = "V_track License Test Email"
-            
+
             result = self.send_license_email(
-                recipient=recipient,
-                subject=subject,
-                content=test_content
+                recipient=recipient, subject=subject, content=test_content
             )
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(f"Test email failed: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e)
-            }
-    
+            return {"success": False, "error": str(e)}
+
     def send_license_with_attachment(self, recipient, subject, content, license_package):
         """
         Send license email với license file attachment
-        
+
         Args:
             recipient (str): Recipient email
-            subject (str): Email subject  
+            subject (str): Email subject
             content (dict): Email content
             license_package (dict): Complete license package
-            
+
         Returns:
             dict: Sending result
         """
         try:
             # Render email template
-            template = self.jinja_env.get_template('license_delivery.html')
+            template = self.jinja_env.get_template("license_delivery.html")
             html_content = template.render(**content)
-            
+
             # Create email message
             message = MIMEMultipart()
-            message['Subject'] = subject
-            message['From'] = f"{self.sender_name} <{self.sender_email}>"
-            message['To'] = recipient
-            
+            message["Subject"] = subject
+            message["From"] = f"{self.sender_name} <{self.sender_email}>"
+            message["To"] = recipient
+
             # Add HTML content
-            html_part = MIMEText(html_content, 'html', 'utf-8')
+            html_part = MIMEText(html_content, "html", "utf-8")
             message.attach(html_part)
-            
+
             # Add license package as JSON attachment
             license_json = json.dumps(license_package, indent=2)
-            license_attachment = MIMEApplication(
-                license_json.encode('utf-8'),
-                _subtype='json'
-            )
+            license_attachment = MIMEApplication(license_json.encode("utf-8"), _subtype="json")
             license_attachment.add_header(
-                'Content-Disposition',
-                'attachment',
-                filename=f"vtrack_license_{content.get('customer_email', 'user')}.json"
+                "Content-Disposition",
+                "attachment",
+                filename=f"vtrack_license_{content.get('customer_email', 'user')}.json",
             )
             message.attach(license_attachment)
-            
+
             # Send email
             result = self._send_email_with_retry(message)
-            
+
             logger.info(f"License email with attachment sent to {recipient}")
             return result
-            
+
         except Exception as e:
             logger.error(f"Failed to send email with attachment: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e)
-            }
-    
+            return {"success": False, "error": str(e)}
+
     def get_email_config_status(self):
         """Get current email configuration status"""
         return {
-            'smtp_host': self.smtp_host,
-            'smtp_port': self.smtp_port,
-            'smtp_username': self.smtp_username,
-            'smtp_configured': bool(self.smtp_username and self.smtp_password),
-            'sender_name': self.sender_name,
-            'templates_available': ['license_delivery.html']
+            "smtp_host": self.smtp_host,
+            "smtp_port": self.smtp_port,
+            "smtp_username": self.smtp_username,
+            "smtp_configured": bool(self.smtp_username and self.smtp_password),
+            "sender_name": self.sender_name,
+            "templates_available": ["license_delivery.html"],
         }

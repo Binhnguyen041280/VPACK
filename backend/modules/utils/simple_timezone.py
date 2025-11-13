@@ -2,6 +2,7 @@
 Simple timezone utilities using Python's standard zoneinfo library.
 Replaces 670+ lines of custom timezone code with native implementations.
 """
+
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, available_timezones
 from typing import Optional, Dict, Any
@@ -11,12 +12,13 @@ logger = logging.getLogger(__name__)
 
 # Legacy format mappings for backward compatibility
 LEGACY_MAPPINGS = {
-    'UTC+7': 'Asia/Ho_Chi_Minh',
-    'GMT+7': 'Asia/Ho_Chi_Minh',
-    'UTC+07:00': 'Asia/Ho_Chi_Minh',
-    'Asia/Saigon': 'Asia/Ho_Chi_Minh',
-    'ICT': 'Asia/Ho_Chi_Minh',  # Indochina Time
+    "UTC+7": "Asia/Ho_Chi_Minh",
+    "GMT+7": "Asia/Ho_Chi_Minh",
+    "UTC+07:00": "Asia/Ho_Chi_Minh",
+    "Asia/Saigon": "Asia/Ho_Chi_Minh",
+    "ICT": "Asia/Ho_Chi_Minh",  # Indochina Time
 }
+
 
 def simple_validate_timezone(timezone_str: str) -> Dict[str, Any]:
     """
@@ -24,7 +26,7 @@ def simple_validate_timezone(timezone_str: str) -> Dict[str, Any]:
     Returns validation result with status and normalized timezone.
     """
     if not timezone_str:
-        return {'valid': False, 'error': 'Timezone string is empty'}
+        return {"valid": False, "error": "Timezone string is empty"}
 
     # Check legacy mappings first
     normalized_tz = LEGACY_MAPPINGS.get(timezone_str, timezone_str)
@@ -32,18 +34,15 @@ def simple_validate_timezone(timezone_str: str) -> Dict[str, Any]:
     try:
         # Test if timezone exists in zoneinfo
         ZoneInfo(normalized_tz)
-        return {
-            'valid': True,
-            'timezone': normalized_tz,
-            'original': timezone_str
-        }
+        return {"valid": True, "timezone": normalized_tz, "original": timezone_str}
     except Exception as e:
         logger.warning(f"Invalid timezone '{timezone_str}': {e}")
         return {
-            'valid': False,
-            'error': f"Invalid timezone: {timezone_str}",
-            'original': timezone_str
+            "valid": False,
+            "error": f"Invalid timezone: {timezone_str}",
+            "original": timezone_str,
         }
+
 
 def get_timezone_offset(timezone_str: str) -> Optional[int]:
     """Get UTC offset in hours for a timezone."""
@@ -56,9 +55,11 @@ def get_timezone_offset(timezone_str: str) -> Optional[int]:
     except Exception:
         return None
 
+
 def get_available_timezones():
     """Get available timezone identifiers."""
     return sorted(available_timezones())
+
 
 def get_system_timezone_from_db() -> str:
     """
@@ -94,11 +95,12 @@ def get_system_timezone_from_db() -> str:
 
         # Default fallback
         logger.warning("No timezone config found, using default: Asia/Ho_Chi_Minh")
-        return 'Asia/Ho_Chi_Minh'
+        return "Asia/Ho_Chi_Minh"
 
     except Exception as e:
         logger.warning(f"Could not get timezone from database: {e}, using default")
-        return 'Asia/Ho_Chi_Minh'
+        return "Asia/Ho_Chi_Minh"
+
 
 def get_video_creation_time_utc(video_path: str) -> Dict[str, Any]:
     """
@@ -125,25 +127,24 @@ def get_video_creation_time_utc(video_path: str) -> Dict[str, Any]:
     # Priority 1: Read from video metadata (ffprobe)
     try:
         result = subprocess.run(
-            ['ffprobe', '-v', 'quiet', '-print_format', 'json',
-             '-show_format', video_path],
-            capture_output=True, text=True, timeout=10
+            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", video_path],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
 
         if result.returncode == 0:
             data = json.loads(result.stdout)
-            creation_time_str = data.get('format', {}).get('tags', {}).get('creation_time')
+            creation_time_str = data.get("format", {}).get("tags", {}).get("creation_time")
 
             if creation_time_str:
                 # Parse ISO 8601 format: "2025-06-04T04:05:17.000000Z"
                 # The 'Z' suffix indicates UTC
-                creation_time = datetime.fromisoformat(creation_time_str.replace('Z', '+00:00'))
-                logger.info(f"Video creation time from metadata (UTC): {creation_time} [HIGH confidence]")
-                return {
-                    'utc_time': creation_time,
-                    'source': 'metadata',
-                    'confidence': 'high'
-                }
+                creation_time = datetime.fromisoformat(creation_time_str.replace("Z", "+00:00"))
+                logger.info(
+                    f"Video creation time from metadata (UTC): {creation_time} [HIGH confidence]"
+                )
+                return {"utc_time": creation_time, "source": "metadata", "confidence": "high"}
     except Exception as e:
         logger.debug(f"Could not read creation_time from video metadata: {e}")
 
@@ -153,16 +154,8 @@ def get_video_creation_time_utc(video_path: str) -> Dict[str, Any]:
         # IMPORTANT: Interpret Unix timestamp as UTC (not local time)
         creation_time = datetime.fromtimestamp(file_timestamp, tz=timezone.utc)
         logger.info(f"Video creation time from file ctime (UTC): {creation_time} [LOW confidence]")
-        return {
-            'utc_time': creation_time,
-            'source': 'filesystem',
-            'confidence': 'low'
-        }
+        return {"utc_time": creation_time, "source": "filesystem", "confidence": "low"}
     except Exception as e:
         logger.error(f"Could not get file creation time: {e}")
         # Last resort: current time
-        return {
-            'utc_time': datetime.now(timezone.utc),
-            'source': 'fallback',
-            'confidence': 'none'
-        }
+        return {"utc_time": datetime.now(timezone.utc), "source": "fallback", "confidence": "none"}

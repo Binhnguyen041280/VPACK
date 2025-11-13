@@ -21,27 +21,27 @@ def get_deployment_mode():
     """
     # 1. Check environment variable (highest priority)
     env_mode = os.getenv("VTRACK_DEPLOYMENT_MODE")
-    if env_mode in ['development', 'docker', 'production', 'installed']:
+    if env_mode in ["development", "docker", "production", "installed"]:
         return env_mode
 
     # 2. Detect Docker environment
     if os.path.exists("/.dockerenv") or os.getenv("VTRACK_IN_DOCKER") == "true":
-        return 'docker'
+        return "docker"
 
     # 3. Check if running from source (has backend/ subfolder structure)
     try:
         base_dir = find_project_root(__file__)
         if os.path.exists(os.path.join(base_dir, "backend")):
-            return 'development'
+            return "development"
     except RuntimeError:
         pass
 
     # 4. Check if frozen (PyInstaller/cx_Freeze)
-    if getattr(sys, 'frozen', False):
-        return 'production'
+    if getattr(sys, "frozen", False):
+        return "production"
 
     # 5. Default to installed mode
-    return 'installed'
+    return "installed"
 
 
 def is_development_mode():
@@ -50,7 +50,7 @@ def is_development_mode():
     Returns True if in development or docker mode (uses var/ directory)
     """
     mode = get_deployment_mode()
-    return mode in ['development', 'docker']
+    return mode in ["development", "docker"]
 
 
 def get_paths():
@@ -82,17 +82,17 @@ def get_paths():
     mode = get_deployment_mode()
 
     # Determine BASE_DIR based on deployment mode
-    if mode == 'development':
+    if mode == "development":
         # Development: Use project root as base (var/ at root, not backend/var/)
         base_dir = find_project_root(__file__)
 
-    elif mode == 'docker':
+    elif mode == "docker":
         # Docker: Use /app/ or custom base
         base_dir = os.getenv("VTRACK_BASE_DIR", "/app")
 
-    elif mode == 'production':
+    elif mode == "production":
         # Production EXE: Directory containing executable
-        if getattr(sys, 'frozen', False):
+        if getattr(sys, "frozen", False):
             base_dir = os.path.dirname(sys.executable)
         else:
             base_dir = os.getcwd()
@@ -101,6 +101,7 @@ def get_paths():
         # Installed: Use XDG/platform-specific directory
         try:
             from platformdirs import user_data_dir
+
             base_dir = user_data_dir("vtrack", "VTrack")
         except ImportError:
             base_dir = os.path.join(os.path.expanduser("~"), ".local", "share", "vtrack")
@@ -109,7 +110,7 @@ def get_paths():
     var_dir = os.path.join(base_dir, "var")
 
     # Database location depends on mode
-    if mode == 'development':
+    if mode == "development":
         # Development: database is in backend/database/
         db_path = os.path.join(base_dir, "backend", "database", "events.db")
         backend_dir = os.path.join(base_dir, "backend")
@@ -140,7 +141,7 @@ def get_paths():
         # DEPRECATED: CameraROI not used in current implementation
         "CAMERA_ROI_DIR": os.path.join(var_dir, "cache", "roi_legacy"),
         # Legacy flag
-        "IS_DEVELOPMENT": mode in ['development', 'docker']
+        "IS_DEVELOPMENT": mode in ["development", "docker"],
     }
 
 

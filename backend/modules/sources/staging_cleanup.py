@@ -96,23 +96,20 @@ class StagingCleanup:
                             logger.warning(f"   Failed to remove dir {dirname}: {e}")
 
             size_mb = total_size_freed / (1024 * 1024)
-            logger.info(f"✅ Cleanup completed: {total_deleted} files deleted, {size_mb:.2f} MB freed")
+            logger.info(
+                f"✅ Cleanup completed: {total_deleted} files deleted, {size_mb:.2f} MB freed"
+            )
 
             return {
-                'success': True,
-                'files_deleted': total_deleted,
-                'size_freed_mb': size_mb,
-                'deleted_files': deleted_files[:100]  # Return first 100 for logging
+                "success": True,
+                "files_deleted": total_deleted,
+                "size_freed_mb": size_mb,
+                "deleted_files": deleted_files[:100],  # Return first 100 for logging
             }
 
         except Exception as e:
             logger.error(f"❌ Cleanup failed: {e}")
-            return {
-                'success': False,
-                'message': str(e),
-                'files_deleted': 0,
-                'size_freed_mb': 0
-            }
+            return {"success": False, "message": str(e), "files_deleted": 0, "size_freed_mb": 0}
 
     def _is_file_processed(self, file_path: str) -> bool:
         """
@@ -127,10 +124,13 @@ class StagingCleanup:
         try:
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT is_processed FROM downloaded_files
                     WHERE local_file_path = ?
-                """, (file_path,))
+                """,
+                    (file_path,),
+                )
 
                 result = cursor.fetchone()
 
@@ -204,19 +204,16 @@ class StagingCleanup:
                     logger.warning(f"⚠️ Failed to remove {filename}: {e}")
 
             return {
-                'success': True,
-                'removed_count': removed_count,
-                'removed_size_mb': removed_size / (1024 * 1024),
-                'errors': errors,
-                'message': f'Cleaned up {removed_count} processed files ({removed_size / (1024 * 1024):.1f} MB)'
+                "success": True,
+                "removed_count": removed_count,
+                "removed_size_mb": removed_size / (1024 * 1024),
+                "errors": errors,
+                "message": f"Cleaned up {removed_count} processed files ({removed_size / (1024 * 1024):.1f} MB)",
             }
 
         except Exception as e:
             logger.error(f"❌ Cleanup failed: {e}")
-            return {
-                'success': False,
-                'message': f'Cleanup error: {str(e)}'
-            }
+            return {"success": False, "message": f"Cleanup error: {str(e)}"}
 
     def cleanup_by_source(self, source_id: int) -> Dict:
         """
@@ -236,14 +233,14 @@ class StagingCleanup:
                 result = cursor.fetchone()
 
             if not result:
-                return {'success': False, 'message': f'Source {source_id} not found'}
+                return {"success": False, "message": f"Source {source_id} not found"}
 
             source_name = result[0]
             return self.cleanup_old_files(source_name)
 
         except Exception as e:
             logger.error(f"❌ Cleanup by source failed: {e}")
-            return {'success': False, 'message': str(e)}
+            return {"success": False, "message": str(e)}
 
     def get_staging_disk_usage(self) -> Dict:
         """
@@ -258,11 +255,7 @@ class StagingCleanup:
             source_stats = {}
 
             if not os.path.exists(self.staging_dir):
-                return {
-                    'total_size_mb': 0,
-                    'file_count': 0,
-                    'sources': {}
-                }
+                return {"total_size_mb": 0, "file_count": 0, "sources": {}}
 
             for source_dir in os.listdir(self.staging_dir):
                 source_path = os.path.join(self.staging_dir, source_dir)
@@ -286,25 +279,20 @@ class StagingCleanup:
                             pass
 
                 source_stats[source_dir] = {
-                    'size_mb': source_size / (1024 * 1024),
-                    'file_count': source_files
+                    "size_mb": source_size / (1024 * 1024),
+                    "file_count": source_files,
                 }
 
             return {
-                'total_size_mb': total_size / (1024 * 1024),
-                'file_count': file_count,
-                'sources': source_stats,
-                'staging_path': self.staging_dir
+                "total_size_mb": total_size / (1024 * 1024),
+                "file_count": file_count,
+                "sources": source_stats,
+                "staging_path": self.staging_dir,
             }
 
         except Exception as e:
             logger.error(f"❌ Failed to get disk usage: {e}")
-            return {
-                'total_size_mb': 0,
-                'file_count': 0,
-                'sources': {},
-                'error': str(e)
-            }
+            return {"total_size_mb": 0, "file_count": 0, "sources": {}, "error": str(e)}
 
 
 # Global instance

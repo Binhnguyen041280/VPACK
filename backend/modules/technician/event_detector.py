@@ -9,13 +9,17 @@ from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import db_rwlock
 from modules.config.logging_config import get_logger
 from zoneinfo import ZoneInfo
+
 # Removed video_timezone_detector - using simple timezone operations
 
 
 # Define BASE_DIR
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+BASE_DIR = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
-event_detector_bp = Blueprint('event_detector', __name__)
+event_detector_bp = Blueprint("event_detector", __name__)
+
 
 def calculate_duration(ts, te):
     if ts is None or te is None:
@@ -23,6 +27,7 @@ def calculate_duration(ts, te):
     if te < ts:
         return None
     return te - ts
+
 
 def calculate_duration_with_cut(ts, te, tracking_codes, max_packing_time, min_packing_time):
     """
@@ -87,6 +92,7 @@ def calculate_duration_with_cut(ts, te, tracking_codes, max_packing_time, min_pa
 
     return ts_cut, te_cut, duration
 
+
 def parse_qr_detections_from_log(log_file_path, event_ts):
     """
     Parse QR detections with bbox from log file.
@@ -105,16 +111,16 @@ def parse_qr_detections_from_log(log_file_path, event_ts):
     """
     qr_detections = []
     # Pattern 1: Success - timestamp,state,TRACKING_CODE,bbox:[x,y,w,h]
-    success_pattern = r'^(\d+),\w+,([A-Z0-9]+),bbox:\[(\d+),(\d+),(\d+),(\d+)\]'
+    success_pattern = r"^(\d+),\w+,([A-Z0-9]+),bbox:\[(\d+),(\d+),(\d+),(\d+)\]"
     # Pattern 2: Boundary - timestamp,state,,boundary:[x,y,w,h]
-    boundary_pattern = r'^(\d+),\w+,,boundary:\[(\d+),(\d+),(\d+),(\d+)\]'
+    boundary_pattern = r"^(\d+),\w+,,boundary:\[(\d+),(\d+),(\d+),(\d+)\]"
 
     try:
-        with open(log_file_path, 'r') as f:
+        with open(log_file_path, "r") as f:
             next(f)  # Skip header
             for line in f:
                 line_stripped = line.strip()
-                if not line_stripped or line_stripped.startswith('#'):
+                if not line_stripped or line_stripped.startswith("#"):
                     continue
 
                 # Try success pattern first
@@ -133,15 +139,17 @@ def parse_qr_detections_from_log(log_file_path, event_ts):
 
                     # Skip negative timestamps (shouldn't happen)
                     if relative_timestamp >= 0:
-                        qr_detections.append((
-                            relative_timestamp,
-                            tracking_code,
-                            bbox_x,
-                            bbox_y,
-                            bbox_w,
-                            bbox_h,
-                            decode_success
-                        ))
+                        qr_detections.append(
+                            (
+                                relative_timestamp,
+                                tracking_code,
+                                bbox_x,
+                                bbox_y,
+                                bbox_w,
+                                bbox_h,
+                                decode_success,
+                            )
+                        )
                     continue
 
                 # Try boundary pattern
@@ -160,19 +168,22 @@ def parse_qr_detections_from_log(log_file_path, event_ts):
 
                     # Skip negative timestamps (shouldn't happen)
                     if relative_timestamp >= 0:
-                        qr_detections.append((
-                            relative_timestamp,
-                            tracking_code,
-                            bbox_x,
-                            bbox_y,
-                            bbox_w,
-                            bbox_h,
-                            decode_success
-                        ))
+                        qr_detections.append(
+                            (
+                                relative_timestamp,
+                                tracking_code,
+                                bbox_x,
+                                bbox_y,
+                                bbox_w,
+                                bbox_h,
+                                decode_success,
+                            )
+                        )
 
         return qr_detections
     except Exception as e:
         return []
+
 
 def process_single_log_with_cursor(log_file_path, cursor, conn):
     """
@@ -209,18 +220,24 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
         start_time_dt = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
         # Get system timezone from config instead of hardcoding
         from modules.utils.simple_timezone import get_system_timezone_from_db
+
         system_tz_str = get_system_timezone_from_db()
         user_timezone = ZoneInfo(system_tz_str)
         start_time_dt = start_time_dt.replace(tzinfo=user_timezone)
         # Convert to UTC for consistent storage
         start_time_dt_utc = start_time_dt.astimezone(timezone.utc)
-        logger.info(f"Parsed header - Start: {start_time}, End: {end_time}, Start_Time: {start_time_str} (UTC: {start_time_dt_utc}), Camera_Name: {camera_name}, Video_File: {video_path}")
+        logger.info(
+            f"Parsed header - Start: {start_time}, End: {end_time}, Start_Time: {start_time_str} (UTC: {start_time_dt_utc}), Camera_Name: {camera_name}, Video_File: {video_path}"
+        )
 
         # Check if log file is empty
         first_data_line = f.readline().strip()
         if not first_data_line:
             logger.info(f"Log file {log_file_path} is empty, skipping")
-            cursor.execute("UPDATE processed_logs SET is_processed = 1, processed_at = ? WHERE log_file = ?", (datetime.now(timezone.utc), log_file_path))
+            cursor.execute(
+                "UPDATE processed_logs SET is_processed = 1, processed_at = ? WHERE log_file = ?",
+                (datetime.now(timezone.utc), log_file_path),
+            )
             return
 
         # If data exists, go back and process
@@ -232,7 +249,9 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
             try:
                 second, state = parts[0], parts[1]
                 codes = [parts[2]] if len(parts) > 2 and parts[2] else []
-                frame_sampler_data.append({"second": float(second), "state": state, "tracking_codes": codes})
+                frame_sampler_data.append(
+                    {"second": float(second), "state": state, "tracking_codes": codes}
+                )
             except Exception as e:
                 logger.info(f"Error parsing line '{line.strip()}': {str(e)}")
 
@@ -244,12 +263,17 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
     logger.info(f"Min packing time: {min_packing_time}, Max packing time: {max_packing_time}")
 
     # Get latest pending_event by ts
-    cursor.execute("SELECT event_id, ts, tracking_codes, video_file FROM events WHERE te IS NULL AND camera_name = ? ORDER BY event_id DESC LIMIT 1", (camera_name,))
+    cursor.execute(
+        "SELECT event_id, ts, tracking_codes, video_file FROM events WHERE te IS NULL AND camera_name = ? ORDER BY event_id DESC LIMIT 1",
+        (camera_name,),
+    )
     pending_event = cursor.fetchone()
     logger.info(f"Pending event: {pending_event}")
     ts = pending_event[1] if pending_event else None
     # 🔒 SECURITY FIX: Use ast.literal_eval() instead of eval() to prevent code injection
-    pending_tracking_codes = ast.literal_eval(pending_event[2]) if pending_event and pending_event[2] else []
+    pending_tracking_codes = (
+        ast.literal_eval(pending_event[2]) if pending_event and pending_event[2] else []
+    )
     pending_video_file = pending_event[3] if pending_event else None
     event_id = pending_event[0] if pending_event else None
     segments = []
@@ -265,7 +289,7 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
             if current_state == "On":
                 te = current_second
                 total_duration = calculate_duration(ts, te)
-                
+
                 # Tách tracking_codes thành các sự kiện liên tiếp
                 all_tracking_codes = list(set(pending_tracking_codes + current_tracking_codes))
                 num_codes = len(all_tracking_codes) if all_tracking_codes else 1
@@ -283,37 +307,78 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
 
                 total_duration = duration_per_event * num_codes  # Update total_duration
                 te = ts + total_duration if ts is not None else te
-                logger.info(f"Adjusted pending event: Ts={ts}, Te={te}, Duration per event set to {duration_per_event}, (clamped from {total_duration}s)")
+                logger.info(
+                    f"Adjusted pending event: Ts={ts}, Te={te}, Duration per event set to {duration_per_event}, (clamped from {total_duration}s)"
+                )
 
                 if pending_video_file == video_path:
                     current_ts = ts
                     for i, code in enumerate(all_tracking_codes):
-                        current_te = current_ts + duration_per_event if current_ts is not None else te
+                        current_te = (
+                            current_ts + duration_per_event if current_ts is not None else te
+                        )
                         if i == 0:
                             # Update pending event for first code
-                            segments.append((current_ts, current_te, duration_per_event, [code], video_path, event_id))
-                            logger.info(f"Updated consecutive pending event {i+1}/{num_codes}: Ts={current_ts}, Te={current_te}, Duration={duration_per_event}, Tracking_code={code}")
+                            segments.append(
+                                (
+                                    current_ts,
+                                    current_te,
+                                    duration_per_event,
+                                    [code],
+                                    video_path,
+                                    event_id,
+                                )
+                            )
+                            logger.info(
+                                f"Updated consecutive pending event {i+1}/{num_codes}: Ts={current_ts}, Te={current_te}, Duration={duration_per_event}, Tracking_code={code}"
+                            )
                         else:
                             # Add new event for subsequent codes
-                            segments.append((current_ts, current_te, duration_per_event, [code], video_path, None))
-                            logger.info(f"Added new consecutive event {i+1}/{num_codes}: Ts={current_ts}, Te={current_te}, Duration={duration_per_event}, Tracking_code={code}")
+                            segments.append(
+                                (
+                                    current_ts,
+                                    current_te,
+                                    duration_per_event,
+                                    [code],
+                                    video_path,
+                                    None,
+                                )
+                            )
+                            logger.info(
+                                f"Added new consecutive event {i+1}/{num_codes}: Ts={current_ts}, Te={current_te}, Duration={duration_per_event}, Tracking_code={code}"
+                            )
                         current_ts = current_te
                 else:
                     current_ts = None
                     for i, code in enumerate(all_tracking_codes):
                         current_te = te - (num_codes - i - 1) * duration_per_event
-                        segments.append((current_ts, current_te, duration_per_event, [code], video_path, None))
-                        logger.info(f"Added consecutive pending event {i+1}/{num_codes}: Ts={current_ts}, Te={current_te}, Duration={duration_per_event}, Tracking_code={code}")
+                        segments.append(
+                            (current_ts, current_te, duration_per_event, [code], video_path, None)
+                        )
+                        logger.info(
+                            f"Added consecutive pending event {i+1}/{num_codes}: Ts={current_ts}, Te={current_te}, Duration={duration_per_event}, Tracking_code={code}"
+                        )
                         current_ts = current_te
 
                 ts = None
                 has_pending = False
             elif current_state == "Off":
-                pending_tracking_codes.extend([code for code in current_tracking_codes if code and code not in pending_tracking_codes])
+                pending_tracking_codes.extend(
+                    [
+                        code
+                        for code in current_tracking_codes
+                        if code and code not in pending_tracking_codes
+                    ]
+                )
                 # Check and delete pending event if no tracking_codes
                 if not pending_tracking_codes and not current_tracking_codes:
-                    cursor.execute("DELETE FROM events WHERE te IS NULL AND event_id = (SELECT MAX(event_id) FROM events WHERE te IS NULL AND camera_name = ?)", (camera_name,))
-                    logger.info(f"Deleted last pending event for camera {camera_name} due to no tracking_codes")
+                    cursor.execute(
+                        "DELETE FROM events WHERE te IS NULL AND event_id = (SELECT MAX(event_id) FROM events WHERE te IS NULL AND camera_name = ?)",
+                        (camera_name,),
+                    )
+                    logger.info(
+                        f"Deleted last pending event for camera {camera_name} due to no tracking_codes"
+                    )
         elif not has_pending:
             if prev_state == "On" and current_state == "Off":
                 ts = current_second
@@ -325,7 +390,9 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
                 total_duration = calculate_duration(ts, te)
 
                 # Tách tracking_codes thành các sự kiện liên tiếp
-                all_tracking_codes = list(set(pending_tracking_codes + current_tracking_codes))  # Loại bỏ trùng lặp
+                all_tracking_codes = list(
+                    set(pending_tracking_codes + current_tracking_codes)
+                )  # Loại bỏ trùng lặp
                 num_codes = len(all_tracking_codes) if all_tracking_codes else 1
 
                 # Apply min/max clamp with CUT strategy
@@ -341,24 +408,40 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
 
                 total_duration = duration_per_event * num_codes  # Update total_duration
                 te = ts + total_duration if ts is not None else te
-                logger.info(f"Adjusted event: Ts={ts}, Te={te}, Duration per event set to {duration_per_event}, (clamped from {total_duration}s)")
+                logger.info(
+                    f"Adjusted event: Ts={ts}, Te={te}, Duration per event set to {duration_per_event}, (clamped from {total_duration}s)"
+                )
 
                 if all_tracking_codes:
                     current_ts = ts
                     for i, code in enumerate(all_tracking_codes):
-                        current_te = current_ts + duration_per_event if current_ts is not None else te
-                        segments.append((current_ts, current_te, duration_per_event, [code], video_path, None))
-                        logger.info(f"Added consecutive event {i+1}/{num_codes}: Ts={current_ts}, Te={current_te}, Duration={duration_per_event}, Tracking_code={code}")
+                        current_te = (
+                            current_ts + duration_per_event if current_ts is not None else te
+                        )
+                        segments.append(
+                            (current_ts, current_te, duration_per_event, [code], video_path, None)
+                        )
+                        logger.info(
+                            f"Added consecutive event {i+1}/{num_codes}: Ts={current_ts}, Te={current_te}, Duration={duration_per_event}, Tracking_code={code}"
+                        )
                         current_ts = current_te
                 else:
                     segments.append((ts, te, duration_per_event, [], video_path, None))
-                    logger.info(f"Added event without tracking_code: Ts={ts}, Te={te}, Duration={duration_per_event}")
+                    logger.info(
+                        f"Added event without tracking_code: Ts={ts}, Te={te}, Duration={duration_per_event}"
+                    )
 
                 ts = None
                 pending_tracking_codes = []
 
             elif ts is not None and current_state == "Off":
-                pending_tracking_codes.extend([code for code in current_tracking_codes if code and code not in pending_tracking_codes])
+                pending_tracking_codes.extend(
+                    [
+                        code
+                        for code in current_tracking_codes
+                        if code and code not in pending_tracking_codes
+                    ]
+                )
 
         prev_state = current_state
 
@@ -373,35 +456,69 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
         # Note: Don't skip events with empty tracking_codes yet - they may have boundary detections
         # We'll validate after parsing QR detections
         # Calculate UTC timestamps for database storage
-        packing_time_start = int((start_time_dt_utc.timestamp() + ts) * 1000) if ts is not None else None
-        packing_time_end = int((start_time_dt_utc.timestamp() + te) * 1000) if te is not None else None
+        packing_time_start = (
+            int((start_time_dt_utc.timestamp() + ts) * 1000) if ts is not None else None
+        )
+        packing_time_end = (
+            int((start_time_dt_utc.timestamp() + te) * 1000) if te is not None else None
+        )
 
         # Store timezone metadata for reference
         timezone_info = {
-            'video_timezone': str(start_time_dt.tzinfo),
-            'utc_offset_seconds': start_time_dt.utcoffset().total_seconds() if start_time_dt.utcoffset() else 0,
-            'stored_as_utc': True
+            "video_timezone": str(start_time_dt.tzinfo),
+            "utc_offset_seconds": (
+                start_time_dt.utcoffset().total_seconds() if start_time_dt.utcoffset() else 0
+            ),
+            "stored_as_utc": True,
         }
 
         current_event_id = None
         if segment_event_id is not None:
-            cursor.execute("UPDATE events SET te=?, duration=?, tracking_codes=?, packing_time_end=?, timezone_info=? WHERE event_id=?",
-                           (te, duration, str(tracking_codes), packing_time_end, str(timezone_info), segment_event_id))
-            logger.info(f"Updated event_id {segment_event_id}: ts={ts}, te={te}, duration={duration}")
+            cursor.execute(
+                "UPDATE events SET te=?, duration=?, tracking_codes=?, packing_time_end=?, timezone_info=? WHERE event_id=?",
+                (
+                    te,
+                    duration,
+                    str(tracking_codes),
+                    packing_time_end,
+                    str(timezone_info),
+                    segment_event_id,
+                ),
+            )
+            logger.info(
+                f"Updated event_id {segment_event_id}: ts={ts}, te={te}, duration={duration}"
+            )
             current_event_id = segment_event_id
         else:
-            cursor.execute('''INSERT INTO events (ts, te, duration, tracking_codes, video_file, buffer, camera_name, packing_time_start, packing_time_end, timezone_info)
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                           (ts, te, duration, str(tracking_codes), segment_video_path, 0, camera_name, packing_time_start, packing_time_end, str(timezone_info)))
+            cursor.execute(
+                """INSERT INTO events (ts, te, duration, tracking_codes, video_file, buffer, camera_name, packing_time_start, packing_time_end, timezone_info)
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    ts,
+                    te,
+                    duration,
+                    str(tracking_codes),
+                    segment_video_path,
+                    0,
+                    camera_name,
+                    packing_time_start,
+                    packing_time_end,
+                    str(timezone_info),
+                ),
+            )
             current_event_id = cursor.lastrowid
-            logger.info(f"Inserted new event: event_id={current_event_id}, ts={ts}, te={te}, duration={duration}")
+            logger.info(
+                f"Inserted new event: event_id={current_event_id}, ts={ts}, te={te}, duration={duration}"
+            )
 
         # Parse and insert QR detections for this event (if event is completed)
         if current_event_id and te is not None and ts is not None:
             qr_detections = parse_qr_detections_from_log(log_file_path, int(ts))
 
             if qr_detections:
-                logger.info(f"Found {len(qr_detections)} QR detections for event {current_event_id}")
+                logger.info(
+                    f"Found {len(qr_detections)} QR detections for event {current_event_id}"
+                )
 
                 success_count = 0
                 boundary_count = 0
@@ -420,21 +537,41 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
 
                     if should_insert:
                         try:
-                            cursor.execute("""
+                            cursor.execute(
+                                """
                                 INSERT INTO qr_detections
                                 (event_id, timestamp_seconds, tracking_code, bbox_x, bbox_y, bbox_w, bbox_h, decode_success)
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            """, (current_event_id, rel_ts, code, bbox_x, bbox_y, bbox_w, bbox_h, decode_success))
+                            """,
+                                (
+                                    current_event_id,
+                                    rel_ts,
+                                    code,
+                                    bbox_x,
+                                    bbox_y,
+                                    bbox_w,
+                                    bbox_h,
+                                    decode_success,
+                                ),
+                            )
 
                             if decode_success == 1:
-                                logger.debug(f"Inserted SUCCESS detection: event={current_event_id}, ts={rel_ts}s, code={code}, bbox=({bbox_x},{bbox_y},{bbox_w},{bbox_h})")
+                                logger.debug(
+                                    f"Inserted SUCCESS detection: event={current_event_id}, ts={rel_ts}s, code={code}, bbox=({bbox_x},{bbox_y},{bbox_w},{bbox_h})"
+                                )
                             else:
-                                logger.debug(f"Inserted BOUNDARY detection: event={current_event_id}, ts={rel_ts}s, bbox=({bbox_x},{bbox_y},{bbox_w},{bbox_h})")
+                                logger.debug(
+                                    f"Inserted BOUNDARY detection: event={current_event_id}, ts={rel_ts}s, bbox=({bbox_x},{bbox_y},{bbox_w},{bbox_h})"
+                                )
                         except sqlite3.IntegrityError as e:
-                            logger.error(f"Error inserting QR detection for event {current_event_id}: {e}")
+                            logger.error(
+                                f"Error inserting QR detection for event {current_event_id}: {e}"
+                            )
                             continue
 
-                logger.info(f"Inserted {success_count} success detections and {boundary_count} boundary detections for event {current_event_id}")
+                logger.info(
+                    f"Inserted {success_count} success detections and {boundary_count} boundary detections for event {current_event_id}"
+                )
 
                 # Validate: Check if event is empty (no MVD codes found)
                 if success_count == 0 and not tracking_codes:
@@ -443,15 +580,22 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
 
                     if event_duration >= min_packing_time:
                         # Event long enough → có thể có QR miss do 5fps sampling, mark retry
-                        cursor.execute("""
+                        cursor.execute(
+                            """
                             UPDATE events
                             SET retry_needed = 1, retry_count = 0, status = 'empty_need_retry'
                             WHERE event_id = ?
-                        """, (current_event_id,))
-                        logger.info(f"✓ Marked event {current_event_id} for retry (duration={event_duration}s >= min={min_packing_time}s)")
+                        """,
+                            (current_event_id,),
+                        )
+                        logger.info(
+                            f"✓ Marked event {current_event_id} for retry (duration={event_duration}s >= min={min_packing_time}s)"
+                        )
                     else:
                         # Event quá ngắn → noise, delete
-                        logger.info(f"✗ Deleting noise event {current_event_id} (duration={event_duration}s < min={min_packing_time}s)")
+                        logger.info(
+                            f"✗ Deleting noise event {current_event_id} (duration={event_duration}s < min={min_packing_time}s)"
+                        )
                         cursor.execute("DELETE FROM events WHERE event_id = ?", (current_event_id,))
             else:
                 # No detections found in log
@@ -461,18 +605,28 @@ def process_single_log_with_cursor(log_file_path, cursor, conn):
 
                     if event_duration >= min_packing_time:
                         # Event long enough → mark retry
-                        cursor.execute("""
+                        cursor.execute(
+                            """
                             UPDATE events
                             SET retry_needed = 1, retry_count = 0, status = 'empty_need_retry'
                             WHERE event_id = ?
-                        """, (current_event_id,))
-                        logger.info(f"✓ Marked event {current_event_id} for retry (no detections but duration={event_duration}s >= min={min_packing_time}s)")
+                        """,
+                            (current_event_id,),
+                        )
+                        logger.info(
+                            f"✓ Marked event {current_event_id} for retry (no detections but duration={event_duration}s >= min={min_packing_time}s)"
+                        )
                     else:
                         # Noise, delete
-                        logger.info(f"✗ Deleting noise event {current_event_id}: no detections found (duration={event_duration}s < min={min_packing_time}s)")
+                        logger.info(
+                            f"✗ Deleting noise event {current_event_id}: no detections found (duration={event_duration}s < min={min_packing_time}s)"
+                        )
                         cursor.execute("DELETE FROM events WHERE event_id = ?", (current_event_id,))
 
-    cursor.execute("UPDATE processed_logs SET is_processed = 1, processed_at = ? WHERE log_file = ?", (datetime.now(timezone.utc), log_file_path))
+    cursor.execute(
+        "UPDATE processed_logs SET is_processed = 1, processed_at = ? WHERE log_file = ?",
+        (datetime.now(timezone.utc), log_file_path),
+    )
     logger.info("Database changes committed")
 
 
@@ -501,7 +655,8 @@ def process_single_log(log_file_path):
         logger.error(f"Error in process_single_log: {str(e)}")
         raise
 
-@event_detector_bp.route('/process-events', methods=['GET'])
+
+@event_detector_bp.route("/process-events", methods=["GET"])
 def process_events():
     logger = get_logger(__name__)
     try:
@@ -511,7 +666,8 @@ def process_events():
                 cursor = conn.cursor()
 
                 # Lấy danh sách log files cần xử lý
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT DISTINCT log_file_path, (
                         SELECT CAST(SUBSTR(header, INSTR(header, 'Start: ') + 7, INSTR(SUBSTR(header, INSTR(header, 'Start: ') + 7), ',') - 1) AS INTEGER)
                         FROM (
@@ -522,7 +678,8 @@ def process_events():
                     WHERE is_processed = 1 AND log_file_path IS NOT NULL
                     AND log_file_path IN (SELECT log_file FROM processed_logs WHERE is_processed = 0)
                     ORDER BY start_time
-                """)
+                """
+                )
                 log_files = [row[0] for row in cursor.fetchall()]
                 logger.info(f"Log files to process: {log_files}")
 

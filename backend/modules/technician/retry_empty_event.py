@@ -113,7 +113,9 @@ class RetryEmptyEventProcessor:
                         failed += 1
 
                 # Log results
-                self.logger.info(f"✅ PASS 3 COMPLETE: {recovered}/{len(retry_events)} recovered, {failed} failed")
+                self.logger.info(
+                    f"✅ PASS 3 COMPLETE: {recovered}/{len(retry_events)} recovered, {failed} failed"
+                )
 
                 # Signal completion and clear idle flag
                 system_idle_event.clear()
@@ -135,13 +137,15 @@ class RetryEmptyEventProcessor:
             with db_rwlock.gen_rlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         SELECT event_id, video_file, ts, te, camera_name
                         FROM events
                         WHERE retry_needed = 1 AND retry_count < 1
                         AND te IS NOT NULL
                         ORDER BY event_id ASC
-                    """)
+                    """
+                    )
                     return cursor.fetchall()
         except Exception as e:
             self.logger.error(f"❌ Error querying empty events: {e}")
@@ -188,12 +192,16 @@ class RetryEmptyEventProcessor:
             end_frame = int(te * self.fps)
             video.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
-            self.logger.info(f"🔄 Event {event_id}: scanning second half from frame {start_frame} ({scan_start:.1f}s) to {end_frame} ({te}s) [total {event_duration}s]")
+            self.logger.info(
+                f"🔄 Event {event_id}: scanning second half from frame {start_frame} ({scan_start:.1f}s) to {end_frame} ({te}s) [total {event_duration}s]"
+            )
 
             # Get packing area for this camera
             packing_area, _ = self.sampler.get_packing_area(camera_name)
             if not packing_area:
-                self.logger.error(f"❌ Event {event_id}: No packing_area found for camera {camera_name}")
+                self.logger.error(
+                    f"❌ Event {event_id}: No packing_area found for camera {camera_name}"
+                )
                 video.release()
                 self.update_event_failed(event_id)
                 return False
@@ -206,20 +214,24 @@ class RetryEmptyEventProcessor:
             while frame_count <= end_frame:
                 ret, frame = video.read()
                 if not ret:
-                    self.logger.debug(f"Event {event_id}: Reached end of video at frame {frame_count}")
+                    self.logger.debug(
+                        f"Event {event_id}: Reached end of video at frame {frame_count}"
+                    )
                     break
 
                 frame_count += 1
 
                 # Extract packing area from frame
-                frame_packing = frame[y:y+h, x:x+w]
+                frame_packing = frame[y : y + h, x : x + w]
 
                 # DETECT: MVD only (no TimeGo check, no trigger area)
                 mvd = self.detect_mvd_frame(frame_packing, camera_name)
 
                 # STOP: immediately when found
                 if mvd:
-                    self.logger.info(f"✅ Event {event_id}: recovered MVD={mvd} at frame {frame_count}")
+                    self.logger.info(
+                        f"✅ Event {event_id}: recovered MVD={mvd} at frame {frame_count}"
+                    )
                     self.update_event_success(event_id, mvd)
                     found = True
                     break
@@ -228,14 +240,16 @@ class RetryEmptyEventProcessor:
 
             # If not found, mark as failed
             if not found:
-                self.logger.info(f"❌ Event {event_id}: MVD not found in {end_frame - start_frame} frames")
+                self.logger.info(
+                    f"❌ Event {event_id}: MVD not found in {end_frame - start_frame} frames"
+                )
                 self.update_event_failed(event_id)
 
             return found
 
         except Exception as e:
             self.logger.error(f"❌ Event {event_id}: Exception: {e}")
-            if 'video' in locals():
+            if "video" in locals():
                 video.release()
             self.update_event_failed(event_id)
             return False
@@ -260,7 +274,7 @@ class RetryEmptyEventProcessor:
                 frame_packing=frame_packing,
                 frame_trigger=None,
                 frame_count=0,
-                packing_area_offset=None
+                packing_area_offset=None,
             )
 
             return mvd  # Empty string if not found, tracking code if found
@@ -287,14 +301,17 @@ class RetryEmptyEventProcessor:
                     tracking_codes_list = [mvd]
                     tracking_codes_json = json.dumps(tracking_codes_list)
 
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         UPDATE events
                         SET tracking_codes = ?,
                             retry_needed = 0,
                             status = 'completed_retry',
                             retry_count = retry_count + 1
                         WHERE event_id = ?
-                    """, (tracking_codes_json, event_id))
+                    """,
+                        (tracking_codes_json, event_id),
+                    )
                     conn.commit()
 
                     self.logger.debug(f"Event {event_id}: updated as success")
@@ -313,13 +330,16 @@ class RetryEmptyEventProcessor:
             with db_rwlock.gen_wlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         UPDATE events
                         SET retry_needed = 0,
                             status = 'retry_failed',
                             retry_count = retry_count + 1
                         WHERE event_id = ?
-                    """, (event_id,))
+                    """,
+                        (event_id,),
+                    )
                     conn.commit()
 
                     self.logger.debug(f"Event {event_id}: updated as failed")
@@ -343,9 +363,7 @@ def start_retry_processor():
     """
     processor = RetryEmptyEventProcessor()
     thread = threading.Thread(
-        target=processor.run,
-        name="RetryEmptyEvent",
-        daemon=True  # Exit when main program exits
+        target=processor.run, name="RetryEmptyEvent", daemon=True  # Exit when main program exits
     )
     thread.start()
     return thread

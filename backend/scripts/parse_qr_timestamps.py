@@ -32,15 +32,15 @@ def parse_log_file(log_file_path: str) -> List[Tuple[int, str, int, int, int, in
     qr_detections = []
 
     # Regex pattern to match: timestamp,On,TRACKING_CODE,bbox:[x,y,w,h]
-    pattern = r'^(\d+),On,([A-Z0-9]+),bbox:\[(\d+),(\d+),(\d+),(\d+)\]$'
+    pattern = r"^(\d+),On,([A-Z0-9]+),bbox:\[(\d+),(\d+),(\d+),(\d+)\]$"
 
     try:
-        with open(log_file_path, 'r') as f:
+        with open(log_file_path, "r") as f:
             for line in f:
                 line = line.strip()
 
                 # Skip comments and empty lines
-                if line.startswith('#') or not line:
+                if line.startswith("#") or not line:
                     continue
 
                 match = re.match(pattern, line)
@@ -53,7 +53,9 @@ def parse_log_file(log_file_path: str) -> List[Tuple[int, str, int, int, int, in
                     bbox_h = int(match.group(6))
 
                     qr_detections.append((timestamp, tracking_code, bbox_x, bbox_y, bbox_w, bbox_h))
-                    logger.debug(f"Parsed QR: {tracking_code} at {timestamp}s, bbox=({bbox_x},{bbox_y},{bbox_w},{bbox_h})")
+                    logger.debug(
+                        f"Parsed QR: {tracking_code} at {timestamp}s, bbox=({bbox_x},{bbox_y},{bbox_w},{bbox_h})"
+                    )
 
         logger.info(f"Parsed {len(qr_detections)} QR detections from {log_file_path}")
         return qr_detections
@@ -78,7 +80,8 @@ def get_events_with_logs() -> List[Tuple[int, int, str]]:
             cursor = conn.cursor()
 
             # Join events with processed_logs to get log file paths
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT DISTINCT
                     e.event_id,
                     e.ts,
@@ -88,7 +91,8 @@ def get_events_with_logs() -> List[Tuple[int, int, str]]:
                 WHERE pl.is_processed = 1
                   AND e.ts IS NOT NULL
                 ORDER BY e.event_id
-            """)
+            """
+            )
 
             results = cursor.fetchall()
             logger.info(f"Found {len(results)} events with processed logs")
@@ -133,21 +137,38 @@ def populate_qr_detections():
 
                     # Skip if relative timestamp is negative (shouldn't happen)
                     if relative_timestamp < 0:
-                        logger.warning(f"Skipping negative relative timestamp: {relative_timestamp}s for event {event_id}")
+                        logger.warning(
+                            f"Skipping negative relative timestamp: {relative_timestamp}s for event {event_id}"
+                        )
                         continue
 
                     try:
-                        cursor.execute("""
+                        cursor.execute(
+                            """
                             INSERT INTO qr_detections
                             (event_id, timestamp_seconds, tracking_code, bbox_x, bbox_y, bbox_w, bbox_h)
                             VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """, (event_id, relative_timestamp, tracking_code, bbox_x, bbox_y, bbox_w, bbox_h))
+                        """,
+                            (
+                                event_id,
+                                relative_timestamp,
+                                tracking_code,
+                                bbox_x,
+                                bbox_y,
+                                bbox_w,
+                                bbox_h,
+                            ),
+                        )
 
                         total_inserted += 1
-                        logger.debug(f"Inserted QR detection: event={event_id}, rel_ts={relative_timestamp}s, code={tracking_code}")
+                        logger.debug(
+                            f"Inserted QR detection: event={event_id}, rel_ts={relative_timestamp}s, code={tracking_code}"
+                        )
 
                     except sqlite3.IntegrityError as e:
-                        logger.error(f"Integrity error inserting QR detection for event {event_id}: {e}")
+                        logger.error(
+                            f"Integrity error inserting QR detection for event {event_id}: {e}"
+                        )
                         continue
 
             conn.commit()

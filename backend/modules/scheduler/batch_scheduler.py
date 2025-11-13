@@ -31,31 +31,43 @@ from typing import List, Tuple, Optional
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.config.logging_config import get_logger
 from modules.utils.simple_timezone import get_system_timezone_from_db
-from .db_sync import db_rwlock, frame_sampler_event, event_detector_event, system_idle_event, retry_in_progress_flag
+from .db_sync import (
+    db_rwlock,
+    frame_sampler_event,
+    event_detector_event,
+    system_idle_event,
+    retry_in_progress_flag,
+)
 from .file_lister import run_file_scan
-from .program_runner import start_frame_sampler_thread, start_event_detector_thread, start_retry_processor
+from .program_runner import (
+    start_frame_sampler_thread,
+    start_event_detector_thread,
+    start_retry_processor,
+)
 from .config.scheduler_config import SchedulerConfig
 from modules.utils.cleanup import cleanup_service
 
 logger = get_logger(__name__, {"module": "batch_scheduler"})
 logger.info("BatchScheduler logging initialized")
 
+
 class SystemMonitor:
     """Monitors system resources and dynamically calculates optimal batch sizes.
-    
+
     This class continuously monitors CPU and memory usage to determine the appropriate
     batch size for video processing. It prevents system overload by reducing batch sizes
     when resources are constrained and increases them when resources are available.
-    
+
     Attributes:
         cpu_threshold_low (float): CPU usage threshold below which batch size can be increased
         cpu_threshold_high (float): CPU usage threshold above which batch size must be reduced
         base_batch_size (int): Default batch size to return to under normal conditions
         max_batch_size (int): Maximum allowed batch size regardless of available resources
-    
+
     Thread Safety:
         This class is thread-safe and can be called from multiple threads simultaneously.
     """
+
     def __init__(self):
         self.cpu_threshold_low = SchedulerConfig.CPU_THRESHOLD_LOW
         self.cpu_threshold_high = SchedulerConfig.CPU_THRESHOLD_HIGH
@@ -64,10 +76,10 @@ class SystemMonitor:
 
     def get_cpu_usage(self) -> float:
         """Get current CPU usage percentage from the system.
-        
+
         Returns:
             float: CPU usage percentage (0-100), or 50 if unable to determine
-            
+
         Note:
             Uses psutil with a 1-second sampling interval for accurate measurement.
             Returns a fallback value of 50% if any errors occur during measurement.
@@ -86,10 +98,10 @@ class SystemMonitor:
 
     def get_memory_usage(self) -> float:
         """Get current memory usage percentage from the system.
-        
+
         Returns:
             float: Memory usage percentage (0-100), or 50 if unable to determine
-            
+
         Note:
             Returns a fallback value of 50% if any errors occur during measurement.
         """
@@ -103,18 +115,18 @@ class SystemMonitor:
 
     def get_batch_size(self, current_batch_size: int) -> int:
         """Calculate optimal batch size based on current system resource usage.
-        
+
         This method implements a dynamic batch size adjustment algorithm:
         - Reduces batch size when CPU > high threshold OR memory > memory threshold
         - Increases batch size when CPU < low threshold AND memory < 70%
         - Maintains current size when resources are in the stable range
-        
+
         Args:
             current_batch_size (int): Current batch size being used
-            
+
         Returns:
             int: Recommended batch size (between base_batch_size and max_batch_size)
-            
+
         Algorithm Details:
             - Reduction: Decreases by 1 when overloaded (min: base_batch_size)
             - Increase: Increases by 1 when underutilized (max: max_batch_size)
@@ -122,35 +134,39 @@ class SystemMonitor:
         """
         cpu_usage = self.get_cpu_usage()
         memory_usage = self.get_memory_usage()
-        
+
         logger.debug(f"Resource usage - CPU: {cpu_usage}%, Memory: {memory_usage}%")
-        
+
         # Check for resource overload - reduce batch size to prevent system strain
         if cpu_usage > self.cpu_threshold_high or memory_usage > SchedulerConfig.MEMORY_THRESHOLD:
             if current_batch_size > self.base_batch_size:
                 new_batch_size = current_batch_size - 1
-                logger.warning(f"High resource usage (CPU: {cpu_usage}%, RAM: {memory_usage}%), reducing batch size: {current_batch_size} -> {new_batch_size}")
+                logger.warning(
+                    f"High resource usage (CPU: {cpu_usage}%, RAM: {memory_usage}%), reducing batch size: {current_batch_size} -> {new_batch_size}"
+                )
                 return new_batch_size
-        
+
         # Check for resource availability - increase batch size to improve throughput
         elif cpu_usage < self.cpu_threshold_low and memory_usage < 70:
             if current_batch_size < self.max_batch_size:
                 new_batch_size = current_batch_size + 1
-                logger.info(f"Low resource usage (CPU: {cpu_usage}%, RAM: {memory_usage}%), increasing batch size: {current_batch_size} -> {new_batch_size}")
+                logger.info(
+                    f"Low resource usage (CPU: {cpu_usage}%, RAM: {memory_usage}%), increasing batch size: {current_batch_size} -> {new_batch_size}"
+                )
                 return new_batch_size
-        
+
         # Maintain current batch size when resources are in stable range
         return current_batch_size
 
     def log_system_info(self) -> None:
         """Log system information at startup for diagnostic purposes.
-        
+
         Logs:
             - CPU core count
             - Total RAM in GB
             - Batch size configuration (base and max)
             - CPU threshold settings
-            
+
         This information is useful for understanding system capacity and
         troubleshooting performance issues.
         """
@@ -158,35 +174,40 @@ class SystemMonitor:
             cpu_count = psutil.cpu_count()
             memory_total = psutil.virtual_memory().total / (1024**3)  # GB
             logger.info(f"System info - CPU cores: {cpu_count}, Total RAM: {memory_total:.1f}GB")
-            logger.info(f"Batch size config - Base: {self.base_batch_size}, Max: {self.max_batch_size}")
-            logger.info(f"CPU thresholds - Low: {self.cpu_threshold_low}%, High: {self.cpu_threshold_high}%")
+            logger.info(
+                f"Batch size config - Base: {self.base_batch_size}, Max: {self.max_batch_size}"
+            )
+            logger.info(
+                f"CPU thresholds - Low: {self.cpu_threshold_low}%, High: {self.cpu_threshold_high}%"
+            )
         except Exception as e:
             logger.error(f"Error logging system info: {e}")
 
+
 class BatchScheduler:
     """Main scheduler class for coordinating video processing tasks.
-    
+
     The BatchScheduler is the central component that manages the entire video processing
     workflow. It coordinates file scanning, resource monitoring, thread management,
     and batch processing execution.
-    
+
     Key Responsibilities:
         - Dynamic batch size management based on system resources
         - Coordination of frame sampler and event detector threads
         - Periodic file scanning for new video content
         - Timeout handling for stalled processing jobs
         - Thread lifecycle management (start/stop/pause/resume)
-    
+
     Architecture:
         - Runs two main background threads: file scanner and batch processor
         - Manages a pool of frame sampler threads (size determined by SystemMonitor)
         - Coordinates with a single event detector thread
         - Uses threading events for inter-thread communication
-    
+
     Thread Safety:
         All database operations use RWLocks to ensure thread-safe concurrent access.
         Thread coordination is handled through threading.Event objects.
-    
+
     Attributes:
         batch_size (int): Current number of frame sampler threads
         sys_monitor (SystemMonitor): System resource monitor for dynamic sizing
@@ -195,9 +216,10 @@ class BatchScheduler:
         sampler_threads (List[threading.Thread]): List of active frame sampler threads
         detector_thread (threading.Thread): Single event detector thread
     """
+
     def __init__(self) -> None:
         """Initialize the BatchScheduler with default configuration.
-        
+
         Sets up:
             - Default batch size from configuration
             - System monitor instance
@@ -222,11 +244,11 @@ class BatchScheduler:
 
     def pause(self) -> None:
         """Pause the BatchScheduler, stopping new file processing.
-        
+
         This method pauses all scheduler activity without terminating threads.
         Existing processing will complete, but no new files will be processed
         until resume() is called.
-        
+
         Thread Safety:
             Safe to call from any thread. Uses threading.Event for coordination.
         """
@@ -235,10 +257,10 @@ class BatchScheduler:
 
     def resume(self) -> None:
         """Resume the BatchScheduler, allowing new file processing to continue.
-        
+
         This method resumes scheduler activity that was previously paused.
         File scanning and processing will continue from where it left off.
-        
+
         Thread Safety:
             Safe to call from any thread. Uses threading.Event for coordination.
         """
@@ -251,8 +273,10 @@ class BatchScheduler:
             with db_rwlock.gen_rlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("SELECT file_path, camera_name FROM file_list WHERE status = 'pending' AND is_processed = 0 ORDER BY priority DESC, created_at ASC LIMIT ?", 
-                                 (self.queue_limit,))
+                    cursor.execute(
+                        "SELECT file_path, camera_name FROM file_list WHERE status = 'pending' AND is_processed = 0 ORDER BY priority DESC, created_at ASC LIMIT ?",
+                        (self.queue_limit,),
+                    )
                     files = [(row[0], row[1]) for row in cursor.fetchall()]
             return files
         except Exception as e:
@@ -265,8 +289,14 @@ class BatchScheduler:
             with db_rwlock.gen_wlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("UPDATE file_list SET status = ?, is_processed = ? WHERE file_path = ?",
-                                 (status, 1 if status in ['completed', 'error', 'timeout'] else 0, file_path))
+                    cursor.execute(
+                        "UPDATE file_list SET status = ?, is_processed = ? WHERE file_path = ?",
+                        (
+                            status,
+                            1 if status in ["completed", "error", "timeout"] else 0,
+                            file_path,
+                        ),
+                    )
         except Exception as e:
             logger.error(f"Error updating file status for {file_path}: {e}")
 
@@ -276,7 +306,9 @@ class BatchScheduler:
             with db_rwlock.gen_wlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("SELECT file_path, created_at FROM file_list WHERE status = 'frame sampling...'")
+                    cursor.execute(
+                        "SELECT file_path, created_at FROM file_list WHERE status = 'frame sampling...'"
+                    )
 
                     now_utc = datetime.now(timezone.utc)
 
@@ -286,35 +318,47 @@ class BatchScheduler:
                         if not created_at_str:
                             # Fallback for missing timestamps
                             created_at_utc = datetime.min.replace(tzinfo=timezone.utc)
-                            logger.warning(f"Missing created_at timestamp for {file_path}, using minimum datetime")
+                            logger.warning(
+                                f"Missing created_at timestamp for {file_path}, using minimum datetime"
+                            )
                         else:
                             try:
                                 # Parse created_at timestamp
-                                if 'Z' in created_at_str or '+' in created_at_str:
+                                if "Z" in created_at_str or "+" in created_at_str:
                                     # Already has timezone info
-                                    created_at_utc = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                                    created_at_utc = datetime.fromisoformat(
+                                        created_at_str.replace("Z", "+00:00")
+                                    )
                                     # Convert to UTC if not already
                                     if created_at_utc.tzinfo != timezone.utc:
                                         created_at_utc = created_at_utc.astimezone(timezone.utc)
                                 else:
                                     # Assume naive datetime is in system timezone
                                     created_at_naive = datetime.fromisoformat(created_at_str)
-                                    created_at_utc = created_at_naive.replace(tzinfo=ZoneInfo(get_system_timezone_from_db())).astimezone(timezone.utc)
+                                    created_at_utc = created_at_naive.replace(
+                                        tzinfo=ZoneInfo(get_system_timezone_from_db())
+                                    ).astimezone(timezone.utc)
                             except (ValueError, TypeError) as e:
-                                logger.warning(f"Failed to parse created_at '{created_at_str}' for {file_path}: {e}")
+                                logger.warning(
+                                    f"Failed to parse created_at '{created_at_str}' for {file_path}: {e}"
+                                )
                                 created_at_utc = datetime.min.replace(tzinfo=timezone.utc)
-                        
+
                         # Calculate timeout in UTC
                         time_diff = (now_utc - created_at_utc).total_seconds()
-                        
+
                         if time_diff > self.timeout_seconds:
-                            cursor.execute("UPDATE file_list SET status = ?, is_processed = 1 WHERE file_path = ?", 
-                                         ('timeout', file_path))
-                            
+                            cursor.execute(
+                                "UPDATE file_list SET status = ?, is_processed = 1 WHERE file_path = ?",
+                                ("timeout", file_path),
+                            )
+
                             # Log timeout with timezone context
                             local_now = now_utc.astimezone(ZoneInfo(get_system_timezone_from_db()))
-                            local_created = created_at_utc.astimezone(ZoneInfo(get_system_timezone_from_db()))
-                            
+                            local_created = created_at_utc.astimezone(
+                                ZoneInfo(get_system_timezone_from_db())
+                            )
+
                             logger.warning(
                                 f"Timeout processing {file_path} after {self.timeout_seconds}s "
                                 f"(started: {local_created.strftime('%Y-%m-%d %H:%M:%S %Z')}, "
@@ -341,7 +385,7 @@ class BatchScheduler:
                     cursor.execute("SELECT COUNT(*) FROM file_list WHERE is_processed = 0")
                     pending_count = cursor.fetchone()[0]
 
-            is_idle = (pending_count == 0)
+            is_idle = pending_count == 0
             if is_idle:
                 logger.info("✅ System IDLE: no pending files detected")
             return is_idle
@@ -387,7 +431,9 @@ class BatchScheduler:
         """Execute system cleanup in background thread"""
         try:
             result = cleanup_service.cleanup_system_files()
-            logger.info(f"✅ System cleanup: {result['total_deleted']} files deleted, {result['total_freed_mb']:.2f} MB freed")
+            logger.info(
+                f"✅ System cleanup: {result['total_deleted']} files deleted, {result['total_freed_mb']:.2f} MB freed"
+            )
         except Exception as e:
             logger.error(f"❌ System cleanup error: {e}")
 
@@ -395,7 +441,9 @@ class BatchScheduler:
         """Execute output cleanup in background thread"""
         try:
             result = cleanup_service.cleanup_output_files()
-            logger.info(f"✅ Output cleanup: {result.get('deleted', 0)} files deleted, {result.get('freed_mb', 0):.2f} MB freed")
+            logger.info(
+                f"✅ Output cleanup: {result.get('deleted', 0)} files deleted, {result.get('freed_mb', 0):.2f} MB freed"
+            )
         except Exception as e:
             logger.error(f"❌ Output cleanup error: {e}")
 
@@ -453,16 +501,24 @@ class BatchScheduler:
         logger.info("Starting periodic scan")
         while self.running:
             try:
-                logger.debug("Checking periodic scan, running=%s, paused=%s", self.running, not self.pause_event.is_set())
+                logger.debug(
+                    "Checking periodic scan, running=%s, paused=%s",
+                    self.running,
+                    not self.pause_event.is_set(),
+                )
                 self.pause_event.wait()
                 with db_rwlock.gen_rlock():
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
-                        cursor.execute("SELECT COUNT(*) FROM file_list WHERE status = 'pending' AND is_processed = 0")
+                        cursor.execute(
+                            "SELECT COUNT(*) FROM file_list WHERE status = 'pending' AND is_processed = 0"
+                        )
                         pending_count = cursor.fetchone()[0]
 
                 if pending_count >= self.queue_limit:
-                    logger.warning(f"Queue full ({pending_count}/{self.queue_limit}), skipping file scan")
+                    logger.warning(
+                        f"Queue full ({pending_count}/{self.queue_limit}), skipping file scan"
+                    )
                 else:
                     run_file_scan("default")
                     frame_sampler_event.set()
@@ -520,9 +576,13 @@ class BatchScheduler:
 
             scan_thread = threading.Thread(target=self.scan_files)
             batch_thread = threading.Thread(target=self.run_batch)
-            idle_monitor_thread = threading.Thread(target=self.monitor_system_idle, name="IdleMonitor")
+            idle_monitor_thread = threading.Thread(
+                target=self.monitor_system_idle, name="IdleMonitor"
+            )
             idle_monitor_thread.daemon = True  # Exit when main thread exits
-            cleanup_monitor_thread = threading.Thread(target=self.monitor_cleanup, name="CleanupMonitor")
+            cleanup_monitor_thread = threading.Thread(
+                target=self.monitor_cleanup, name="CleanupMonitor"
+            )
             cleanup_monitor_thread.daemon = True  # Exit when main thread exits
 
             scan_thread.start()
@@ -535,7 +595,9 @@ class BatchScheduler:
                 self.retry_thread = start_retry_processor()
                 logger.info("✅ PASS 3 retry processor started")
 
-            logger.info(f"BatchScheduler started, batch_size={self.batch_size}, scan_interval={self.scan_interval}")
+            logger.info(
+                f"BatchScheduler started, batch_size={self.batch_size}, scan_interval={self.scan_interval}"
+            )
 
     def stop(self):
         """Stop BatchScheduler safely."""
@@ -570,5 +632,5 @@ class BatchScheduler:
                     logger.warning("Detector thread did not stop gracefully")
             except Exception as e:
                 logger.warning(f"Error stopping detector thread: {e}")
-        
+
         logger.info("BatchScheduler stopped")

@@ -1,6 +1,7 @@
 import sqlite3
 import os
 
+
 # Hàm tìm thư mục gốc dự án dựa trên tên thư mục
 def find_project_root(start_path):
     current_path = os.path.abspath(start_path)
@@ -35,8 +36,10 @@ def find_project_root(start_path):
 
     raise ValueError("Could not find project root (V_Track directory or /app)")
 
+
 # Use centralized path configuration
 from modules.path_utils import get_paths
+
 paths = get_paths()
 BASE_DIR = paths["BASE_DIR"]
 DEFAULT_DB_PATH = paths["DB_PATH"]
@@ -47,6 +50,7 @@ print(f"DEBUG db_utils.py: __file__={__file__}, BASE_DIR={BASE_DIR}, DB_PATH={DE
 # This prevents creating wrong paths during early imports when deployment mode might not be finalized
 _db_initialized = False
 _cached_db_path = None
+
 
 def _ensure_db_initialized():
     """Lazy initialization: Set up database directory when first needed"""
@@ -59,6 +63,7 @@ def _ensure_db_initialized():
     _db_initialized = True
     _cached_db_path = DEFAULT_DB_PATH
     return _cached_db_path
+
 
 # Hàm lấy DB_PATH từ processing_config
 def get_db_path():
@@ -78,6 +83,7 @@ def get_db_path():
     except Exception as e:
         print(f"Error getting DB_PATH from database: {e}")
         return DEFAULT_DB_PATH
+
 
 def get_db_connection():
     """Get database connection, ensuring database directory and file exist"""

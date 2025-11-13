@@ -13,12 +13,13 @@ from modules.path_utils import get_logs_dir, is_development_mode
 # Used for correlating logs from the same execution session
 _SESSION_ID = str(uuid.uuid4())[:8]  # Short 8-char unique ID
 
+
 class LogSizeFilter(logging.Filter):
-    def __init__(self, log_file, max_size=500*1024):
+    def __init__(self, log_file, max_size=500 * 1024):
         super().__init__()
         self.log_file = log_file
         self.max_size = max_size
-    
+
     def filter(self, record):
         if os.path.exists(self.log_file) and os.path.getsize(self.log_file) > self.max_size:
             if record.levelno < logging.INFO:
@@ -27,12 +28,14 @@ class LogSizeFilter(logging.Filter):
             return True
         return True
 
+
 class ContextAdapter(logging.LoggerAdapter):
     def process(self, msg, kwargs):
         if self.extra:
             context = " ".join(f"{k}={v}" for k, v in self.extra.items())
             return f"[{context}] {msg}", kwargs
         return msg, kwargs
+
 
 class SessionFilter(logging.Filter):
     """Filter that adds session ID to every log record.
@@ -48,6 +51,7 @@ class SessionFilter(logging.Filter):
     def filter(self, record):
         record.session_id = self.session_id
         return True
+
 
 class RateLimitFilter(logging.Filter):
     """Rate limiting filter to prevent log flooding.
@@ -68,7 +72,7 @@ class RateLimitFilter(logging.Filter):
         self.rate = rate
         self.per = per
         self.burst = burst
-        self.message_counts = defaultdict(lambda: {'count': 0, 'reset_time': time.time()})
+        self.message_counts = defaultdict(lambda: {"count": 0, "reset_time": time.time()})
         self.suppressed_counts = defaultdict(int)
 
     def filter(self, record):
@@ -79,21 +83,22 @@ class RateLimitFilter(logging.Filter):
         msg_data = self.message_counts[key]
 
         # Reset counter if time window expired
-        if now - msg_data['reset_time'] > self.per:
+        if now - msg_data["reset_time"] > self.per:
             # Log suppressed count before reset
             if self.suppressed_counts[key] > 0:
                 record.msg = f"[RATE LIMIT] Suppressed {self.suppressed_counts[key]} identical messages in last {self.per}s: {record.msg}"
                 self.suppressed_counts[key] = 0
-            msg_data['count'] = 0
-            msg_data['reset_time'] = now
+            msg_data["count"] = 0
+            msg_data["reset_time"] = now
 
         # Check rate limit
-        if msg_data['count'] < self.rate or msg_data['count'] < self.burst:
-            msg_data['count'] += 1
+        if msg_data["count"] < self.rate or msg_data["count"] < self.burst:
+            msg_data["count"] += 1
             return True
         else:
             self.suppressed_counts[key] += 1
             return False  # Suppress this log
+
 
 class ModuleFilter(logging.Filter):
     """Filter logs by module name patterns.
@@ -133,6 +138,7 @@ class ModuleFilter(logging.Filter):
                 return False
 
         return True
+
 
 class DeduplicationFilter(logging.Filter):
     """Deduplication filter to remove consecutive identical log messages.
@@ -175,6 +181,7 @@ class DeduplicationFilter(logging.Filter):
 
         return True
 
+
 class SafeRotatingFileHandler(RotatingFileHandler):
     """Enhanced RotatingFileHandler with emergency failsafe.
 
@@ -182,8 +189,14 @@ class SafeRotatingFileHandler(RotatingFileHandler):
     Prevents runaway log files from filling the disk.
     """
 
-    def __init__(self, *args, maxBytes=500*1024, backupCount=5,
-                 emergency_max_size=50*1024*1024, **kwargs):
+    def __init__(
+        self,
+        *args,
+        maxBytes=500 * 1024,
+        backupCount=5,
+        emergency_max_size=50 * 1024 * 1024,
+        **kwargs,
+    ):
         """Initialize safe rotating handler.
 
         Args:
@@ -214,9 +227,12 @@ class SafeRotatingFileHandler(RotatingFileHandler):
             # If rotation fails 3 times, disable file logging
             if self.rotation_failures > 3:
                 self.close()
-                print(f"🚨 LOGGING FAILURE: Disabled file logging after 3 failures. Error: {e}",
-                      file=sys.stderr)
+                print(
+                    f"🚨 LOGGING FAILURE: Disabled file logging after 3 failures. Error: {e}",
+                    file=sys.stderr,
+                )
                 # Don't raise - allow app to continue
+
 
 def cleanup_old_logs(log_dir, app_name, keep_count=None, keep_days=None):
     """Auto-cleanup old log files to prevent disk space issues.
@@ -261,6 +277,7 @@ def cleanup_old_logs(log_dir, app_name, keep_count=None, keep_days=None):
         # Don't fail application if cleanup fails
         print(f"Warning: Log cleanup failed: {e}", file=sys.stderr)
 
+
 def setup_logging(base_dir, app_name="app", log_level=logging.INFO):
     """Setup application logging with environment-aware configuration.
 
@@ -286,7 +303,7 @@ def setup_logging(base_dir, app_name="app", log_level=logging.INFO):
     # === ENVIRONMENT-AWARE FILENAME ===
     if is_dev:
         # Development: Per-run files with timestamp + session ID
-        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         log_file = os.path.join(log_dir, f"{app_name}_{timestamp}_s-{_SESSION_ID}.log")
 
         # Create/update 'latest.log' symlink to current run
@@ -314,21 +331,23 @@ def setup_logging(base_dir, app_name="app", log_level=logging.INFO):
     # Use SafeRotatingFileHandler with emergency protection
     file_handler = SafeRotatingFileHandler(
         log_file,
-        maxBytes=500*1024,           # Normal rotation at 500KB
-        backupCount=5,                # Keep 5 backup files
-        emergency_max_size=50*1024*1024  # Hard limit at 50MB
+        maxBytes=500 * 1024,  # Normal rotation at 500KB
+        backupCount=5,  # Keep 5 backup files
+        emergency_max_size=50 * 1024 * 1024,  # Hard limit at 50MB
     )
 
-    file_handler.setFormatter(logging.Formatter(
-        '%(asctime)sZ [%(session_id)s] [%(levelname)s] %(name)s: %(message)s',
-        datefmt='%Y-%m-%dT%H:%M:%S'
-    ))
+    file_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)sZ [%(session_id)s] [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S",
+        )
+    )
 
     # Add multi-layer protection filters
-    file_handler.addFilter(SessionFilter(_SESSION_ID))                     # Add session ID to all logs
+    file_handler.addFilter(SessionFilter(_SESSION_ID))  # Add session ID to all logs
     file_handler.addFilter(RateLimitFilter(rate=100, per=60, burst=200))  # 100 msgs/min
-    file_handler.addFilter(DeduplicationFilter(max_duplicates=5))          # Max 5 duplicates
-    file_handler.addFilter(LogSizeFilter(log_file))                        # Legacy size check
+    file_handler.addFilter(DeduplicationFilter(max_duplicates=5))  # Max 5 duplicates
+    file_handler.addFilter(LogSizeFilter(log_file))  # Legacy size check
     file_handler.setLevel(log_level)
 
     # Add file handler to root logger
@@ -337,18 +356,23 @@ def setup_logging(base_dir, app_name="app", log_level=logging.INFO):
 
     # Add console handler for ERROR level only (emergency fallback)
     console_handler = logging.StreamHandler(sys.stderr)
-    console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+    console_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
     console_handler.setLevel(logging.ERROR)
     root_logger.addHandler(console_handler)
 
     # Log initialization message with environment info
     mode = "DEV" if is_dev else "PROD"
     cleanup_info = "keep:50" if is_dev else "retain:30d"
-    root_logger.info(f"✅ Logging [{mode}] session:{_SESSION_ID} file:{os.path.basename(log_file)} (Rate:100/min, Dedup:5x, {cleanup_info})")
+    root_logger.info(
+        f"✅ Logging [{mode}] session:{_SESSION_ID} file:{os.path.basename(log_file)} (Rate:100/min, Dedup:5x, {cleanup_info})"
+    )
 
     return log_file
 
-def setup_dual_logging(base_dir, app_name="app", general_level=logging.INFO, event_level=logging.DEBUG):
+
+def setup_dual_logging(
+    base_dir, app_name="app", general_level=logging.INFO, event_level=logging.DEBUG
+):
     """Setup 2 log files riêng biệt:
     1. app.log - Tổng quan app (all modules, configurable level)
     2. event_processing.log - Focus event processing (filtered modules, DEBUG level)
@@ -376,7 +400,9 @@ def setup_dual_logging(base_dir, app_name="app", general_level=logging.INFO, eve
 
     # === LOG 1: app.log (General overview) ===
     if is_dev:
-        app_log_filename = f"{app_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{_SESSION_ID}.log"
+        app_log_filename = (
+            f"{app_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{_SESSION_ID}.log"
+        )
     else:
         app_log_filename = f"{app_name}_{datetime.now().strftime('%Y%m%d')}.log"
 
@@ -384,15 +410,15 @@ def setup_dual_logging(base_dir, app_name="app", general_level=logging.INFO, eve
 
     app_handler = SafeRotatingFileHandler(
         app_log_path,
-        maxBytes=500*1024,  # 500KB
+        maxBytes=500 * 1024,  # 500KB
         backupCount=50 if is_dev else 30,
-        emergency_max_size=50*1024*1024  # 50MB emergency
+        emergency_max_size=50 * 1024 * 1024,  # 50MB emergency
     )
     app_handler.setLevel(general_level)
 
     app_formatter = logging.Formatter(
-        fmt='%(asctime)s [%(session_id)s] [%(levelname)s] %(name)s: %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        fmt="%(asctime)s [%(session_id)s] [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
     app_handler.setFormatter(app_formatter)
 
@@ -405,7 +431,9 @@ def setup_dual_logging(base_dir, app_name="app", general_level=logging.INFO, eve
 
     # === LOG 2: event_processing.log (Focus on event detection) ===
     if is_dev:
-        event_log_filename = f"event_processing_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{_SESSION_ID}.log"
+        event_log_filename = (
+            f"event_processing_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{_SESSION_ID}.log"
+        )
     else:
         event_log_filename = f"event_processing_{datetime.now().strftime('%Y%m%d')}.log"
 
@@ -413,30 +441,34 @@ def setup_dual_logging(base_dir, app_name="app", general_level=logging.INFO, eve
 
     event_handler = SafeRotatingFileHandler(
         event_log_path,
-        maxBytes=500*1024,  # 500KB
+        maxBytes=500 * 1024,  # 500KB
         backupCount=30 if is_dev else 15,
-        emergency_max_size=50*1024*1024
+        emergency_max_size=50 * 1024 * 1024,
     )
     event_handler.setLevel(event_level)
 
     event_formatter = logging.Formatter(
-        fmt='%(asctime)s [%(session_id)s] [%(levelname)s] %(name)s:%(lineno)d: %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        fmt="%(asctime)s [%(session_id)s] [%(levelname)s] %(name)s:%(lineno)d: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
     event_handler.setFormatter(event_formatter)
 
     # Add filters - ONLY log event processing modules
     event_handler.addFilter(SessionFilter(_SESSION_ID))
-    event_handler.addFilter(ModuleFilter(include_modules=[
-        'modules.scheduler.program_runner',
-        'modules.scheduler',
-        'modules.technician.frame_sampler_trigger',
-        'modules.technician.frame_sampler_no_trigger',
-        'modules.technician.event_detector',
-        'event_detector',
-        '__main__',
-        'program_runner',
-    ]))
+    event_handler.addFilter(
+        ModuleFilter(
+            include_modules=[
+                "modules.scheduler.program_runner",
+                "modules.scheduler",
+                "modules.technician.frame_sampler_trigger",
+                "modules.technician.frame_sampler_no_trigger",
+                "modules.technician.event_detector",
+                "event_detector",
+                "__main__",
+                "program_runner",
+            ]
+        )
+    )
     event_handler.addFilter(RateLimitFilter(rate=200, per=60))  # Higher rate for debug
     event_handler.addFilter(DeduplicationFilter(max_duplicates=3))
 
@@ -445,7 +477,7 @@ def setup_dual_logging(base_dir, app_name="app", general_level=logging.INFO, eve
     # === Console Handler (WARNING+ only) ===
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.WARNING)
-    console_formatter = logging.Formatter('%(levelname)s: %(message)s')
+    console_formatter = logging.Formatter("%(levelname)s: %(message)s")
     console_handler.setFormatter(console_formatter)
     root_logger.addHandler(console_handler)
 
@@ -472,19 +504,23 @@ def setup_dual_logging(base_dir, app_name="app", general_level=logging.INFO, eve
             pass
 
     # === Cleanup old logs (in application/ subfolder) ===
-    cleanup_old_logs(app_log_dir, app_name, keep_count=50 if is_dev else None, keep_days=None if is_dev else 30)
-    cleanup_old_logs(app_log_dir, "event_processing", keep_count=30 if is_dev else None, keep_days=None if is_dev else 15)
+    cleanup_old_logs(
+        app_log_dir, app_name, keep_count=50 if is_dev else None, keep_days=None if is_dev else 30
+    )
+    cleanup_old_logs(
+        app_log_dir,
+        "event_processing",
+        keep_count=30 if is_dev else None,
+        keep_days=None if is_dev else 15,
+    )
 
     print(f"📋 Dual logging initialized:", file=sys.stderr)
     print(f"   App log: {app_log_path}", file=sys.stderr)
     print(f"   Event log: {event_log_path}", file=sys.stderr)
     print(f"   Session ID: {_SESSION_ID}", file=sys.stderr)
 
-    return {
-        "app_log": app_log_path,
-        "event_log": event_log_path,
-        "session_id": _SESSION_ID
-    }
+    return {"app_log": app_log_path, "event_log": event_log_path, "session_id": _SESSION_ID}
+
 
 def get_session_id():
     """Get the current session ID.
@@ -493,6 +529,7 @@ def get_session_id():
         str: 8-character session ID for the current application run
     """
     return _SESSION_ID
+
 
 def get_logger(module_name, context=None, separate_log=None):
     """Get a logger with optional context and separate log file.
@@ -512,16 +549,19 @@ def get_logger(module_name, context=None, separate_log=None):
     if separate_log:
         # Use /var/logs directory
         log_dir = get_logs_dir()
-        log_file = os.path.join(log_dir, f"{separate_log}_{datetime.now().strftime('%Y-%m-%d')}.log")
+        log_file = os.path.join(
+            log_dir, f"{separate_log}_{datetime.now().strftime('%Y-%m-%d')}.log"
+        )
 
-        file_handler = RotatingFileHandler(log_file, maxBytes=500*1024, backupCount=5)
-        file_handler.setFormatter(logging.Formatter(
-            '%(asctime)s,%(msecs)03d - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        ))
+        file_handler = RotatingFileHandler(log_file, maxBytes=500 * 1024, backupCount=5)
+        file_handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s,%(msecs)03d - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+            )
+        )
 
         # Add protection for separate logs (lower limits than main log)
-        file_handler.addFilter(RateLimitFilter(rate=50, per=60))       # 50 msgs/min
+        file_handler.addFilter(RateLimitFilter(rate=50, per=60))  # 50 msgs/min
         file_handler.addFilter(DeduplicationFilter(max_duplicates=3))  # Max 3 duplicates
 
         file_handler.setLevel(logging.INFO)

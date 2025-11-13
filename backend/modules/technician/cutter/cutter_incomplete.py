@@ -3,6 +3,7 @@ import subprocess
 from .cutter_utils import generate_merged_filename, generate_output_filename
 from modules.path_utils import get_tmp_dir
 
+
 def cut_incomplete_event(event, video_buffer, video_length, output_file):
     """Cut video for incomplete event (missing ts or te)."""
     ts = event.get("ts")
@@ -32,21 +33,37 @@ def cut_incomplete_event(event, video_buffer, video_length, output_file):
     try:
         cmd = [
             "ffmpeg",
-            "-i", video_file,
-            "-ss", str(start_time),
-            "-t", str(duration),
-            "-c:v", "copy",
-            "-c:a", "copy",
+            "-i",
+            video_file,
+            "-ss",
+            str(start_time),
+            "-t",
+            str(duration),
+            "-c:v",
+            "copy",
+            "-c:a",
+            "copy",
             "-y",
-            output_file
+            output_file,
         ]
         subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         print(f"Video cut: {output_file}")
 
         # Log length of incomplete file just created
         probe = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", output_file],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                output_file,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
         duration = float(probe.stdout.strip())
         print(f"Incomplete file {output_file} length: {duration} seconds")
@@ -60,7 +77,17 @@ def cut_incomplete_event(event, video_buffer, video_length, output_file):
         print(f"Unknown error: {e}")
         return False
 
-def merge_incomplete_events(event_a, event_b, video_buffer, video_length_a, video_length_b, output_dir, max_packing_time, brand_name="Alan"):
+
+def merge_incomplete_events(
+    event_a,
+    event_b,
+    video_buffer,
+    video_length_a,
+    video_length_b,
+    output_dir,
+    max_packing_time,
+    brand_name="Alan",
+):
     """Merge two incomplete events (A has ts, B has te) and create merged file with optimized name."""
     video_file_a = event_a.get("video_file")
     video_file_b = event_b.get("video_file")
@@ -77,12 +104,16 @@ def merge_incomplete_events(event_a, event_b, video_buffer, video_length_a, vide
 
     # If no pre-cut file, cut immediately and save to temp_clips_dir
     if not temp_file_a or not os.path.exists(temp_file_a):
-        temp_file_a = os.path.join(temp_clips_dir, f"temp_a_{event_a.get('event_id')}_incomplete.mp4")
+        temp_file_a = os.path.join(
+            temp_clips_dir, f"temp_a_{event_a.get('event_id')}_incomplete.mp4"
+        )
         if not cut_incomplete_event(event_a, video_buffer, video_length_a, temp_file_a):
             print(f"Error: Cannot cut temporary file for event {event_a.get('event_id')}")
             return None
     if not temp_file_b or not os.path.exists(temp_file_b):
-        temp_file_b = os.path.join(temp_clips_dir, f"temp_b_{event_b.get('event_id')}_incomplete.mp4")
+        temp_file_b = os.path.join(
+            temp_clips_dir, f"temp_b_{event_b.get('event_id')}_incomplete.mp4"
+        )
         if not cut_incomplete_event(event_b, video_buffer, video_length_b, temp_file_b):
             print(f"Error: Cannot cut temporary file for event {event_b.get('event_id')}")
             return None
@@ -117,17 +148,21 @@ def merge_incomplete_events(event_a, event_b, video_buffer, video_length_a, vide
     # Concatenate videos A and B
     concat_list_file = os.path.join(get_tmp_dir(), f"concat_list_{event_a.get('event_id')}.txt")
     try:
-        with open(concat_list_file, 'w') as f:
+        with open(concat_list_file, "w") as f:
             f.write(f"file '{temp_file_a}'\nfile '{temp_file_b}'\n")
 
         cmd_concat = [
             "ffmpeg",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", concat_list_file,
-            "-c", "copy",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            concat_list_file,
+            "-c",
+            "copy",
             "-y",
-            output_file
+            output_file,
         ]
         subprocess.run(cmd_concat, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -135,8 +170,19 @@ def merge_incomplete_events(event_a, event_b, video_buffer, video_length_a, vide
 
         # Log length of merged file
         probe = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", output_file],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                output_file,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
         duration = float(probe.stdout.strip())
         print(f"Merged file {output_file} length: {duration} seconds")

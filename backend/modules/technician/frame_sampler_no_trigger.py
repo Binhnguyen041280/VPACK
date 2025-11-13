@@ -12,17 +12,25 @@ from datetime import datetime, timezone, timedelta
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import frame_sampler_event, db_rwlock
 from zoneinfo import ZoneInfo
+
 # Removed video_timezone_detector - using simple timezone operations
 import math
 from modules.config.logging_config import get_logger
 
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "models", "wechat_qr")
+BASE_DIR = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
+MODEL_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "models",
+    "wechat_qr",
+)
 DETECT_PROTO = os.path.join(MODEL_DIR, "detect.prototxt")
 DETECT_MODEL = os.path.join(MODEL_DIR, "detect.caffemodel")
 SR_PROTO = os.path.join(MODEL_DIR, "sr.prototxt")
 SR_MODEL = os.path.join(MODEL_DIR, "sr.caffemodel")
+
 
 class FrameSamplerNoTrigger:
     def __init__(self):
@@ -38,7 +46,7 @@ class FrameSamplerNoTrigger:
                 static_image_mode=False,
                 max_num_hands=2,
                 min_detection_confidence=0.5,
-                min_tracking_confidence=0.5
+                min_tracking_confidence=0.5,
             )
         except AttributeError as e:
             self.logger.error(f"MediaPipe import error: {e}")
@@ -79,17 +87,31 @@ class FrameSamplerNoTrigger:
                 self.output_path = result[0] if result else os.path.join(BASE_DIR, "output_clips")
                 # Use var/logs for frame processing logs (application-managed)
                 from modules.path_utils import get_logs_dir
+
                 self.log_dir = os.path.join(get_logs_dir(), "frame_processing")
                 os.makedirs(self.log_dir, exist_ok=True)
                 # Use zoneinfo for user timezone instead of hardcoded parsing
                 from modules.utils.simple_timezone import get_system_timezone_from_db
+
                 system_tz_str = get_system_timezone_from_db()
                 self.video_timezone = ZoneInfo(system_tz_str)
                 self.logger.info(f"Using system timezone from config: {system_tz_str}")
-                cursor.execute("SELECT frame_rate, frame_interval, min_packing_time, motion_threshold, stable_duration_sec FROM processing_config WHERE id = 1")
+                cursor.execute(
+                    "SELECT frame_rate, frame_interval, min_packing_time, motion_threshold, stable_duration_sec FROM processing_config WHERE id = 1"
+                )
                 result = cursor.fetchone()
-                self.fps, self.frame_interval, self.min_packing_time, self.motion_threshold, self.stable_duration_sec = result if result else (30, 5, 3, 0.1, 1.0)
-            self.logger.info(f"Config loaded: video_root={self.video_root}, output_path={self.output_path}, timezone={self.video_timezone}, fps={self.fps}, frame_interval={self.frame_interval}, min_packing_time={self.min_packing_time}, motion_threshold={self.motion_threshold}, stable_duration_sec={self.stable_duration_sec}")
+                (
+                    self.fps,
+                    self.frame_interval,
+                    self.min_packing_time,
+                    self.motion_threshold,
+                    self.stable_duration_sec,
+                ) = (
+                    result if result else (30, 5, 3, 0.1, 1.0)
+                )
+            self.logger.info(
+                f"Config loaded: video_root={self.video_root}, output_path={self.output_path}, timezone={self.video_timezone}, fps={self.fps}, frame_interval={self.frame_interval}, min_packing_time={self.min_packing_time}, motion_threshold={self.motion_threshold}, stable_duration_sec={self.stable_duration_sec}"
+            )
 
     def get_packing_area(self, camera_name):
         """Get packing area ROI for traditional method.
@@ -103,11 +125,14 @@ class FrameSamplerNoTrigger:
         with db_rwlock.gen_rlock():
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT packing_area
                     FROM packing_profiles
                     WHERE profile_name = ?
-                """, (camera_name,))
+                """,
+                    (camera_name,),
+                )
                 result = cursor.fetchone()
 
         if not result or not result[0]:
@@ -128,8 +153,8 @@ class FrameSamplerNoTrigger:
 
         try:
             # Handle tuple string format: "(x,y,w,h)"
-            if isinstance(roi_raw, str) and roi_raw.startswith('(') and roi_raw.endswith(')'):
-                x, y, w, h = map(int, roi_raw.strip('()').split(','))
+            if isinstance(roi_raw, str) and roi_raw.startswith("(") and roi_raw.endswith(")"):
+                x, y, w, h = map(int, roi_raw.strip("()").split(","))
                 return (x, y, w, h)
 
             # Handle JSON formats
@@ -142,8 +167,12 @@ class FrameSamplerNoTrigger:
 
             # JSON object: {"x": x, "y": y, "w": w, "h": h}
             if isinstance(parsed, dict):
-                return (parsed.get('x', 0), parsed.get('y', 0),
-                       parsed.get('w', 0), parsed.get('h', 0))
+                return (
+                    parsed.get("x", 0),
+                    parsed.get("y", 0),
+                    parsed.get("w", 0),
+                    parsed.get("h", 0),
+                )
 
             self.logger.error(f"Invalid {field_name} format for {camera_name}: {roi_raw}")
             return None
@@ -154,7 +183,16 @@ class FrameSamplerNoTrigger:
 
     def get_video_duration(self, video_file):
         try:
-            cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", video_file]
+            cmd = [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                video_file,
+            ]
             result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             return float(result.stdout.strip())
         except Exception:
@@ -165,7 +203,9 @@ class FrameSamplerNoTrigger:
         with db_rwlock.gen_rlock():
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT file_path FROM file_list WHERE is_processed = 0 AND status != 'xong' ORDER BY priority DESC, created_at ASC")
+                cursor.execute(
+                    "SELECT file_path FROM file_list WHERE is_processed = 0 AND status != 'xong' ORDER BY priority DESC, created_at ASC"
+                )
                 video_files = [row[0] for row in cursor.fetchall()]
         if not video_files:
             self.logger.info("No video files found with is_processed = 0 and status != 'xong'.")
@@ -180,7 +220,9 @@ class FrameSamplerNoTrigger:
             texts, _ = self.qr_detector.detectAndDecode(frame)
             for text in texts:
                 if text and text != "TimeGo":
-                    self.logger.info(f"Second {round((frame_count - 1) / self.fps)}: QR texts={texts}, mvd={text}")
+                    self.logger.info(
+                        f"Second {round((frame_count - 1) / self.fps)}: QR texts={texts}, mvd={text}"
+                    )
                     return text
             return ""
         except Exception as e:
@@ -194,7 +236,11 @@ class FrameSamplerNoTrigger:
             # Process frame with MediaPipe Hands
             results = self.hands.process(rgb_frame)
             # Return True if hand landmarks are detected
-            return bool(results.multi_hand_landmarks) if results and hasattr(results, 'multi_hand_landmarks') else False
+            return (
+                bool(results.multi_hand_landmarks)
+                if results and hasattr(results, "multi_hand_landmarks")
+                else False
+            )
         except Exception as e:
             self.logger.error(f"Error in hand detection: {str(e)}")
             return False
@@ -229,8 +275,21 @@ class FrameSamplerNoTrigger:
         """
         try:
             # Primary: Read metadata using ffprobe
-            result = subprocess.check_output(['ffprobe', '-v', 'quiet', '-show_entries', 'format_tags=creation_time', '-of', 'default=noprint_wrappers=1:nokey=1', video_file])
-            utc_time = datetime.strptime(result.decode().strip(), '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
+            result = subprocess.check_output(
+                [
+                    "ffprobe",
+                    "-v",
+                    "quiet",
+                    "-show_entries",
+                    "format_tags=creation_time",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    video_file,
+                ]
+            )
+            utc_time = datetime.strptime(result.decode().strip(), "%Y-%m-%dT%H:%M:%S.%fZ").replace(
+                tzinfo=timezone.utc
+            )
             local_time = utc_time.astimezone(self.video_timezone)
             self.logger.info(f"Video start time from metadata: {local_time}")
             return local_time
@@ -239,8 +298,13 @@ class FrameSamplerNoTrigger:
 
             # Fallback 1: exiftool CreateDate
             try:
-                result = subprocess.check_output(['exiftool', '-CreateDate', '-d', '%Y-%m-%d %H:%M:%S', video_file])
-                naive_time = datetime.strptime(result.decode().split('CreateDate')[1].strip().split('\n')[0].strip(), '%Y-%m-%d %H:%M:%S')
+                result = subprocess.check_output(
+                    ["exiftool", "-CreateDate", "-d", "%Y-%m-%d %H:%M:%S", video_file]
+                )
+                naive_time = datetime.strptime(
+                    result.decode().split("CreateDate")[1].strip().split("\n")[0].strip(),
+                    "%Y-%m-%d %H:%M:%S",
+                )
                 local_time = naive_time.replace(tzinfo=self.video_timezone)
                 self.logger.info(f"Video start time from exiftool CreateDate: {local_time}")
                 return local_time
@@ -249,14 +313,20 @@ class FrameSamplerNoTrigger:
 
                 # Fallback 2: exiftool FileCreateDate
                 try:
-                    result = subprocess.check_output(['exiftool', '-FileCreateDate', '-d', '%Y-%m-%d %H:%M:%S', video_file])
-                    naive_time = datetime.strptime(result.decode().split('FileCreateDate')[1].strip().split('\n')[0].strip(), '%Y-%m-%d %H:%M:%S')
+                    result = subprocess.check_output(
+                        ["exiftool", "-FileCreateDate", "-d", "%Y-%m-%d %H:%M:%S", video_file]
+                    )
+                    naive_time = datetime.strptime(
+                        result.decode().split("FileCreateDate")[1].strip().split("\n")[0].strip(),
+                        "%Y-%m-%d %H:%M:%S",
+                    )
                     local_time = naive_time.replace(tzinfo=self.video_timezone)
                     self.logger.info(f"Video start time from exiftool FileCreateDate: {local_time}")
                     return local_time
                 except (subprocess.CalledProcessError, IndexError) as e:
                     # Last resort: filesystem ctime
                     import os
+
                     self.logger.warning(f"All metadata methods failed: {e}, using filesystem ctime")
                     file_timestamp = os.path.getctime(video_file)
                     local_time = datetime.fromtimestamp(file_timestamp, tz=self.video_timezone)
@@ -267,10 +337,12 @@ class FrameSamplerNoTrigger:
         while True:
             log_file, entry, timestamp = self.log_queue.get()
             with threading.Lock():
-                mode = 'w' if not os.path.exists(log_file) else 'a'
+                mode = "w" if not os.path.exists(log_file) else "a"
                 with open(log_file, mode) as f:
-                    if mode == 'w':
-                        f.write(f"# Start: {timestamp['start']}, End: {timestamp['end']}, Start_Time: {timestamp['start_time']}, Camera_Name: {timestamp['camera']}, Video_File: {timestamp['video']}\n")
+                    if mode == "w":
+                        f.write(
+                            f"# Start: {timestamp['start']}, End: {timestamp['end']}, Start_Time: {timestamp['start_time']}, Camera_Name: {timestamp['camera']}, Video_File: {timestamp['video']}\n"
+                        )
                     f.write(f"{entry}\n")
                     f.flush()
             self.log_queue.task_done()
@@ -288,7 +360,9 @@ class FrameSamplerNoTrigger:
         with db_rwlock.gen_rlock():
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT program_type FROM file_list WHERE file_path = ?", (video_file,))
+                cursor.execute(
+                    "SELECT program_type FROM file_list WHERE file_path = ?", (video_file,)
+                )
                 result = cursor.fetchone()
                 program_type = result[0] if result and result[0] else "default"
 
@@ -299,20 +373,25 @@ class FrameSamplerNoTrigger:
             # First Run & Default: Use camera name folder
             return os.path.join(self.log_dir, camera_name)
 
-    def _update_log_file(self, log_file, start_second, end_second, start_time, camera_name, video_file):
+    def _update_log_file(
+        self, log_file, start_second, end_second, start_time, camera_name, video_file
+    ):
         timestamp = {
-            'start': start_second,
-            'end': end_second,
-            'start_time': start_time.strftime('%Y-%m-%d %H:%M:%S'),
-            'camera': camera_name,
-            'video': video_file
+            "start": start_second,
+            "end": end_second,
+            "start_time": start_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "camera": camera_name,
+            "video": video_file,
         }
         with db_rwlock.gen_wlock():
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT 1 FROM processed_logs WHERE log_file = ?", (log_file,))
                 if not cursor.fetchone():
-                    cursor.execute("INSERT INTO processed_logs (log_file, is_processed) VALUES (?, 0)", (log_file,))
+                    cursor.execute(
+                        "INSERT INTO processed_logs (log_file, is_processed) VALUES (?, 0)",
+                        (log_file,),
+                    )
         return lambda entry, ts: self.log_queue.put((log_file, f"{ts},{entry}", timestamp))
 
     def run(self):
@@ -324,14 +403,29 @@ class FrameSamplerNoTrigger:
                 frame_sampler_event.clear()
                 continue
             for video_file in video_files:
-                log_file = self.process_video(video_file, self.video_lock, self.get_packing_area, self.process_frame, self.frame_interval)
+                log_file = self.process_video(
+                    video_file,
+                    self.video_lock,
+                    self.get_packing_area,
+                    self.process_frame,
+                    self.frame_interval,
+                )
                 if log_file:
                     self.logger.info(f"Completed processing video {video_file}, log at {log_file}")
                 else:
                     self.logger.error(f"Failed to process video {video_file}")
             frame_sampler_event.clear()
 
-    def process_video(self, video_file, video_lock, get_packing_area_func, process_frame_func, frame_interval, start_time=0, end_time=None):
+    def process_video(
+        self,
+        video_file,
+        video_lock,
+        get_packing_area_func,
+        process_frame_func,
+        frame_interval,
+        start_time=0,
+        end_time=None,
+    ):
         with video_lock:
             self.logger.info(f"Processing video: {video_file} from {start_time}s to {end_time}s")
             if not os.path.exists(video_file):
@@ -339,13 +433,21 @@ class FrameSamplerNoTrigger:
                 with db_rwlock.gen_wlock():
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
-                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
+                        cursor.execute(
+                            "UPDATE file_list SET status = ? WHERE file_path = ?",
+                            ("lỗi", video_file),
+                        )
                 return None
             with db_rwlock.gen_wlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("đang frame sampler ...", video_file))
-                    cursor.execute("SELECT camera_name FROM file_list WHERE file_path = ?", (video_file,))
+                    cursor.execute(
+                        "UPDATE file_list SET status = ? WHERE file_path = ?",
+                        ("đang frame sampler ...", video_file),
+                    )
+                    cursor.execute(
+                        "SELECT camera_name FROM file_list WHERE file_path = ?", (video_file,)
+                    )
                     result = cursor.fetchone()
                     camera_name = result[0] if result and result[0] else "CamTest"
             video = cv2.VideoCapture(video_file)
@@ -354,7 +456,10 @@ class FrameSamplerNoTrigger:
                 with db_rwlock.gen_wlock():
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
-                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
+                        cursor.execute(
+                            "UPDATE file_list SET status = ? WHERE file_path = ?",
+                            ("lỗi", video_file),
+                        )
                 return None
             start_time_obj = self._get_video_start_time(video_file, camera_name)
             roi = get_packing_area_func(camera_name)
@@ -364,7 +469,10 @@ class FrameSamplerNoTrigger:
                 with db_rwlock.gen_wlock():
                     with safe_db_connection() as conn:
                         cursor = conn.cursor()
-                        cursor.execute("UPDATE file_list SET status = ? WHERE file_path = ?", ("lỗi", video_file))
+                        cursor.execute(
+                            "UPDATE file_list SET status = ? WHERE file_path = ?",
+                            ("lỗi", video_file),
+                        )
                 return None
             self.logger.info(f"Video duration {video_file}: {total_seconds} seconds")
             video_name = os.path.splitext(os.path.basename(video_file))[0]
@@ -379,8 +487,18 @@ class FrameSamplerNoTrigger:
             # Get log directory based on program type
             camera_log_dir = self._get_log_directory(video_file, camera_name)
             os.makedirs(camera_log_dir, exist_ok=True)
-            log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
-            log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
+            log_file = os.path.join(
+                camera_log_dir,
+                f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt",
+            )
+            log_file_handle = self._update_log_file(
+                log_file,
+                current_start_second,
+                current_end_second,
+                start_time_obj + timedelta(seconds=current_start_second),
+                camera_name,
+                video_file,
+            )
             # Bắt đầu từ khung hình tại start_time
             start_frame = int(start_time * self.fps)
             end_frame = int(end_time * self.fps)
@@ -400,9 +518,11 @@ class FrameSamplerNoTrigger:
                     x, y, w, h = roi
                     frame_height, frame_width = frame.shape[:2]
                     if w > 0 and h > 0 and y + h <= frame_height and x + w <= frame_width:
-                        frame = frame[y:y + h, x:x + w]
+                        frame = frame[y : y + h, x : x + w]
                     else:
-                        self.logger.warning(f"Invalid ROI for frame {frame_count}: {roi}, frame_size: {frame_width}x{frame_height}")
+                        self.logger.warning(
+                            f"Invalid ROI for frame {frame_count}: {roi}, frame_size: {frame_width}x{frame_height}"
+                        )
                         frame = frame
                 frame_count += 1
                 if frame_count % frame_interval != 0:
@@ -417,18 +537,26 @@ class FrameSamplerNoTrigger:
                 # Motion detection
                 if prev_frame is not None:
                     motion_level = self.compute_motion_level(prev_frame, frame)
-                    min_stable_frames = max(6, int(self.fps * self.stable_duration_sec / self.frame_interval))
+                    min_stable_frames = max(
+                        6, int(self.fps * self.stable_duration_sec / self.frame_interval)
+                    )
                     if motion_level < self.motion_threshold:
                         if not is_stable:
                             stable_start = frame_count
                             is_stable = True
                     else:
-                        if is_stable and stable_start is not None and (frame_count - stable_start) >= min_stable_frames * frame_interval:
+                        if (
+                            is_stable
+                            and stable_start is not None
+                            and (frame_count - stable_start) >= min_stable_frames * frame_interval
+                        ):
                             start_second = round((stable_start - 1) / self.fps, 1)
                             end_second = round((frame_count - frame_interval - 1) / self.fps, 1)
                             if start_second >= start_time and end_second <= end_time:
                                 stable_segments.append((stable_start, frame_count - frame_interval))
-                                self.logger.info(f"Stable segment: start={start_second}s, end={end_second}s")
+                                self.logger.info(
+                                    f"Stable segment: start={start_second}s, end={end_second}s"
+                                )
                         is_stable = False
                 prev_frame = frame.copy()
                 second_in_video = (frame_count - 1) / self.fps
@@ -440,9 +568,23 @@ class FrameSamplerNoTrigger:
                     # Get log directory based on program type
                     camera_log_dir = self._get_log_directory(video_file, camera_name)
                     os.makedirs(camera_log_dir, exist_ok=True)
-                    log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
-                    log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
-            if is_stable and stable_start is not None and (frame_count - stable_start) >= min_stable_frames * frame_interval:
+                    log_file = os.path.join(
+                        camera_log_dir,
+                        f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt",
+                    )
+                    log_file_handle = self._update_log_file(
+                        log_file,
+                        current_start_second,
+                        current_end_second,
+                        start_time_obj + timedelta(seconds=current_start_second),
+                        camera_name,
+                        video_file,
+                    )
+            if (
+                is_stable
+                and stable_start is not None
+                and (frame_count - stable_start) >= min_stable_frames * frame_interval
+            ):
                 start_second = round((stable_start - 1) / self.fps, 1)
                 end_second = round((frame_count - 1) / self.fps, 1)
                 if start_second >= start_time and end_second <= end_time:
@@ -477,7 +619,9 @@ class FrameSamplerNoTrigger:
             prev_te_frame = None
             for idx, (te_frame, qr_code) in enumerate(grouped_qr):
                 if te_frame <= last_te + self.min_packing_time * self.fps:
-                    self.logger.info(f"Skipping event for QR {qr_code} at frame {te_frame}: too close to last_te {last_te}")
+                    self.logger.info(
+                        f"Skipping event for QR {qr_code} at frame {te_frame}: too close to last_te {last_te}"
+                    )
                     continue
                 second_te = round((te_frame - 1) / self.fps)
                 if second_te < start_time or second_te > end_time:
@@ -492,21 +636,35 @@ class FrameSamplerNoTrigger:
                     # Get log directory based on program type
                     camera_log_dir = self._get_log_directory(video_file, camera_name)
                     os.makedirs(camera_log_dir, exist_ok=True)
-                    log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
-                    log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
+                    log_file = os.path.join(
+                        camera_log_dir,
+                        f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt",
+                    )
+                    log_file_handle = self._update_log_file(
+                        log_file,
+                        current_start_second,
+                        current_end_second,
+                        start_time_obj + timedelta(seconds=current_start_second),
+                        camera_name,
+                        video_file,
+                    )
                 ts_frame = None
                 # Trường hợp đặc biệt: Te đầu tiên
                 if idx == 0:
                     has_stable_segment = any(start <= te_frame for start, end in stable_segments)
                     if not has_stable_segment:
                         log_file_handle(f"On,{qr_code}", second_te)
-                        self.logger.info(f"Logged only Te for QR {qr_code} at second {second_te}: no stable segments for first Te")
+                        self.logger.info(
+                            f"Logged only Te for QR {qr_code} at second {second_te}: no stable segments for first Te"
+                        )
                         last_te = te_frame
                         prev_te_frame = te_frame
                         continue
                 # Tìm vùng ổn định sau Te phía trước (hoặc đầu video nếu không có Te trước)
                 closest_stable = None
-                search_start = max(prev_te_frame if prev_te_frame is not None else start_frame, start_frame)
+                search_start = max(
+                    prev_te_frame if prev_te_frame is not None else start_frame, start_frame
+                )
                 for start, end in stable_segments:
                     if start > search_start and end < te_frame:
                         if closest_stable is None or start < closest_stable[0]:
@@ -523,15 +681,20 @@ class FrameSamplerNoTrigger:
                             x, y, w, h = roi
                             frame_height, frame_width = frame.shape[:2]
                             if w > 0 and h > 0 and y + h <= frame_height and x + w <= frame_width:
-                                frame = frame[y:y + h, x:x + w]
+                                frame = frame[y : y + h, x : x + w]
                         hand_frame_count += 1
                         if hand_frame_count % self.frame_interval != 0:
                             continue
-                        if self.detect_hand(frame) and hand_frame_count > last_te + self.min_packing_time * self.fps:
+                        if (
+                            self.detect_hand(frame)
+                            and hand_frame_count > last_te + self.min_packing_time * self.fps
+                        ):
                             ts_frame = hand_frame_count
                             second_ts = round((ts_frame - 1) / self.fps, 1)
                             if second_ts >= start_time and second_ts <= end_time:
-                                self.logger.info(f"Hand detected for Ts: frame={ts_frame}, time={second_ts}s")
+                                self.logger.info(
+                                    f"Hand detected for Ts: frame={ts_frame}, time={second_ts}s"
+                                )
                                 break
                             ts_frame = None
                 else:
@@ -546,16 +709,26 @@ class FrameSamplerNoTrigger:
                             if roi:
                                 x, y, w, h = roi
                                 frame_height, frame_width = frame.shape[:2]
-                                if w > 0 and h > 0 and y + h <= frame_height and x + w <= frame_width:
-                                    frame = frame[y:y + h, x:x + w]
+                                if (
+                                    w > 0
+                                    and h > 0
+                                    and y + h <= frame_height
+                                    and x + w <= frame_width
+                                ):
+                                    frame = frame[y : y + h, x : x + w]
                             hand_frame_count += 1
                             if hand_frame_count % self.frame_interval != 0:
                                 continue
-                            if self.detect_hand(frame) and hand_frame_count > last_te + self.min_packing_time * self.fps:
+                            if (
+                                self.detect_hand(frame)
+                                and hand_frame_count > last_te + self.min_packing_time * self.fps
+                            ):
                                 ts_frame = hand_frame_count
                                 second_ts = round((ts_frame - 1) / self.fps, 1)
                                 if second_ts >= start_time and second_ts <= end_time:
-                                    self.logger.info(f"Hand detected for Ts: frame={ts_frame}, time={second_ts}s")
+                                    self.logger.info(
+                                        f"Hand detected for Ts: frame={ts_frame}, time={second_ts}s"
+                                    )
                                     break
                                 ts_frame = None
                 # Ghi log
@@ -564,15 +737,30 @@ class FrameSamplerNoTrigger:
                     segment_index = math.floor(max(second_ts, second_te) / segment_duration)
                     target_start_second = segment_index * segment_duration
                     target_end_second = (segment_index + 1) * segment_duration
-                    if max(second_ts, second_te) >= current_end_second or target_start_second != current_start_second:
+                    if (
+                        max(second_ts, second_te) >= current_end_second
+                        or target_start_second != current_start_second
+                    ):
                         current_start_second = target_start_second
-                        current_end_second = min(target_start_second + segment_duration, end_segment)
+                        current_end_second = min(
+                            target_start_second + segment_duration, end_segment
+                        )
 
                         # Get log directory based on program type
                         camera_log_dir = self._get_log_directory(video_file, camera_name)
                         os.makedirs(camera_log_dir, exist_ok=True)
-                        log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
-                        log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
+                        log_file = os.path.join(
+                            camera_log_dir,
+                            f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt",
+                        )
+                        log_file_handle = self._update_log_file(
+                            log_file,
+                            current_start_second,
+                            current_end_second,
+                            start_time_obj + timedelta(seconds=current_start_second),
+                            camera_name,
+                            video_file,
+                        )
                     log_file_handle("On,", second_ts - 1)
                     log_file_handle("Off,", second_ts)
                     log_file_handle("Off,", second_te - 1)
@@ -584,15 +772,30 @@ class FrameSamplerNoTrigger:
                         segment_index = math.floor(max(second_ts, second_te) / segment_duration)
                         target_start_second = segment_index * segment_duration
                         target_end_second = (segment_index + 1) * segment_duration
-                        if max(second_ts, second_te) >= current_end_second or target_start_second != current_start_second:
+                        if (
+                            max(second_ts, second_te) >= current_end_second
+                            or target_start_second != current_start_second
+                        ):
                             current_start_second = target_start_second
-                            current_end_second = min(target_start_second + segment_duration, end_segment)
+                            current_end_second = min(
+                                target_start_second + segment_duration, end_segment
+                            )
 
                             # Get log directory based on program type
                             camera_log_dir = self._get_log_directory(video_file, camera_name)
                             os.makedirs(camera_log_dir, exist_ok=True)
-                            log_file = os.path.join(camera_log_dir, f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt")
-                            log_file_handle = self._update_log_file(log_file, current_start_second, current_end_second, start_time_obj + timedelta(seconds=current_start_second), camera_name, video_file)
+                            log_file = os.path.join(
+                                camera_log_dir,
+                                f"log_{video_name}_{current_start_second:04d}_{current_end_second:04d}.txt",
+                            )
+                            log_file_handle = self._update_log_file(
+                                log_file,
+                                current_start_second,
+                                current_end_second,
+                                start_time_obj + timedelta(seconds=current_start_second),
+                                camera_name,
+                                video_file,
+                            )
                         log_file_handle("On,", second_ts - 1)
                         log_file_handle("Off,", second_ts)
                         log_file_handle("Off,", second_te - 1)
@@ -601,13 +804,18 @@ class FrameSamplerNoTrigger:
                     else:
                         log_file_handle("Off,", second_te - 1)
                         log_file_handle(f"On,{qr_code}", second_te)
-                        self.logger.info(f"Logged only Te for QR {qr_code} at second {second_te}: assumed Ts={second_ts} invalid (out of range or too close to last_te)")
+                        self.logger.info(
+                            f"Logged only Te for QR {qr_code} at second {second_te}: assumed Ts={second_ts} invalid (out of range or too close to last_te)"
+                        )
                 last_te = te_frame
                 prev_te_frame = te_frame
             video.release()
             with db_rwlock.gen_wlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("UPDATE file_list SET is_processed = 1, status = ? WHERE file_path = ?", ("xong", video_file))
+                    cursor.execute(
+                        "UPDATE file_list SET is_processed = 1, status = ? WHERE file_path = ?",
+                        ("xong", video_file),
+                    )
             self.logger.info(f"Completed processing video: {video_file}")
             return log_file

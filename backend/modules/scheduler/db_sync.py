@@ -33,12 +33,15 @@ Event Flow:
 from readerwriterlock import rwlock
 import threading
 from typing import Optional
+
 # Import logger conditionally to avoid circular imports during initialization
 try:
     from modules.config.logging_config import get_logger
+
     logger = get_logger(__name__, {"module": "db_sync"})
 except ImportError:
     import logging
+
     logger = logging.getLogger(__name__)
 
 # Reader-Writer Lock for database access synchronization
@@ -74,86 +77,91 @@ system_idle_event = threading.Event()
 retry_in_progress_flag = threading.Event()
 
 # Log module initialization with thread information
-logger.debug("Database sync module initialized", extra={"thread_id": threading.current_thread().ident})
+logger.debug(
+    "Database sync module initialized", extra={"thread_id": threading.current_thread().ident}
+)
+
 
 # Enhanced event operations with comprehensive logging for debugging
 class LoggedEvent:
     """Wrapper around threading.Event with debug logging.
-    
+
     This class provides enhanced debugging capabilities for threading events
     by logging all operations with thread context information. Useful for
     diagnosing thread coordination issues and understanding event flow.
-    
+
     Attributes:
         name (str): Human-readable name for the event
         event (threading.Event): The underlying event object
-    
+
     Usage:
         Replace direct threading.Event usage with LoggedEvent for debugging:
         logged_event = LoggedEvent("my_event", threading.Event())
         logged_event.set()  # Logs the set operation with thread ID
         logged_event.wait()  # Logs waiting and completion
     """
+
     def __init__(self, name: str, event: threading.Event) -> None:
         """Initialize LoggedEvent with name and underlying event.
-        
+
         Args:
             name (str): Human-readable name for debugging
             event (threading.Event): The event object to wrap
         """
         self.name = name
         self.event = event
-        
+
     def set(self) -> None:
         """Set the event and log the operation with thread context."""
-        logger.debug(f"Event {self.name} set", extra={
-            "thread_id": threading.current_thread().ident, 
-            "event_name": self.name
-        })
+        logger.debug(
+            f"Event {self.name} set",
+            extra={"thread_id": threading.current_thread().ident, "event_name": self.name},
+        )
         self.event.set()
-        
+
     def clear(self) -> None:
         """Clear the event and log the operation with thread context."""
-        logger.debug(f"Event {self.name} cleared", extra={
-            "thread_id": threading.current_thread().ident, 
-            "event_name": self.name
-        })
+        logger.debug(
+            f"Event {self.name} cleared",
+            extra={"thread_id": threading.current_thread().ident, "event_name": self.name},
+        )
         self.event.clear()
-        
+
     def wait(self, timeout: Optional[float] = None) -> bool:
         """Wait for the event with optional timeout, logging the operation.
-        
+
         Args:
             timeout (float, optional): Maximum time to wait in seconds
-            
+
         Returns:
             bool: True if event was set, False if timeout occurred
         """
-        logger.debug(f"Waiting for event {self.name}", extra={
-            "thread_id": threading.current_thread().ident, 
-            "event_name": self.name
-        })
+        logger.debug(
+            f"Waiting for event {self.name}",
+            extra={"thread_id": threading.current_thread().ident, "event_name": self.name},
+        )
         result = self.event.wait(timeout)
-        
+
         if result:
-            logger.debug(f"Event {self.name} received", extra={
-                "thread_id": threading.current_thread().ident, 
-                "event_name": self.name
-            })
+            logger.debug(
+                f"Event {self.name} received",
+                extra={"thread_id": threading.current_thread().ident, "event_name": self.name},
+            )
         else:
-            logger.debug(f"Event {self.name} timeout", extra={
-                "thread_id": threading.current_thread().ident, 
-                "event_name": self.name
-            })
+            logger.debug(
+                f"Event {self.name} timeout",
+                extra={"thread_id": threading.current_thread().ident, "event_name": self.name},
+            )
         return result
-        
+
     def is_set(self) -> bool:
         """Check if the event is set without blocking.
-        
+
         Returns:
             bool: True if event is set, False otherwise
         """
         return self.event.is_set()
+
 
 # Optional logged event wrappers for enhanced debugging
 # These can be imported and used instead of the raw events when debugging

@@ -7,14 +7,15 @@ import json
 from modules.db_utils.safe_connection import safe_db_connection
 import logging
 
-roi_bp = Blueprint('roi', __name__)
+roi_bp = Blueprint("roi", __name__)
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # Use centralized path configuration
 paths = get_paths()
 DB_PATH = paths["DB_PATH"]
 CAMERA_ROI_DIR = os.path.join(paths["VAR_DIR"], "cache", "roi_legacy")
+
 
 # ✅ FIXED: Proper OPTIONS handler with explicit return
 @roi_bp.before_request
@@ -22,80 +23,72 @@ def handle_preflight():
     if request.method == "OPTIONS":
         response = make_response()
         response.headers.add("Access-Control-Allow-Origin", "http://localhost:3000")
-        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization, Cache-Control, Pragma, Expires, x-timezone-version, x-timezone-detection, x-client-offset")
+        response.headers.add(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization, Cache-Control, Pragma, Expires, x-timezone-version, x-timezone-detection, x-client-offset",
+        )
         response.headers.add("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
         response.headers.add("Access-Control-Allow-Credentials", "true")
         return response
     # ✅ FIXED: Explicit None return to avoid implicit None
     return None
 
+
 # ✅ NEW: Missing /run-select-roi endpoint
-@roi_bp.route('/run-select-roi', methods=['POST', 'OPTIONS'])
+@roi_bp.route("/run-select-roi", methods=["POST", "OPTIONS"])
 def run_select_roi():
     """Execute hand detection ROI selection subprocess"""
     try:
         data = request.get_json()
         logging.info(f"[RUN-SELECT-ROI] Received data: {data}")
-        
-        video_path = data.get('video_path') or data.get('videoPath')
-        camera_id = data.get('camera_id') or data.get('cameraId') 
-        step = data.get('step', 'packing')
-        
+
+        video_path = data.get("video_path") or data.get("videoPath")
+        camera_id = data.get("camera_id") or data.get("cameraId")
+        step = data.get("step", "packing")
+
         if not video_path or not camera_id:
-            return jsonify({
-                "success": False, 
-                "error": "video_path and camera_id required"
-            }), 400
-        
+            return jsonify({"success": False, "error": "video_path and camera_id required"}), 400
+
         if not os.path.exists(video_path):
-            return jsonify({
-                "success": False,
-                "error": f"Video file not found: {video_path}"
-            }), 404
-        
+            return jsonify({"success": False, "error": f"Video file not found: {video_path}"}), 404
+
         # Import and call hand detection directly
         try:
             from modules.technician.hand_detection import select_roi
-            
-            logging.info(f"[RUN-SELECT-ROI] Calling select_roi with: video_path={video_path}, camera_id={camera_id}, step={step}")
-            
+
+            logging.info(
+                f"[RUN-SELECT-ROI] Calling select_roi with: video_path={video_path}, camera_id={camera_id}, step={step}"
+            )
+
             # Call the hand detection function
             result = select_roi(video_path, camera_id, step)
-            
+
             logging.info(f"[RUN-SELECT-ROI] select_roi result: {result}")
-            
+
             if result.get("success"):
                 return jsonify(result), 200
             else:
                 return jsonify(result), 400
-                
+
         except ImportError as e:
             logging.error(f"[RUN-SELECT-ROI] Import error: {e}")
-            return jsonify({
-                "success": False,
-                "error": f"Module import failed: {str(e)}"
-            }), 500
+            return jsonify({"success": False, "error": f"Module import failed: {str(e)}"}), 500
         except Exception as e:
             logging.error(f"[RUN-SELECT-ROI] Function call error: {e}")
-            return jsonify({
-                "success": False,
-                "error": f"Hand detection failed: {str(e)}"
-            }), 500
-            
+            return jsonify({"success": False, "error": f"Hand detection failed: {str(e)}"}), 500
+
     except Exception as e:
         logging.error(f"[RUN-SELECT-ROI] Exception: {str(e)}")
-        return jsonify({
-            "success": False,
-            "error": f"System error: {str(e)}"
-        }), 500
+        return jsonify({"success": False, "error": f"System error: {str(e)}"}), 500
 
-@roi_bp.route('/finalize-roi', methods=['POST', 'OPTIONS'])
+
+@roi_bp.route("/finalize-roi", methods=["POST", "OPTIONS"])
 def finalize_roi_endpoint():
     try:
         data = request.get_json()
-        video_path = data.get('videoPath')
-        camera_id = data.get('cameraId')
-        rois = data.get('rois')
+        video_path = data.get("videoPath")
+        camera_id = data.get("cameraId")
+        rois = data.get("rois")
 
         if not video_path or not camera_id or not rois:
             return jsonify({"success": False, "error": "Thiếu videoPath, cameraId hoặc rois."}), 400
@@ -111,7 +104,12 @@ def finalize_roi_endpoint():
             if roi.get("type") == "packing":
                 packing_area = [roi.get("x", 0), roi.get("y", 0), roi.get("w", 0), roi.get("h", 0)]
             elif roi.get("type") == "trigger":
-                qr_trigger_area = [roi.get("x", 0), roi.get("y", 0), roi.get("w", 0), roi.get("h", 0)]
+                qr_trigger_area = [
+                    roi.get("x", 0),
+                    roi.get("y", 0),
+                    roi.get("w", 0),
+                    roi.get("h", 0),
+                ]
 
         profile_name = camera_id
         with safe_db_connection() as conn:
@@ -120,31 +118,47 @@ def finalize_roi_endpoint():
             exists = cursor.fetchone()
 
             if exists:
-                cursor.execute('''
+                cursor.execute(
+                    """
                     UPDATE packing_profiles
                     SET qr_trigger_area = ?, packing_area = ?,
                         min_packing_time = ?, jump_time_ratio = ?, scan_mode = ?, fixed_threshold = ?, margin = ?, additional_params = ?, mvd_jump_ratio = ?
                     WHERE profile_name = ?
-                ''', (
-                    json.dumps(qr_trigger_area),
-                    json.dumps(packing_area),
-                    10, 0.5, "full", 20, 60, json.dumps({}),
-                    None,  # mvd_jump_ratio
-                    profile_name
-                ))
+                """,
+                    (
+                        json.dumps(qr_trigger_area),
+                        json.dumps(packing_area),
+                        10,
+                        0.5,
+                        "full",
+                        20,
+                        60,
+                        json.dumps({}),
+                        None,  # mvd_jump_ratio
+                        profile_name,
+                    ),
+                )
             else:
-                cursor.execute('''
+                cursor.execute(
+                    """
                     INSERT INTO packing_profiles (
                         profile_name, qr_trigger_area, packing_area,
                         min_packing_time, jump_time_ratio, scan_mode, fixed_threshold, margin, additional_params, mvd_jump_ratio
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    profile_name,
-                    json.dumps(qr_trigger_area),
-                    json.dumps(packing_area),
-                    10, 0.5, "full", 20, 60, json.dumps({}),
-                    None   # mvd_jump_ratio
-                ))
+                """,
+                    (
+                        profile_name,
+                        json.dumps(qr_trigger_area),
+                        json.dumps(packing_area),
+                        10,
+                        0.5,
+                        "full",
+                        20,
+                        60,
+                        json.dumps({}),
+                        None,  # mvd_jump_ratio
+                    ),
+                )
             # Auto-commit handled by context manager
         logging.info(f"Lưu ROI vào packing_profiles với profile_name: {profile_name}")
 
@@ -155,20 +169,21 @@ def finalize_roi_endpoint():
         logging.error(f"Exception in finalize_roi_endpoint: {str(e)}")
         return jsonify({"success": False, "error": f"Lỗi hệ thống: {str(e)}"}), 500
 
-@roi_bp.route('/get-roi-frame', methods=['GET', 'OPTIONS'])
+
+@roi_bp.route("/get-roi-frame", methods=["GET", "OPTIONS"])
 def get_roi_frame():
     # ✅ FIXED: Handle both GET and OPTIONS explicitly
-    if request.method == 'OPTIONS':
+    if request.method == "OPTIONS":
         # OPTIONS already handled by before_request, but return explicit response
         return jsonify({"success": True}), 200
-        
+
     # Handle GET request
-    camera_id = request.args.get('camera_id')
-    file = request.args.get('file')
-    
+    camera_id = request.args.get("camera_id")
+    file = request.args.get("file")
+
     logging.info(f"[GET-ROI-FRAME] camera_id: {camera_id}, file: {file}")
     logging.info(f"[GET-ROI-FRAME] CAMERA_ROI_DIR: {CAMERA_ROI_DIR}")
-    
+
     if not camera_id or not file:
         return jsonify({"success": False, "error": "Thiếu camera_id hoặc file."}), 400
 
@@ -182,7 +197,7 @@ def get_roi_frame():
     else:
         # Fallback: use the file parameter as-is with camera prefix
         file_name = f"camera_{camera_id}_{file}"
-    
+
     file_path = os.path.join(CAMERA_ROI_DIR, file_name)
     logging.info(f"[GET-ROI-FRAME] Attempting to fetch file: {file_path}")
     logging.info(f"[GET-ROI-FRAME] File exists: {os.path.exists(file_path)}")
@@ -194,53 +209,63 @@ def get_roi_frame():
             if os.path.exists(CAMERA_ROI_DIR):
                 available_files = os.listdir(CAMERA_ROI_DIR)
                 camera_files = [f for f in available_files if f.startswith(f"camera_{camera_id}")]
-                logging.info(f"[GET-ROI-FRAME] Available files for camera {camera_id}: {camera_files}")
+                logging.info(
+                    f"[GET-ROI-FRAME] Available files for camera {camera_id}: {camera_files}"
+                )
                 logging.info(f"[GET-ROI-FRAME] All files in CAMERA_ROI_DIR: {available_files}")
             else:
                 logging.error(f"[GET-ROI-FRAME] CAMERA_ROI_DIR does not exist: {CAMERA_ROI_DIR}")
         except Exception as e:
             logging.error(f"[GET-ROI-FRAME] Error listing directory: {e}")
-        
-        return jsonify({
-            "success": False, 
-            "error": "Không tìm thấy ảnh.", 
-            "file_path": file_path,
-            "camera_roi_dir": CAMERA_ROI_DIR,
-            "dir_exists": os.path.exists(CAMERA_ROI_DIR)
-        }), 404
+
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Không tìm thấy ảnh.",
+                    "file_path": file_path,
+                    "camera_roi_dir": CAMERA_ROI_DIR,
+                    "dir_exists": os.path.exists(CAMERA_ROI_DIR),
+                }
+            ),
+            404,
+        )
 
     try:
         # ✅ Serve file with proper cache control headers
-        response = send_file(file_path, mimetype='image/jpeg', as_attachment=False)
-        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        response.headers['Pragma'] = 'no-cache'
-        response.headers['Expires'] = '0'
+        response = send_file(file_path, mimetype="image/jpeg", as_attachment=False)
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
         return response
     except Exception as e:
         logging.error(f"[GET-ROI-FRAME] Error serving file: {e}")
         return jsonify({"success": False, "error": f"Lỗi khi serve file: {str(e)}"}), 500
 
-@roi_bp.route('/get-final-roi-frame', methods=['GET', 'OPTIONS'])
+
+@roi_bp.route("/get-final-roi-frame", methods=["GET", "OPTIONS"])
 def get_final_roi_frame():
     # ✅ FIXED: Handle both GET and OPTIONS explicitly
-    if request.method == 'OPTIONS':
+    if request.method == "OPTIONS":
         return jsonify({"success": True}), 200
-        
+
     # Handle GET request
-    camera_id = request.args.get('camera_id')
+    camera_id = request.args.get("camera_id")
     logging.info(f"[GET-FINAL-ROI] camera_id: {camera_id}")
     logging.info(f"[GET-FINAL-ROI] CAMERA_ROI_DIR: {CAMERA_ROI_DIR}")
-    
+
     if not camera_id:
         return jsonify({"success": False, "error": "Thiếu camera_id."}), 400
-    
+
     final_pattern = os.path.join(CAMERA_ROI_DIR, f"camera_{camera_id}_roi_final_*.jpg")
     final_files = glob.glob(final_pattern)
     logging.info(f"[GET-FINAL-ROI] Pattern: {final_pattern}")
     logging.info(f"[GET-FINAL-ROI] Files found for camera_id={camera_id}: {final_files}")
 
     if not final_files:
-        logging.error(f"[GET-FINAL-ROI] Không tìm thấy file tổng hợp nào trong {CAMERA_ROI_DIR} với pattern {final_pattern}")
+        logging.error(
+            f"[GET-FINAL-ROI] Không tìm thấy file tổng hợp nào trong {CAMERA_ROI_DIR} với pattern {final_pattern}"
+        )
         # ✅ List all files for debugging
         try:
             if os.path.exists(CAMERA_ROI_DIR):
@@ -252,14 +277,19 @@ def get_final_roi_frame():
                 logging.error(f"[GET-FINAL-ROI] CAMERA_ROI_DIR does not exist: {CAMERA_ROI_DIR}")
         except Exception as e:
             logging.error(f"[GET-FINAL-ROI] Error listing directory: {e}")
-        
-        return jsonify({
-            "success": False, 
-            "error": "Không tìm thấy ảnh tổng hợp.",
-            "pattern": final_pattern,
-            "camera_roi_dir": CAMERA_ROI_DIR,
-            "dir_exists": os.path.exists(CAMERA_ROI_DIR)
-        }), 404
+
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Không tìm thấy ảnh tổng hợp.",
+                    "pattern": final_pattern,
+                    "camera_roi_dir": CAMERA_ROI_DIR,
+                    "dir_exists": os.path.exists(CAMERA_ROI_DIR),
+                }
+            ),
+            404,
+        )
 
     latest_file = max(final_files, key=os.path.getmtime)
     logging.info(f"[GET-FINAL-ROI] Latest file selected: {latest_file}")
@@ -270,62 +300,63 @@ def get_final_roi_frame():
 
     try:
         # ✅ Serve file with proper cache control headers
-        response = send_file(latest_file, mimetype='image/jpeg', as_attachment=False)
-        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        response.headers['Pragma'] = 'no-cache'
-        response.headers['Expires'] = '0'
+        response = send_file(latest_file, mimetype="image/jpeg", as_attachment=False)
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
         return response
     except Exception as e:
         logging.error(f"[GET-FINAL-ROI] Error serving file: {e}")
         return jsonify({"success": False, "error": f"Lỗi khi serve file: {str(e)}"}), 500
 
+
 # ✅ DEBUG ENDPOINT: To check paths and files
-@roi_bp.route('/debug-roi-paths', methods=['GET', 'OPTIONS'])
+@roi_bp.route("/debug-roi-paths", methods=["GET", "OPTIONS"])
 def debug_roi_paths():
     """Debug endpoint to check file paths and availability"""
     # ✅ FIXED: Handle both GET and OPTIONS explicitly
-    if request.method == 'OPTIONS':
+    if request.method == "OPTIONS":
         return jsonify({"success": True}), 200
-        
+
     # Handle GET request
     try:
-        camera_id = request.args.get('camera_id', 'Hik_recorde')
-        
+        camera_id = request.args.get("camera_id", "Hik_recorde")
+
         debug_info = {
             "current_file": __file__,
             "base_dir": BASE_DIR,
             "camera_roi_dir": CAMERA_ROI_DIR,
             "db_path": DB_PATH,
             "camera_roi_dir_exists": os.path.exists(CAMERA_ROI_DIR),
-            "expected_file_path": os.path.join(CAMERA_ROI_DIR, f"camera_{camera_id}_roi_packing.jpg"),
-            "test_file_exists": os.path.exists(os.path.join(CAMERA_ROI_DIR, f"camera_{camera_id}_roi_packing.jpg"))
+            "expected_file_path": os.path.join(
+                CAMERA_ROI_DIR, f"camera_{camera_id}_roi_packing.jpg"
+            ),
+            "test_file_exists": os.path.exists(
+                os.path.join(CAMERA_ROI_DIR, f"camera_{camera_id}_roi_packing.jpg")
+            ),
         }
-        
+
         # List files in directory
         if os.path.exists(CAMERA_ROI_DIR):
             all_files = os.listdir(CAMERA_ROI_DIR)
             camera_files = [f for f in all_files if f.startswith(f"camera_{camera_id}")]
-            debug_info.update({
-                "all_files_count": len(all_files),
-                "camera_files": camera_files,
-                "all_files": all_files[:10]  # Show first 10 files
-            })
+            debug_info.update(
+                {
+                    "all_files_count": len(all_files),
+                    "camera_files": camera_files,
+                    "all_files": all_files[:10],  # Show first 10 files
+                }
+            )
         else:
-            debug_info.update({
-                "error": "CAMERA_ROI_DIR does not exist",
-                "all_files": []
-            })
-        
-        return jsonify({
-            "success": True,
-            "debug_info": debug_info
-        })
-        
+            debug_info.update({"error": "CAMERA_ROI_DIR does not exist", "all_files": []})
+
+        return jsonify({"success": True, "debug_info": debug_info})
+
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "debug_info": {
-                "current_file": __file__ if '__file__' in globals() else "Unknown"
+        return jsonify(
+            {
+                "success": False,
+                "error": str(e),
+                "debug_info": {"current_file": __file__ if "__file__" in globals() else "Unknown"},
             }
-        })
+        )

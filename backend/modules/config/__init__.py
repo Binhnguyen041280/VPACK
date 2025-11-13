@@ -4,11 +4,4 @@ from .security_config import SecurityConfig
 from .config_manager import ConfigManager
 
 # For external module imports
-__all__ = [
-    'config_bp', 
-    'init_app_and_config', 
- 
-    'init_config',
-    'SecurityConfig', 
-    'ConfigManager'
-]
+__all__ = ["config_bp", "init_app_and_config", "init_config", "SecurityConfig", "ConfigManager"]

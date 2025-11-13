@@ -35,14 +35,15 @@ logger = logging.getLogger(__name__)
 # ==================== ENCRYPTION KEY MANAGEMENT ====================
 # Reuse encryption key from cloud_auth.py
 
+
 def _load_encryption_key():
     """Load OAuth encryption key for consistent encryption across the app"""
     try:
-        keys_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'keys')
-        key_path = os.path.join(keys_dir, 'oauth_encryption.key')
+        keys_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "keys")
+        key_path = os.path.join(keys_dir, "oauth_encryption.key")
 
         if os.path.exists(key_path):
-            with open(key_path, 'rb') as f:
+            with open(key_path, "rb") as f:
                 key = f.read()
             logger.info("✅ Using existing OAuth encryption key for AI")
             return key
@@ -50,7 +51,7 @@ def _load_encryption_key():
             # Generate new key if not exists
             os.makedirs(keys_dir, exist_ok=True)
             key = Fernet.generate_key()
-            with open(key_path, 'wb') as f:
+            with open(key_path, "wb") as f:
                 f.write(key)
             os.chmod(key_path, 0o600)
             logger.info("🔑 Generated new encryption key for AI")
@@ -58,10 +59,11 @@ def _load_encryption_key():
     except Exception as e:
         logger.error(f"❌ Encryption key load error: {e}")
         # Fallback
-        env_key = os.getenv('ENCRYPTION_KEY')
+        env_key = os.getenv("ENCRYPTION_KEY")
         if env_key:
             return env_key.encode() if isinstance(env_key, str) else env_key
         return Fernet.generate_key()
+
 
 ENCRYPTION_KEY = _load_encryption_key()
 
@@ -118,10 +120,13 @@ class AIService:
             with db_rwlock.gen_rlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         SELECT ai_enabled, api_provider, encrypted_api_key
                         FROM ai_config WHERE user_email = ?
-                    """, (user_email,))
+                    """,
+                        (user_email,),
+                    )
                     result = cursor.fetchone()
 
                     if result:
@@ -133,34 +138,38 @@ class AIService:
                         if encrypted_key:
                             decrypted = AIService.decrypt_api_key(encrypted_key)
                             if decrypted:
-                                masked_key = decrypted[:10] + "..." if len(decrypted) > 10 else decrypted
+                                masked_key = (
+                                    decrypted[:10] + "..." if len(decrypted) > 10 else decrypted
+                                )
 
                         return {
-                            'ai_enabled': bool(ai_enabled),
-                            'api_provider': api_provider or 'claude',
-                            'has_custom_key': has_custom_key,
-                            'masked_key': masked_key
+                            "ai_enabled": bool(ai_enabled),
+                            "api_provider": api_provider or "claude",
+                            "has_custom_key": has_custom_key,
+                            "masked_key": masked_key,
                         }
                     else:
                         # Return default config
                         return {
-                            'ai_enabled': False,
-                            'api_provider': 'claude',
-                            'has_custom_key': False,
-                            'masked_key': ''
+                            "ai_enabled": False,
+                            "api_provider": "claude",
+                            "has_custom_key": False,
+                            "masked_key": "",
                         }
         except Exception as e:
             logger.error(f"❌ Get AI config error: {e}")
             return {
-                'ai_enabled': False,
-                'api_provider': 'claude',
-                'has_custom_key': False,
-                'masked_key': '',
-                'error': str(e)
+                "ai_enabled": False,
+                "api_provider": "claude",
+                "has_custom_key": False,
+                "masked_key": "",
+                "error": str(e),
             }
 
     @staticmethod
-    def update_ai_config(user_email: str, ai_enabled: bool, api_provider: str, api_key: str = '') -> Tuple[bool, Dict]:
+    def update_ai_config(
+        user_email: str, ai_enabled: bool, api_provider: str, api_key: str = ""
+    ) -> Tuple[bool, Dict]:
         """
         Update AI configuration
 
@@ -179,49 +188,60 @@ class AIService:
             if api_key:
                 encrypted_key = AIService.encrypt_api_key(api_key)
                 if not encrypted_key:
-                    return False, {'error': 'Failed to encrypt API key'}
+                    return False, {"error": "Failed to encrypt API key"}
 
             with db_rwlock.gen_wlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
 
                     # Check if config exists
-                    cursor.execute("SELECT user_email FROM ai_config WHERE user_email = ?", (user_email,))
+                    cursor.execute(
+                        "SELECT user_email FROM ai_config WHERE user_email = ?", (user_email,)
+                    )
                     exists = cursor.fetchone()
 
                     if exists:
                         # Update existing
                         if encrypted_key:
-                            cursor.execute("""
+                            cursor.execute(
+                                """
                                 UPDATE ai_config
                                 SET ai_enabled = ?, api_provider = ?, encrypted_api_key = ?, updated_at = CURRENT_TIMESTAMP
                                 WHERE user_email = ?
-                            """, (ai_enabled, api_provider, encrypted_key, user_email))
+                            """,
+                                (ai_enabled, api_provider, encrypted_key, user_email),
+                            )
                         else:
-                            cursor.execute("""
+                            cursor.execute(
+                                """
                                 UPDATE ai_config
                                 SET ai_enabled = ?, api_provider = ?, updated_at = CURRENT_TIMESTAMP
                                 WHERE user_email = ?
-                            """, (ai_enabled, api_provider, user_email))
+                            """,
+                                (ai_enabled, api_provider, user_email),
+                            )
                     else:
                         # Insert new
-                        cursor.execute("""
+                        cursor.execute(
+                            """
                             INSERT INTO ai_config (user_email, ai_enabled, api_provider, encrypted_api_key)
                             VALUES (?, ?, ?, ?)
-                        """, (user_email, ai_enabled, api_provider, encrypted_key))
+                        """,
+                            (user_email, ai_enabled, api_provider, encrypted_key),
+                        )
 
                     conn.commit()
 
             logger.info(f"✅ Updated AI config for {user_email}")
             return True, {
-                'message': 'Configuration updated successfully',
-                'ai_enabled': ai_enabled,
-                'api_provider': api_provider
+                "message": "Configuration updated successfully",
+                "ai_enabled": ai_enabled,
+                "api_provider": api_provider,
             }
 
         except Exception as e:
             logger.error(f"❌ Update AI config error: {e}")
-            return False, {'error': str(e)}
+            return False, {"error": str(e)}
 
     @staticmethod
     def test_claude_key(api_key: str) -> Tuple[bool, str]:
@@ -244,7 +264,7 @@ class AIService:
             message = client.messages.create(
                 model="claude-3-5-sonnet-20241022",
                 max_tokens=10,
-                messages=[{"role": "user", "content": "Hi"}]
+                messages=[{"role": "user", "content": "Hi"}],
             )
 
             logger.info(f"✅ Claude API key validated successfully")
@@ -281,7 +301,7 @@ class AIService:
             response = client.chat.completions.create(
                 model="gpt-4o-mini",  # Cheapest model for testing
                 messages=[{"role": "user", "content": "Hi"}],
-                max_tokens=10
+                max_tokens=10,
             )
 
             logger.info(f"✅ OpenAI API key validated successfully")
@@ -312,7 +332,8 @@ class AIService:
             with db_rwlock.gen_rlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         SELECT
                             COUNT(*) as total,
                             SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful,
@@ -320,7 +341,9 @@ class AIService:
                             SUM(input_tokens) as total_input_tokens,
                             SUM(output_tokens) as total_output_tokens
                         FROM ai_recovery_logs WHERE user_email = ?
-                    """, (user_email,))
+                    """,
+                        (user_email,),
+                    )
                     result = cursor.fetchone()
 
                     total = result[0] or 0
@@ -330,25 +353,25 @@ class AIService:
                     total_output_tokens = result[4] or 0
 
                     return {
-                        'total_recoveries': total,
-                        'successful': successful,
-                        'failed': total - successful,
-                        'success_rate': (successful / total * 100) if total > 0 else 0,
-                        'total_cost_usd': round(total_cost, 6),
-                        'avg_cost_per_recovery': round((total_cost / total), 6) if total > 0 else 0,
-                        'total_input_tokens': total_input_tokens,
-                        'total_output_tokens': total_output_tokens
+                        "total_recoveries": total,
+                        "successful": successful,
+                        "failed": total - successful,
+                        "success_rate": (successful / total * 100) if total > 0 else 0,
+                        "total_cost_usd": round(total_cost, 6),
+                        "avg_cost_per_recovery": round((total_cost / total), 6) if total > 0 else 0,
+                        "total_input_tokens": total_input_tokens,
+                        "total_output_tokens": total_output_tokens,
                     }
         except Exception as e:
             logger.error(f"❌ Get usage stats error: {e}")
             return {
-                'total_recoveries': 0,
-                'successful': 0,
-                'failed': 0,
-                'success_rate': 0,
-                'total_cost_usd': 0,
-                'avg_cost_per_recovery': 0,
-                'error': str(e)
+                "total_recoveries": 0,
+                "successful": 0,
+                "failed": 0,
+                "success_rate": 0,
+                "total_cost_usd": 0,
+                "avg_cost_per_recovery": 0,
+                "error": str(e),
             }
 
     @staticmethod
@@ -367,29 +390,34 @@ class AIService:
             with db_rwlock.gen_rlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         SELECT id, event_id, frame_path, success, decoded_text, cost_usd,
                                input_tokens, output_tokens, error_message, created_at
                         FROM ai_recovery_logs
                         WHERE user_email = ?
                         ORDER BY created_at DESC
                         LIMIT ?
-                    """, (user_email, limit))
+                    """,
+                        (user_email, limit),
+                    )
 
                     logs = []
                     for row in cursor.fetchall():
-                        logs.append({
-                            'id': row[0],
-                            'event_id': row[1],
-                            'frame_path': row[2],
-                            'success': bool(row[3]),
-                            'decoded_text': row[4],
-                            'cost_usd': row[5],
-                            'input_tokens': row[6],
-                            'output_tokens': row[7],
-                            'error_message': row[8],
-                            'created_at': row[9]
-                        })
+                        logs.append(
+                            {
+                                "id": row[0],
+                                "event_id": row[1],
+                                "frame_path": row[2],
+                                "success": bool(row[3]),
+                                "decoded_text": row[4],
+                                "cost_usd": row[5],
+                                "input_tokens": row[6],
+                                "output_tokens": row[7],
+                                "error_message": row[8],
+                                "created_at": row[9],
+                            }
+                        )
 
                     return logs
         except Exception as e:
