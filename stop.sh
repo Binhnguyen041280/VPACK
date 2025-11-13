@@ -19,7 +19,6 @@ echo ""
 # Parse command line arguments
 REMOVE_VOLUMES=false
 REMOVE_ORPHANS=false
-MODE="production"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -29,10 +28,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --orphans|-o)
             REMOVE_ORPHANS=true
-            shift
-            ;;
-        --dev|--development)
-            MODE="development"
             shift
             ;;
         --all|-a)
@@ -46,14 +41,12 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --volumes, -v           Remove volumes (WARNING: Data loss!)"
             echo "  --orphans, -o           Remove orphan containers"
-            echo "  --dev, --development    Stop development stack"
             echo "  --all, -a               Remove volumes and orphans"
             echo "  --help, -h              Show this help message"
             echo ""
             echo "Examples:"
             echo "  ./stop.sh               # Stop services, keep data"
             echo "  ./stop.sh --volumes     # Stop services and remove volumes"
-            echo "  ./stop.sh --dev         # Stop development stack"
             echo "  ./stop.sh --all         # Stop and clean everything"
             exit 0
             ;;
@@ -66,15 +59,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Build docker-compose command
-COMPOSE_CMD="docker-compose"
-if [ "$MODE" = "development" ]; then
-    COMPOSE_CMD="docker-compose -f docker-compose.dev.yml"
-    echo -e "${YELLOW}Stopping DEVELOPMENT stack...${NC}"
-else
-    echo -e "${YELLOW}Stopping PRODUCTION stack...${NC}"
-fi
-
-COMPOSE_CMD="$COMPOSE_CMD down"
+echo -e "${YELLOW}Stopping V_Track services...${NC}"
+COMPOSE_CMD="docker-compose down"
 
 if [ "$REMOVE_ORPHANS" = true ]; then
     COMPOSE_CMD="$COMPOSE_CMD --remove-orphans"

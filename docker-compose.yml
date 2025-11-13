@@ -62,6 +62,10 @@ services:
       - vtrack-input:/app/resources/input
       # Video output/recordings
       - vtrack-output:/app/resources/output
+      # Docker socket (for container management)
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Docker Compose file (for dynamic mount updates)
+      - ./docker-compose.yml:/app/docker-compose.yml:rw
 
     networks:
       - vtrack-network

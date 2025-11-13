@@ -49,15 +49,10 @@ echo -e "${GREEN}✅ Docker images ready${NC}"
 echo ""
 
 # Parse command line arguments
-MODE="production"
 DETACHED="-d"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --dev|--development)
-            MODE="development"
-            shift
-            ;;
         --attach|-a)
             DETACHED=""
             shift
@@ -66,15 +61,12 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: ./start.sh [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --dev, --development    Start in development mode"
             echo "  --attach, -a            Run in attached mode (show logs)"
             echo "  --help, -h              Show this help message"
             echo ""
             echo "Examples:"
-            echo "  ./start.sh                    # Start in production mode (detached)"
-            echo "  ./start.sh --dev              # Start in development mode"
+            echo "  ./start.sh                    # Start services (detached)"
             echo "  ./start.sh --attach           # Start and show logs"
-            echo "  ./start.sh --dev --attach     # Start dev mode with logs"
             exit 0
             ;;
         *)
@@ -85,18 +77,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Start the appropriate stack
-if [ "$MODE" = "development" ]; then
-    echo -e "${BLUE}🔧 Starting V_Track in DEVELOPMENT mode...${NC}"
-    echo -e "${YELLOW}   - Live code reloading enabled${NC}"
-    echo -e "${YELLOW}   - Source code mounted as volumes${NC}"
-    echo ""
-    docker-compose -f docker-compose.dev.yml up $DETACHED
-else
-    echo -e "${BLUE}🚀 Starting V_Track in PRODUCTION mode...${NC}"
-    echo ""
-    docker-compose up $DETACHED
-fi
+# Start services
+echo -e "${BLUE}🚀 Starting V_Track Application...${NC}"
+echo ""
+docker-compose up $DETACHED
 
 # If running in detached mode, show status
 if [ ! -z "$DETACHED" ]; then

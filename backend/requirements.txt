@@ -47,6 +47,7 @@ python-dateutil==2.9.0.post0
 psutil==7.0.0
 requests==2.32.3
 readerwriterlock==1.0.9
+PyYAML==6.0.2
 
 # ============================================================================
 # Installation Notes:

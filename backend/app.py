@@ -70,6 +70,7 @@ from blueprints.cutter_bp import cutter_bp
 from blueprints.simple_hand_detection_bp import simple_hand_detection_bp
 from blueprints.qr_detection_bp import qr_detection_bp
 from blueprints.roi_bp import roi_bp
+from blueprints.docker_management_bp import docker_bp
 # Removed analysis_streaming_bp - replaced with simple_hand_detection_bp
 from modules.config.routes.steps.step4_roi_routes import step4_roi_bp
 from modules.config.routes.ai_routes import ai_bp
@@ -262,6 +263,7 @@ logger.info("🔑 Session configuration applied")
 app.register_blueprint(program_bp, url_prefix='/api')
 app.register_blueprint(config_bp, url_prefix='/api/config')
 app.register_blueprint(cleanup_bp, url_prefix='/api')  # Cleanup API endpoints
+app.register_blueprint(docker_bp, url_prefix='/api')  # Docker management endpoints
 app.register_blueprint(step4_roi_bp)  # ROI configuration endpoints
 app.register_blueprint(ai_bp)  # AI configuration endpoints
 app.register_blueprint(query_bp)

@@ -93,6 +93,9 @@ export default function Program() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [customPath, setCustomPath] = useState('');
+  const [customVideoFile, setCustomVideoFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
   const [days, setDays] = useState<number | string>(7);
   const [selectedProgram, setSelectedProgram] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -171,10 +174,58 @@ export default function Program() {
     }
   };
 
+  // Function to upload custom video file
+  const uploadCustomVideo = async (file: File): Promise<string> => {
+    try {
+      setIsUploading(true);
+      setUploadProgress(0);
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('http://localhost:8080/api/program/upload-custom-video', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Upload failed');
+      }
+
+      const data = await response.json();
+      setUploadProgress(100);
+
+      if (!data.success) {
+        throw new Error(data.error || 'Upload failed');
+      }
+
+      return data.container_path;
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   // Function to start program via backend API
   const startProgram = async (programId: string) => {
     try {
       setActionLoading(true);
+
+      let uploadedPath: string | undefined = undefined;
+
+      // If custom program, upload file first
+      if (programId === 'custom' && customVideoFile) {
+        toast({
+          title: 'Uploading video...',
+          description: 'Please wait while the video file is being uploaded',
+          status: 'info',
+          duration: 3000,
+        });
+
+        uploadedPath = await uploadCustomVideo(customVideoFile);
+        console.log('✅ Video uploaded to container:', uploadedPath);
+      }
 
       // Immediately update UI to running state - hide program selection
       setIsRunning(true);
@@ -187,7 +238,7 @@ export default function Program() {
         programType: programId as 'first' | 'default' | 'custom',
         action: 'run',
         days: programId === 'first' ? (typeof days === 'string' ? parseInt(days) || 7 : days) : undefined,
-        customPath: programId === 'custom' ? customPath : undefined,
+        customPath: programId === 'custom' ? (uploadedPath || customPath) : undefined,
         cameraName: programId === 'custom' ? selectedCamera || undefined : undefined
       });
 
@@ -469,22 +520,64 @@ export default function Program() {
           </Box>
         )}
 
-        {/* Custom Path Input */}
+        {/* Custom Video Upload */}
         {selectedProgram === 'custom' && (
           <Card bg={cardBg} p={6}>
             <VStack spacing={6} align="stretch">
               <FormControl>
                 <FormLabel color={textColor} fontSize="sm" fontWeight="600">
-                  Custom Path
+                  Select Video File
                 </FormLabel>
                 <Input
-                  placeholder="Enter custom file or directory path..."
-                  value={customPath}
-                  onChange={(e) => setCustomPath(e.target.value)}
+                  type="file"
+                  accept="video/*,.mp4,.avi,.mov,.mkv,.flv,.wmv,.webm"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setCustomVideoFile(file);
+                      setCustomPath(file.name);
+                    }
+                  }}
                   color={textColor}
                   borderColor={borderColor}
                   _focus={{ borderColor: currentColors.brand500 }}
+                  sx={{
+                    '::file-selector-button': {
+                      height: '100%',
+                      marginRight: '12px',
+                      padding: '8px 16px',
+                      border: 'none',
+                      borderRadius: 'md',
+                      bg: currentColors.brand500,
+                      color: 'white',
+                      cursor: 'pointer',
+                      _hover: {
+                        bg: currentColors.brand600
+                      }
+                    }
+                  }}
                 />
+                {customVideoFile && (
+                  <Text fontSize="xs" color={textColor} opacity={0.7} mt={2}>
+                    Selected: {customVideoFile.name} ({(customVideoFile.size / (1024 * 1024)).toFixed(2)} MB)
+                  </Text>
+                )}
+                {isUploading && (
+                  <Box mt={3}>
+                    <Flex justify="space-between" mb={2}>
+                      <Text fontSize="xs" color={textColor}>Uploading...</Text>
+                      <Text fontSize="xs" color={textColor}>{uploadProgress}%</Text>
+                    </Flex>
+                    <Box w="100%" h="4px" bg={borderColor} borderRadius="full" overflow="hidden">
+                      <Box
+                        h="100%"
+                        bg={currentColors.brand500}
+                        transition="width 0.3s"
+                        w={`${uploadProgress}%`}
+                      />
+                    </Box>
+                  </Box>
+                )}
               </FormControl>
 
               {/* Camera Selection */}
@@ -582,6 +675,7 @@ export default function Program() {
                 onClick={() => {
                   setSelectedProgram(null);
                   setCustomPath('');
+                  setCustomVideoFile(null);
                   setDays(7);
                   setSelectedCamera(null);
                 }}
@@ -594,9 +688,9 @@ export default function Program() {
                 color="white"
                 leftIcon={<Icon as={MdPlayArrow} />}
                 onClick={() => startProgram(selectedProgram)}
-                isLoading={actionLoading}
-                loadingText="Starting..."
-                disabled={selectedProgram === 'custom' && (!customPath.trim() || !selectedCamera)}
+                isLoading={actionLoading || isUploading}
+                loadingText={isUploading ? "Uploading..." : "Starting..."}
+                disabled={selectedProgram === 'custom' && (!customVideoFile || !selectedCamera)}
                 _hover={{
                   bg: currentColors.gradient,
                 }}
