@@ -25,7 +25,7 @@ DB_PATH = paths["DB_PATH"]
 
 class Step5TimingService:
     """Service class for Step 5 Timing/Storage configuration operations."""
-    
+
     # Default values matching existing save_config logic
     DEFAULT_MIN_PACKING_TIME = 10
     DEFAULT_MAX_PACKING_TIME = 120
@@ -33,7 +33,18 @@ class Step5TimingService:
     DEFAULT_STORAGE_DURATION = 30
     DEFAULT_FRAME_RATE = 30
     DEFAULT_FRAME_INTERVAL = 5
-    DEFAULT_OUTPUT_PATH = "/default/output"
+
+    @staticmethod
+    def _get_default_output_path():
+        """Get Docker-aware default output path"""
+        import os
+        if os.getenv('VTRACK_IN_DOCKER') == 'true':
+            return '/app/resources/output'
+        return os.getenv('VTRACK_OUTPUT_DIR', '/app/resources/output')
+
+    @property
+    def DEFAULT_OUTPUT_PATH(self):
+        return self._get_default_output_path()
     
     def get_timing_config(self) -> Dict[str, Any]:
         """
