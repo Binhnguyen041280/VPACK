@@ -78,6 +78,7 @@ from modules.sources.cloud_endpoints import cloud_bp
 from modules.sources.cloud_lazy_folder_routes import lazy_folder_bp
 from modules.sources.sync_endpoints import sync_bp
 from modules.sources.pydrive_downloader import pydrive_downloader
+from modules.shopee_calculator import shopee_calculator_bp
 
 # ==================== IMPORT LICENSE MODULES ====================
 try:
@@ -272,6 +273,10 @@ app.register_blueprint(roi_bp)
 # Removed complex streaming blueprint - now using simple_hand_detection_bp
 logger.info("✅ AI endpoints registered")
 logger.info("✅ Cleanup endpoints registered")
+
+# Shopee Calculator module
+app.register_blueprint(shopee_calculator_bp)
+logger.info("✅ Shopee Calculator endpoints registered")
 
 # Cloud and sync modules
 try:
