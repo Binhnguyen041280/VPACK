@@ -5,11 +5,11 @@ ELIMINATES: 8x Database patterns, 6x Row-to-dict, 4x JSON parsing from license_m
 Created: 2025-08-11 - Phase 1 Refactoring Step 2
 """
 
-import sqlite3
 import json
 import logging
+import sqlite3
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 # Import base repository
 from .base_repository import BaseRepository, DatabaseError

@@ -6,20 +6,20 @@ proper data mapping between video_sources and processing_config tables.
 FIXED: Ensures data sync for backward compatibility.
 """
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, jsonify, request
 from flask_cors import cross_origin
+
 from ...services.step3_video_source_service import step3_video_source_service
 from ...shared import (
+    create_error_response,
+    create_success_response,
     format_step_response,
     handle_database_error,
-    handle_validation_error,
     handle_general_error,
-    create_success_response,
-    create_error_response,
-    validate_request_data,
+    handle_validation_error,
     log_step_operation,
+    validate_request_data,
 )
-
 
 # Create blueprint for Step 3 routes
 step3_bp = Blueprint("step3_video_source", __name__, url_prefix="/step")

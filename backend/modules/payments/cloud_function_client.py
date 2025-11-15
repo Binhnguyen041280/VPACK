@@ -6,11 +6,12 @@ REDUCES: From 450 lines to ~250 lines (-44% reduction)
 Updated: 2025-08-11 - Phase 1 Refactoring Integration
 """
 
-import requests
 import logging
 import os
-from typing import Dict, Any, Optional
 from datetime import datetime
+from typing import Any, Dict, Optional
+
+import requests
 
 logger = logging.getLogger(__name__)
 

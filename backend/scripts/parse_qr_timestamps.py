@@ -11,10 +11,11 @@ Example: 350,On,SPXVN053052444843,bbox:[450,230,180,180]
 
 import re
 import sqlite3
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
+
+from modules.config.logging_config import get_logger
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import db_rwlock
-from modules.config.logging_config import get_logger
 
 logger = get_logger(__name__, {})
 

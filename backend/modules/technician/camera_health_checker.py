@@ -3,13 +3,13 @@ Camera Health Check Module
 Compares current QR detection success rate against baseline
 """
 
-import cv2
-import numpy as np
 import json
 import logging
 from datetime import datetime
-from typing import Dict, Optional, List
+from typing import Dict, List, Optional
 
+import cv2
+import numpy as np
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.technician.qr_detector import detect_qr_at_time
 

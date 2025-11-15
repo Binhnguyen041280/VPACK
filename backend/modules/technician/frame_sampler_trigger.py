@@ -1,23 +1,23 @@
-import cv2
-import os
-import logging
-import sqlite3
-import threading
-import subprocess
 import json
-import numpy as np
-from datetime import datetime, timezone, timedelta
-from modules.db_utils.safe_connection import safe_db_connection
-from modules.scheduler.db_sync import frame_sampler_event, db_rwlock
-from zoneinfo import ZoneInfo
+import logging
 
 # Removed video_timezone_detector - using simple timezone operations
 import math
+import os
+import sqlite3
+import subprocess
+import threading
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+import cv2
+import numpy as np
 from modules.config.logging_config import get_logger
+from modules.db_utils.safe_connection import safe_db_connection
+from modules.scheduler.db_sync import db_rwlock, frame_sampler_event
 
 # Health check imports
-from modules.technician.camera_health_checker import should_run_health_check, run_health_check
-
+from modules.technician.camera_health_checker import run_health_check, should_run_health_check
 
 BASE_DIR = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

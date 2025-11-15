@@ -1,14 +1,15 @@
-import cv2
-import os
+import glob
 import json
 import logging
+import os
 import queue
 import threading
 import time
-import glob
 import traceback
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
+import cv2
 
 # Use var/logs for application logs
 BASE_DIR = os.path.dirname(
@@ -683,10 +684,10 @@ def preprocess_video_qr(
             try:
                 # Check cancellation via progress callback
                 try:
-                    from blueprints.qr_detection_bp import qr_preprocessing_progress
-
                     # Generate cache key to check status (same logic as in blueprint)
                     import hashlib
+
+                    from blueprints.qr_detection_bp import qr_preprocessing_progress
 
                     roi_str = (
                         f"{roi_config['x']}_{roi_config['y']}_{roi_config['w']}_{roi_config['h']}"
@@ -882,6 +883,7 @@ def detect_qr_from_image(image_content: str) -> dict:
     """
     try:
         import base64
+
         import numpy as np
 
         # Check model files exist

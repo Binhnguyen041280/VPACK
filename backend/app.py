@@ -1,17 +1,18 @@
-import os
-import sys
-from flask import Flask, jsonify, redirect, request
-from flask_cors import CORS
-from dotenv import load_dotenv
-import logging
-import signal
-import threading
-import socket
 import atexit
-import sqlite3
+import logging
+import os
 import queue
+import signal
+import socket
+import sqlite3
+import sys
+import threading
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+
+from dotenv import load_dotenv
+from flask import Flask, jsonify, redirect, request
+from flask_cors import CORS
 
 # Load environment variables
 load_dotenv()
@@ -34,7 +35,7 @@ logging.getLogger("matplotlib").setLevel(logging.WARNING)
 logging.getLogger("modules.licensing.repositories").setLevel(logging.INFO)
 
 # ==================== IMPORT CORE MODULES ====================
-from modules.config.logging_config import setup_dual_logging, get_logger
+from modules.config.logging_config import get_logger, setup_dual_logging
 
 # ==================== SETUP DUAL LOGGING FIRST ====================
 # CRITICAL: Setup logging BEFORE other imports to capture all log messages
@@ -65,24 +66,25 @@ except Exception as e:
 
     sys.exit(1)
 
-# ==================== CONTINUE IMPORTS ====================
-from modules.config.config import config_bp, init_app_and_config
-from modules.db_utils.safe_connection import safe_db_connection
-from modules.scheduler.program import program_bp, scheduler
-from modules.query.query import query_bp
 from blueprints.cutter_bp import cutter_bp
-from blueprints.simple_hand_detection_bp import simple_hand_detection_bp
 from blueprints.qr_detection_bp import qr_detection_bp
 from blueprints.roi_bp import roi_bp
+from blueprints.simple_hand_detection_bp import simple_hand_detection_bp
+
+# ==================== CONTINUE IMPORTS ====================
+from modules.config.config import config_bp, init_app_and_config
+from modules.config.routes.ai_routes import ai_bp
+from modules.config.routes.cleanup_routes import cleanup_bp
 
 # Removed analysis_streaming_bp - replaced with simple_hand_detection_bp
 from modules.config.routes.steps.step4_roi_routes import step4_roi_bp
-from modules.config.routes.ai_routes import ai_bp
-from modules.config.routes.cleanup_routes import cleanup_bp
+from modules.db_utils.safe_connection import safe_db_connection
+from modules.query.query import query_bp
+from modules.scheduler.program import program_bp, scheduler
 from modules.sources.cloud_endpoints import cloud_bp
 from modules.sources.cloud_lazy_folder_routes import lazy_folder_bp
-from modules.sources.sync_endpoints import sync_bp
 from modules.sources.pydrive_downloader import pydrive_downloader
+from modules.sources.sync_endpoints import sync_bp
 
 # ==================== IMPORT LICENSE MODULES ====================
 try:
@@ -237,8 +239,9 @@ def initialize_license_system():
 # Backend API only - webapp handled by React frontend
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-from flask_session import Session
 import secrets
+
+from flask_session import Session
 
 # Configure session for OAuth compatibility
 # Docker-compatible session storage
@@ -415,7 +418,7 @@ def get_latest_user_wrapper():
 @app.route("/api/user/logout", methods=["POST", "OPTIONS"])
 def logout_user():
     """Logout user - clear session and authentication data"""
-    from flask import session, request
+    from flask import request, session
     from flask_cors import cross_origin
 
     try:
@@ -483,8 +486,9 @@ def logout_user():
 @app.route("/static/avatars/<filename>")
 def serve_cached_avatar(filename):
     """Serve cached avatar files"""
-    from flask import send_from_directory
     import os
+
+    from flask import send_from_directory
 
     avatar_dir = os.path.join(os.path.dirname(__file__), "static", "avatars")
 

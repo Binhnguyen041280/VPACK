@@ -1,17 +1,18 @@
 # backend/modules/payments/license_generator.py
 
-import json
 import base64
 import hashlib
+import json
+import logging
 import os
 import platform
 import uuid
-import logging
 from datetime import datetime, timedelta
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.primitives import hashes, serialization
+from typing import Any, Dict, Optional, cast
+
 from cryptography.fernet import Fernet
-from typing import Optional, Dict, Any, cast
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 logger = logging.getLogger(__name__)
 

@@ -1,16 +1,17 @@
-import os
-from datetime import datetime
-import subprocess
-from flask import Blueprint, request, jsonify
-from modules.db_utils.safe_connection import safe_db_connection
 import ast
+import os
+import subprocess
+from datetime import datetime
+
+from flask import Blueprint, jsonify, request
+from modules.db_utils.safe_connection import safe_db_connection
+from modules.scheduler.db_sync import db_rwlock
 from modules.technician.cutter.cutter_complete import cut_complete_event
 from modules.technician.cutter.cutter_incomplete import (
     cut_incomplete_event,
     merge_incomplete_events,
 )
 from modules.technician.cutter.cutter_utils import generate_output_filename, update_event_in_db
-from modules.scheduler.db_sync import db_rwlock
 
 cutter_bp = Blueprint("cutter", __name__)
 

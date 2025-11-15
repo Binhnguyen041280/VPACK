@@ -28,21 +28,23 @@ Thread Safety:
     - Event coordination ensures proper workflow sequencing
 """
 
+import json
+import os
 import threading
 import time
-import os
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Tuple
-from modules.db_utils.safe_connection import safe_db_connection
-from modules.technician.frame_sampler_trigger import FrameSamplerTrigger
-from modules.technician.frame_sampler_no_trigger import FrameSamplerNoTrigger
-from modules.technician.IdleMonitor import IdleMonitor
-from modules.technician.event_detector import process_single_log
-from modules.technician.retry_empty_event import start_retry_processor
-from .db_sync import db_rwlock, frame_sampler_event, event_detector_event, event_detector_done
-from .config.scheduler_config import SchedulerConfig
-import json
+from typing import Any, Dict, List, Optional, Tuple
+
 from modules.config.logging_config import get_logger
+from modules.db_utils.safe_connection import safe_db_connection
+from modules.technician.event_detector import process_single_log
+from modules.technician.frame_sampler_no_trigger import FrameSamplerNoTrigger
+from modules.technician.frame_sampler_trigger import FrameSamplerTrigger
+from modules.technician.IdleMonitor import IdleMonitor
+from modules.technician.retry_empty_event import start_retry_processor
+
+from .config.scheduler_config import SchedulerConfig
+from .db_sync import db_rwlock, event_detector_done, event_detector_event, frame_sampler_event
 
 logger = get_logger(__name__, {"module": "program_runner"})
 logger.info("Program runner logging initialized")
@@ -296,8 +298,8 @@ def run_frame_sampler() -> None:
                     # Not just the first block
                     health_check_failed = False
                     from modules.technician.camera_health_checker import (
-                        should_run_health_check,
                         run_health_check,
+                        should_run_health_check,
                     )
 
                     if should_run_health_check(camera_name):

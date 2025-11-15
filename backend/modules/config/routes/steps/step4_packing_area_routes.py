@@ -5,20 +5,20 @@ REST wrapper endpoints for existing packing area/ROI detection logic.
 Integrates with existing packing_profiles table and hand detection functions.
 """
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, jsonify, request
 from flask_cors import cross_origin
+
 from ...services.step4_packing_area_service import step4_packing_area_service
 from ...shared import (
+    create_error_response,
+    create_success_response,
     format_step_response,
     handle_database_error,
-    handle_validation_error,
     handle_general_error,
-    create_success_response,
-    create_error_response,
-    validate_request_data,
+    handle_validation_error,
     log_step_operation,
+    validate_request_data,
 )
-
 
 # Create blueprint for Step 4 routes
 step4_bp = Blueprint("step4_packing_area", __name__, url_prefix="/step")

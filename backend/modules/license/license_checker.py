@@ -4,12 +4,14 @@ License validation for app startup with offline support
 
 import logging
 import socket
-import requests
-from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
-from .license_manager import LicenseManager
-from .license_config import AUTO_CHECK_ON_STARTUP, GRACE_PERIOD_DAYS, CLOUD_VALIDATION_TIMEOUT
+from typing import Any, Dict, Optional
+
+import requests
+
 from ..db_utils.safe_connection import safe_db_connection
+from .license_config import AUTO_CHECK_ON_STARTUP, CLOUD_VALIDATION_TIMEOUT, GRACE_PERIOD_DAYS
+from .license_manager import LicenseManager
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +203,7 @@ class LicenseChecker:
 
         try:
             from datetime import datetime, timedelta
+
             from .license_config import SHOW_EXPIRY_WARNING_DAYS
 
             expiry_date = datetime.fromisoformat(expires_at)

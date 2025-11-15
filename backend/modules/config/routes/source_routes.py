@@ -1,14 +1,16 @@
-from flask import Blueprint, request, jsonify
-from flask_cors import cross_origin
 import json
 import os
+
+from flask import Blueprint, jsonify, request
+from flask_cors import cross_origin
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.sources.video_source_manager import VideoSourceManager
+
 from ..utils import (
-    get_working_path_for_source,
     detect_camera_folders,
-    has_video_files,
     extract_cameras_from_cloud_folders,
+    get_working_path_for_source,
+    has_video_files,
     scan_subdirectories_as_cameras,
 )
 

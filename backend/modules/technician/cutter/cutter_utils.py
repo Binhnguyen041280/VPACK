@@ -1,6 +1,6 @@
+import ast
 import os
 from datetime import datetime
-import ast
 
 
 def is_reasonable_timestamp(ts):

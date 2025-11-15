@@ -9,15 +9,16 @@ FIXED: Proper data mapping between video_sources and processing_config tables.
 import json
 import os
 from datetime import datetime
-from typing import Dict, Any, Tuple, Optional, List
+from typing import Any, Dict, List, Optional, Tuple
+
 from ..shared import (
-    safe_connection_wrapper,
+    ensure_column_exists,
     execute_with_change_detection,
+    log_step_operation,
+    safe_connection_wrapper,
+    sanitize_input,
     sync_processing_config,
     validate_video_source_config,
-    sanitize_input,
-    log_step_operation,
-    ensure_column_exists,
 )
 from ..utils import get_working_path_for_source
 

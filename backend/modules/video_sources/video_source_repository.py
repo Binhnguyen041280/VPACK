@@ -6,9 +6,10 @@ Implements Option B: Single active source with REPLACE logic
 import json
 import sqlite3
 from datetime import datetime
-from typing import Dict, List, Optional, Any
-from modules.db_utils.safe_connection import safe_db_connection
+from typing import Any, Dict, List, Optional
+
 from modules.config.logging_config import get_logger
+from modules.db_utils.safe_connection import safe_db_connection
 
 logger = get_logger(__name__)
 

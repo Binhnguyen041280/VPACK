@@ -7,8 +7,8 @@ Provides REST APIs for:
 """
 
 from flask import Blueprint, jsonify, request
-from modules.utils.cleanup import cleanup_service
 from modules.config.logging_config import get_logger
+from modules.utils.cleanup import cleanup_service
 
 cleanup_bp = Blueprint("cleanup", __name__)
 logger = get_logger(__name__)

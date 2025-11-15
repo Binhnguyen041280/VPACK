@@ -6,12 +6,13 @@ Uses existing packing_profiles table and hand detection functions.
 """
 
 import json
-from typing import Dict, Any, Tuple, Optional, List
+from typing import Any, Dict, List, Optional, Tuple
+
 from ..shared import (
-    safe_connection_wrapper,
-    validate_packing_area_config,
-    sanitize_input,
     log_step_operation,
+    safe_connection_wrapper,
+    sanitize_input,
+    validate_packing_area_config,
 )
 
 

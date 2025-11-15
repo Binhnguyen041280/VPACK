@@ -5,10 +5,10 @@ Provides consistent validation functions for different data types
 used across the step-based configuration system.
 """
 
-import re
 import json
 import os
-from typing import List, Dict, Any, Optional, Union, Tuple
+import re
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 
 def validate_required_fields(data: Dict[str, Any], required_fields: List[str]) -> Tuple[bool, str]:

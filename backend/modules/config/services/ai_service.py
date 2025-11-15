@@ -7,10 +7,11 @@ Reuses encryption pattern from cloud_auth.py
 import base64
 import json
 import logging
-from typing import Dict, Optional, Tuple
-from datetime import datetime
-from cryptography.fernet import Fernet
 import os
+from datetime import datetime
+from typing import Dict, Optional, Tuple
+
+from cryptography.fernet import Fernet
 
 # AI SDK imports
 try:

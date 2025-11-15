@@ -1,11 +1,13 @@
-from flask import Blueprint, request, jsonify
-from flask_cors import cross_origin
-from datetime import datetime
 import json
 import os
+from datetime import datetime
+
+from flask import Blueprint, jsonify, request
+from flask_cors import cross_origin
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.sources.video_source_manager import VideoSourceManager
-from ..utils import detect_camera_folders, has_video_files, extract_cameras_from_cloud_folders
+
+from ..utils import detect_camera_folders, extract_cameras_from_cloud_folders, has_video_files
 
 camera_routes_bp = Blueprint("camera_routes", __name__)
 

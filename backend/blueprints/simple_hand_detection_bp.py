@@ -4,12 +4,13 @@ Single synchronous endpoint for hand detection at specific video times
 Following the simple pattern from 2hand_detection.py
 """
 
-from flask import Blueprint, request, jsonify
-from modules.technician.hand_detection import detect_hands_at_time, preprocess_video_hands
-from modules.config.logging_config import get_logger
-import time
 import threading
+import time
 from datetime import datetime, timedelta
+
+from flask import Blueprint, jsonify, request
+from modules.config.logging_config import get_logger
+from modules.technician.hand_detection import detect_hands_at_time, preprocess_video_hands
 
 simple_hand_detection_bp = Blueprint("simple_hand_detection", __name__)
 logger = get_logger(__name__)
@@ -644,10 +645,10 @@ def get_cached_landmarks():
             if canvas_dims and video_dims and roi_config and closest_detection["landmarks"]:
                 try:
                     from modules.technician.landmark_mapper import (
+                        CanvasDimensions,
                         LandmarkMapper,
                         ROIConfig,
                         VideoDimensions,
-                        CanvasDimensions,
                     )
 
                     # Create mapping objects

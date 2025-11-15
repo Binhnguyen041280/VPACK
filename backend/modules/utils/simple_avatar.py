@@ -3,9 +3,10 @@ Simple Avatar Downloader
 Download user avatars to frontend public folder
 """
 
-import os
-import requests
 import logging
+import os
+
+import requests
 from modules.config.logging_config import get_logger
 
 logger = get_logger(__name__)

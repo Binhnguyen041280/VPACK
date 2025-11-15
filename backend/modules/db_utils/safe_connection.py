@@ -3,10 +3,10 @@ Safe Database Connection Manager for V_Track
 Simple, reliable context manager for SQLite connections
 """
 
-import sqlite3
-import time
 import logging
+import sqlite3
 import threading
+import time
 from contextlib import contextmanager
 from typing import Generator
 

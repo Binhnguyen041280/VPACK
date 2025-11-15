@@ -1,25 +1,26 @@
-from flask import Blueprint, request, jsonify
-from modules.technician.qr_detector import (
-    detect_qr_at_time,
-    preprocess_video_qr,
-    detect_qr_from_image,
-)
-from modules.technician.camera_health_baseline import capture_baseline_from_step4
-from modules.technician.camera_health_checker import (
-    run_health_check,
-    get_latest_health_check,
-    get_baseline_by_camera,
-    evaluate_camera_health_checklist,
-)
-from modules.db_utils.safe_connection import safe_db_connection
-import os
+import hashlib
 import json
 import logging
+import os
 import sys
 import threading
 import time
-import hashlib
 from datetime import datetime, timedelta
+
+from flask import Blueprint, jsonify, request
+from modules.db_utils.safe_connection import safe_db_connection
+from modules.technician.camera_health_baseline import capture_baseline_from_step4
+from modules.technician.camera_health_checker import (
+    evaluate_camera_health_checklist,
+    get_baseline_by_camera,
+    get_latest_health_check,
+    run_health_check,
+)
+from modules.technician.qr_detector import (
+    detect_qr_at_time,
+    detect_qr_from_image,
+    preprocess_video_qr,
+)
 
 qr_detection_bp = Blueprint("qr_detection", __name__)
 
@@ -549,10 +550,10 @@ def get_cached_qr():
             if canvas_dims and video_dims and roi_config and qr_detections:
                 try:
                     from modules.technician.landmark_mapper import (
+                        CanvasDimensions,
                         LandmarkMapper,
                         ROIConfig,
                         VideoDimensions,
-                        CanvasDimensions,
                     )
 
                     # Create mapping objects
@@ -805,10 +806,10 @@ def get_cached_trigger():
             if canvas_dims and video_dims and roi_config and trigger_qr_detections:
                 try:
                     from modules.technician.landmark_mapper import (
+                        CanvasDimensions,
                         LandmarkMapper,
                         ROIConfig,
                         VideoDimensions,
-                        CanvasDimensions,
                     )
 
                     # Create mapping objects for trigger ROI

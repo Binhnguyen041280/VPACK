@@ -5,20 +5,20 @@ REST wrapper endpoints for existing timing and storage configuration logic.
 Integrates with existing processing_config table and save_config validation.
 """
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, jsonify, request
 from flask_cors import cross_origin
+
 from ...services.step5_timing_service import step5_timing_service
 from ...shared import (
+    create_error_response,
+    create_success_response,
     format_step_response,
     handle_database_error,
-    handle_validation_error,
     handle_general_error,
-    create_success_response,
-    create_error_response,
-    validate_request_data,
+    handle_validation_error,
     log_step_operation,
+    validate_request_data,
 )
-
 
 # Create blueprint for Step 5 routes
 step5_bp = Blueprint("step5_timing", __name__, url_prefix="/step")
@@ -158,10 +158,11 @@ def update_step_timing():
         # ✅ Trigger async sync for active cloud sources (non-blocking)
         # Response will be returned immediately while sync runs in background
         try:
-            from modules.db_utils.safe_connection import safe_db_connection
-            from modules.sources.pydrive_downloader import pydrive_downloader
             import logging
             import threading
+
+            from modules.db_utils.safe_connection import safe_db_connection
+            from modules.sources.pydrive_downloader import pydrive_downloader
 
             logger = logging.getLogger(__name__)
 

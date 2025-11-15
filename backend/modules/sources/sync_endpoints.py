@@ -5,14 +5,15 @@ Exposes PyDriveDownloader methods as REST APIs
 """
 
 import logging
-from flask import Blueprint, request, jsonify
+
+from flask import Blueprint, jsonify, request
 
 # Import the PyDrive downloader
 from .pydrive_downloader import (
+    force_sync_source,
     pydrive_downloader,
     start_source_sync,
     stop_source_sync,
-    force_sync_source,
 )
 
 logger = logging.getLogger(__name__)
@@ -260,10 +261,11 @@ def get_sync_dashboard():
 def debug_credentials(source_id: int):
     """Debug credentials loading step by step"""
     try:
-        from modules.db_utils.safe_connection import safe_db_connection
-        import json
         import hashlib
+        import json
         import os
+
+        from modules.db_utils.safe_connection import safe_db_connection
 
         debug_info = {}
 
@@ -363,8 +365,9 @@ def debug_credentials(source_id: int):
 
         # Step 6: Test credentials object creation - FIXED: Use oauth2client for PyDrive2 compatibility
         try:
-            from oauth2client.client import OAuth2Credentials
             from datetime import datetime, timezone
+
+            from oauth2client.client import OAuth2Credentials
 
             # Convert expires_at to datetime if it exists
             token_expiry = None

@@ -4,8 +4,8 @@ Simple but effective machine fingerprinting
 """
 
 import hashlib
-import platform
 import logging
+import platform
 from typing import Optional
 
 logger = logging.getLogger(__name__)

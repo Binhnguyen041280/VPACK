@@ -5,12 +5,14 @@ Handles all payment-related API endpoints
 Updated: 2025-08-11 - Enhanced offline fallback for license validation and activation
 """
 
-from flask import Blueprint, request, jsonify
-import logging
 import json
+import logging
 from datetime import datetime
-from .cloud_function_client import get_cloud_client
+
+from flask import Blueprint, jsonify, request
 from modules.pricing.cloud_pricing_client import get_cloud_pricing_client
+
+from .cloud_function_client import get_cloud_client
 
 
 def is_obviously_invalid_license(license_key: str) -> bool:

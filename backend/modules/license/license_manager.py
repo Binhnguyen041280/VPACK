@@ -8,10 +8,11 @@ Updated: 2025-08-11 - Phase 1 Refactoring Integration
 
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional
-from .machine_fingerprint import generate_machine_fingerprint
-from .license_config import *
+from typing import Any, Dict, Optional
+
 from ..db_utils.safe_connection import safe_db_connection
+from .license_config import *
+from .machine_fingerprint import generate_machine_fingerprint
 
 logger = logging.getLogger(__name__)
 

@@ -5,12 +5,12 @@ Phase 1: Clean separation of core download functionality
 No error handling, no retry logic - just clean business operations
 """
 
-import os
+import hashlib
 import json
 import logging
-import hashlib
+import os
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 from modules.db_utils.safe_connection import safe_db_connection
 
@@ -129,8 +129,8 @@ class PyDriveCore:
     def _create_oauth2client_credentials(self, credential_data: Dict) -> Optional[Any]:
         """Convert to oauth2client credentials - ENHANCED với auto-refresh"""
         try:
-            from oauth2client import client
             import httplib2
+            from oauth2client import client
 
             # Extract data
             access_token = credential_data.get("token")

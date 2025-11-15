@@ -6,7 +6,8 @@ for the step-based configuration system.
 """
 
 import traceback
-from typing import Dict, Any, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
+
 from flask import jsonify
 
 

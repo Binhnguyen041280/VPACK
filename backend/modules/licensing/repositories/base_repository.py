@@ -5,20 +5,20 @@ Eliminates duplicate database patterns found in 8+ locations
 Created: 2025-08-11 - Phase 1 Refactoring
 """
 
-import sqlite3
 import json
 import logging
+import sqlite3
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional, Tuple, Union
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Import database utilities with proper error handling
 try:
     from modules.db_utils import get_db_connection
     from modules.db_utils.safe_connection import safe_db_connection
 except ImportError as e:
-    import sys
     import os
+    import sys
 
     logger = logging.getLogger(__name__)
     logger.error(f"❌ Critical: Cannot import database utilities: {e}")

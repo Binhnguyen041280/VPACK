@@ -4,7 +4,8 @@ Centralizes package validation using CloudFunction as single source
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
+
 from modules.pricing.cloud_pricing_client import get_cloud_pricing_client
 
 logger = logging.getLogger(__name__)

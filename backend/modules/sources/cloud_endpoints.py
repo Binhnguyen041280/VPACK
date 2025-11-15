@@ -1,30 +1,29 @@
 # modules/sources/cloud_endpoints.py - FIXED: API Routes & Session Handling
 #!/usr/bin/env python3
 
+import base64
+import hashlib
+import json
+import logging
+import os
+import secrets
+import time
+from collections import defaultdict
+from datetime import datetime, timedelta
+from functools import wraps
+
+import jwt
+from cryptography.fernet import Fernet
+from dotenv import load_dotenv
+from flask import Blueprint, g, jsonify, request, session
+from flask_cors import CORS, cross_origin
 from google.auth.transport.requests import Request
-from oauth2client.client import OAuth2Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from requests_oauthlib.oauth2_session import TokenUpdated
-from oauthlib.oauth2.rfc6749.errors import InvalidScopeError, OAuth2Error
-import hashlib
-import json
-import os
-import logging
-from datetime import datetime, timedelta
-from flask import Blueprint, request, jsonify, session
 from oauth2client.client import OAuth2Credentials
-from flask_cors import CORS, cross_origin
-from functools import wraps
-from flask import g
-import time
-from collections import defaultdict
-import jwt
-import secrets
-from cryptography.fernet import Fernet
-import base64
-from dotenv import load_dotenv
+from oauthlib.oauth2.rfc6749.errors import InvalidScopeError, OAuth2Error
+from requests_oauthlib.oauth2_session import TokenUpdated
 
 # Load environment variables from .env file
 load_dotenv()

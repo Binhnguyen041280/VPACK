@@ -5,10 +5,11 @@ Provides unified database connection handling, change detection,
 and data synchronization utilities for the step-based configuration system.
 """
 
-import sqlite3
 import json
+import sqlite3
 from contextlib import contextmanager
-from typing import Dict, Any, Tuple, Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
+
 from modules.db_utils.safe_connection import safe_db_connection
 
 # Import db_rwlock conditionally to avoid circular imports

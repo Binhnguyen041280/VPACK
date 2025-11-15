@@ -9,8 +9,8 @@ Created: 2025-08-11 - Phase 2 Step 1
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional, Tuple
 from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import repository pattern from Phase 1
 try:
@@ -257,8 +257,8 @@ class LicenseService:
         except Exception as e:
             logger.error(f"❌ Machine fingerprint generation failed: {str(e)}")
             # Fallback to simple machine identifier
-            import platform
             import hashlib
+            import platform
 
             machine_info = f"{platform.node()}-{platform.machine()}"
             return hashlib.md5(machine_info.encode()).hexdigest()

@@ -8,8 +8,10 @@ Strategy: Focus on realistic attacks (dropped tables), not expert-level hacks
 
 import logging
 from functools import wraps
+from typing import Any, Callable
+
 from flask import jsonify
-from typing import Callable, Any
+
 from .license_manager import LicenseManager
 
 logger = logging.getLogger(__name__)

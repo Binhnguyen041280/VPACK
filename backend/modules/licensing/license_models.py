@@ -7,11 +7,11 @@ MAINTAINS: 100% Backward compatibility
 Updated: 2025-08-11 - Phase 1 Refactoring Step 3 FIXED
 """
 
-import sqlite3
 import json
 import logging
+import sqlite3
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
 # Import database utilities (keep for PaymentTransaction)
 try:

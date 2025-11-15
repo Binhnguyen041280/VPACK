@@ -1,15 +1,16 @@
 # backend/modules/payments/email_sender.py
 
+import json
+import logging
+import os
 import smtplib
 import ssl
-import os
-import logging
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
-from jinja2 import Environment, FileSystemLoader
-import json
 from datetime import datetime
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+from jinja2 import Environment, FileSystemLoader
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)

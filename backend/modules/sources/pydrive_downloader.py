@@ -5,21 +5,21 @@ Focus: Reliability + Simplicity for end users
 No over-engineering, no complex notifications
 """
 
-import os
-import sys
 import json
 import logging
+import os
 import socket
+import sys
 import threading
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
+
+# Existing VTrack infrastructure
+from modules.db_utils.safe_connection import safe_db_connection
 
 # Core components (keep separation of concerns)
 from .pydrive_core import PyDriveCore
 from .pydrive_error_manager import PyDriveErrorManager
-
-# Existing VTrack infrastructure
-from modules.db_utils.safe_connection import safe_db_connection
 
 logger = logging.getLogger(__name__)
 

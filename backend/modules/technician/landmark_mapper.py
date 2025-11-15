@@ -3,9 +3,10 @@ Landmark Mapper Utility for V_Track Hand Detection
 Provides coordinate transformation with fixed sizing for landmark rendering
 """
 
-import numpy as np
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
 from modules.config.logging_config import get_logger
 
 logger = get_logger(__name__)

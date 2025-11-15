@@ -1,10 +1,11 @@
+import logging
+import os
 from datetime import datetime, timedelta
+
 from flask import Blueprint, Flask
 from flask_cors import CORS
-import os
-import logging
-from modules.db_utils import get_db_connection
 from modules.config.config_manager import ConfigManager
+from modules.db_utils import get_db_connection
 
 """
 🎯 V_TRACK AUTOMATED VIDEO PROCESSING AUTHENTICATION STRATEGY
@@ -36,9 +37,10 @@ AUTOMATED PROCESSING PHILOSOPHY:
 # Create Flask Blueprint for config routes
 config_bp = Blueprint("config", __name__)
 
+from modules.config.routes.camera_routes import camera_routes_bp
+
 # Register routes from separate modules
 from modules.config.routes.config_routes import config_routes_bp
-from modules.config.routes.camera_routes import camera_routes_bp
 from modules.config.routes.source_routes import source_routes_bp
 
 # ✅ FIXED: Remove URL prefix to match working version

@@ -5,9 +5,9 @@ Google Drive Client for VTrack Cloud Integration
 Handles authentication, upload, download, and folder management
 """
 
-import os
 import json
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -131,9 +131,9 @@ class GoogleDriveClient:
         """
         try:
             # Import oauth2client
+            import httplib2
             from oauth2client import client
             from oauth2client.client import GOOGLE_TOKEN_URI
-            import httplib2
 
             # Extract required data
             access_token = credential_data.get("token")

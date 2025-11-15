@@ -7,11 +7,12 @@ Manages automatic cleanup of temporary files across multiple directories:
 - Output files (user-configurable retention)
 """
 
+import logging
 import os
 import time
 from pathlib import Path
 from typing import Dict, List
-import logging
+
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.path_utils import get_paths
 

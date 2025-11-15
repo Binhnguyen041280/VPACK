@@ -1,11 +1,12 @@
-from datetime import datetime, timedelta
-import os
+import base64
 import json
 import logging
+import os
+from datetime import datetime, timedelta
+from typing import Dict, Optional
+
 import jwt
 from cryptography.fernet import Fernet
-import base64
-from typing import Dict, Optional
 
 # Configure logging
 logger = logging.getLogger(__name__)

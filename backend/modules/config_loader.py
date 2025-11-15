@@ -1,7 +1,8 @@
-import sqlite3
 import os
-from modules.path_utils import get_paths
+import sqlite3
+
 from modules.db_utils.safe_connection import safe_db_connection
+from modules.path_utils import get_paths
 
 
 def get_processing_config():

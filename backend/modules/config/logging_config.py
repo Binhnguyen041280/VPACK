@@ -1,12 +1,13 @@
+import glob
 import logging
 import os
 import sys
 import time
 import uuid
-import glob
+from collections import defaultdict
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
-from collections import defaultdict
+
 from modules.path_utils import get_logs_dir, is_development_mode
 
 # Global session ID - unique per application run

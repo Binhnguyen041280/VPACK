@@ -3,12 +3,13 @@ Avatar Cache Service
 Cache user avatars locally for offline usage
 """
 
-import os
 import hashlib
-import requests
-from urllib.parse import urlparse
-from datetime import datetime, timedelta
 import logging
+import os
+from datetime import datetime, timedelta
+from urllib.parse import urlparse
+
+import requests
 from modules.config.logging_config import get_logger
 
 logger = get_logger(__name__)

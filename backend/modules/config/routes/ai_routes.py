@@ -4,15 +4,16 @@ RESTful endpoints for AI configuration, API key testing, and usage stats
 Follows pattern from step1_brandname_routes.py
 """
 
-from flask import Blueprint, request, jsonify, session
+from flask import Blueprint, jsonify, request, session
 from flask_cors import cross_origin
+
 from ..services.ai_service import AIService
 from ..shared import (
-    create_success_response,
     create_error_response,
-    validate_request_data,
+    create_success_response,
     handle_general_error,
     log_step_operation,
+    validate_request_data,
 )
 
 # Create blueprint for AI routes

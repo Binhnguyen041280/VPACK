@@ -21,31 +21,33 @@ Key Features:
 """
 
 import os
+import sqlite3
 import threading
 import time
-import sqlite3
-import psutil
 from datetime import datetime, timedelta, timezone
+from typing import List, Optional, Tuple
 from zoneinfo import ZoneInfo
-from typing import List, Tuple, Optional
-from modules.db_utils.safe_connection import safe_db_connection
+
+import psutil
 from modules.config.logging_config import get_logger
+from modules.db_utils.safe_connection import safe_db_connection
+from modules.utils.cleanup import cleanup_service
 from modules.utils.simple_timezone import get_system_timezone_from_db
+
+from .config.scheduler_config import SchedulerConfig
 from .db_sync import (
     db_rwlock,
-    frame_sampler_event,
     event_detector_event,
-    system_idle_event,
+    frame_sampler_event,
     retry_in_progress_flag,
+    system_idle_event,
 )
 from .file_lister import run_file_scan
 from .program_runner import (
-    start_frame_sampler_thread,
     start_event_detector_thread,
+    start_frame_sampler_thread,
     start_retry_processor,
 )
-from .config.scheduler_config import SchedulerConfig
-from modules.utils.cleanup import cleanup_service
 
 logger = get_logger(__name__, {"module": "batch_scheduler"})
 logger.info("BatchScheduler logging initialized")

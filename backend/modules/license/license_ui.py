@@ -3,10 +3,10 @@ UI components for license management - NON-BLOCKING VERSION
 """
 
 import logging
-from typing import Dict, Any, Optional
-import threading
 import queue
+import threading
 import time
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 

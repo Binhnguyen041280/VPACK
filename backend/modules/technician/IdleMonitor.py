@@ -1,10 +1,11 @@
+import logging
+import os
+import queue
+import uuid
+from datetime import datetime
+
 import cv2
 import mediapipe as mp
-import queue
-import os
-import logging
-from datetime import datetime
-import uuid
 from modules.config.logging_config import get_logger
 
 

@@ -5,20 +5,20 @@ RESTful endpoints for managing brandname configuration with change detection
 and validation. Part of the modular step-based configuration system.
 """
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, jsonify, request
 from flask_cors import cross_origin
+
 from ...services.step1_brandname_service import step1_brandname_service
 from ...shared import (
+    create_error_response,
+    create_success_response,
     format_step_response,
     handle_database_error,
-    handle_validation_error,
     handle_general_error,
-    create_success_response,
-    create_error_response,
-    validate_request_data,
+    handle_validation_error,
     log_step_operation,
+    validate_request_data,
 )
-
 
 # Create blueprint for Step 1 routes
 step1_bp = Blueprint("step1_brandname", __name__, url_prefix="/step")

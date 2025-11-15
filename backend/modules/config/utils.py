@@ -5,9 +5,10 @@ This module contains common functions used across multiple config route modules
 to avoid code duplication and maintain DRY principle.
 """
 
-import os
 import json
-from typing import List, Dict, Any, Optional
+import os
+from typing import Any, Dict, List, Optional
+
 from modules.path_utils import get_paths
 
 

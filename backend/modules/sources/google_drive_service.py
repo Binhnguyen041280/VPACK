@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
+import logging
+import time
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
+
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from google.oauth2.credentials import Credentials
-import time
-import logging
-from typing import List, Dict, Optional, Tuple
-from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 

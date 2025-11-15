@@ -6,13 +6,14 @@ validation, change detection, and database operations.
 """
 
 import json
-from typing import Dict, Any, Tuple, Optional
+from typing import Any, Dict, Optional, Tuple
+
 from ..shared import (
-    safe_connection_wrapper,
     execute_with_change_detection,
-    validate_brand_name,
-    sanitize_input,
     log_step_operation,
+    safe_connection_wrapper,
+    sanitize_input,
+    validate_brand_name,
 )
 
 

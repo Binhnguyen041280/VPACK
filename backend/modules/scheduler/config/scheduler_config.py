@@ -6,7 +6,7 @@ including batch processing settings, system monitoring thresholds, and timing pa
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 class SchedulerConfig:

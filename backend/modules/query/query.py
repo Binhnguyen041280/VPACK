@@ -1,31 +1,33 @@
-from flask import Blueprint, request, jsonify
-from datetime import datetime, timezone, timedelta
+import base64
 import csv
 import io
-import os
-import base64
-import pandas as pd
 import json
+import os
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
+
+import pandas as pd
+from flask import Blueprint, jsonify, request
+from modules.config.logging_config import get_logger
 from modules.db_utils import find_project_root
 from modules.db_utils.safe_connection import safe_db_connection
+
+# License guard for Trace page protection
+from modules.license.license_guard import require_valid_license
 from modules.path_utils import get_paths
-from ..utils.file_parser import parse_uploaded_file
 from modules.scheduler.db_sync import db_rwlock  # Thêm import db_rwlock
-from zoneinfo import ZoneInfo
-from modules.config.logging_config import get_logger
 
 # Removed timezone_validation - using simple validation inline
 # Removed enhanced_timezone_query import - consolidating into single file
 from modules.utils.simple_timezone import (
-    simple_validate_timezone,
     get_available_timezones,
     get_system_timezone_from_db,
+    simple_validate_timezone,
 )
 
-# License guard for Trace page protection
-from modules.license.license_guard import require_valid_license
+from ..utils.file_parser import parse_uploaded_file
 
 query_bp = Blueprint("query", __name__)
 logger = get_logger(__name__)
@@ -931,8 +933,8 @@ def get_cameras():
         return jsonify({"error": f"Failed to get cameras: {str(e)}"}), 500
 
 
-import time
 import threading
+import time
 import uuid
 
 # Store processing tasks
@@ -1044,8 +1046,8 @@ def process_event():
             # Start background processing
             def process_video():
                 try:
-                    import subprocess
                     import ast
+                    import subprocess
 
                     # Update status
                     processing_tasks[task_id]["status"] = "checking"
@@ -1336,8 +1338,8 @@ def play_video():
             return jsonify({"error": f"Video file not found: {video_path}"}), 404
 
         # Open video with default player
-        import subprocess
         import platform
+        import subprocess
 
         system = platform.system()
         if system == "Darwin":  # macOS
@@ -1481,8 +1483,8 @@ def browse_location():
             return jsonify({"error": f"Path not found: {file_path}"}), 404
 
         # Open file explorer at that directory
-        import subprocess
         import platform
+        import subprocess
 
         system = platform.system()
         if system == "Darwin":  # macOS
@@ -1526,8 +1528,8 @@ def browse_output():
                 )
 
             # Open file explorer
-            import subprocess
             import platform
+            import subprocess
 
             system = platform.system()
             if system == "Darwin":  # macOS
@@ -1669,8 +1671,8 @@ def export_zoom_video():
         JSON with output_path to the exported zoom video
     """
     try:
-        import subprocess
         import ast
+        import subprocess
 
         data = request.get_json()
         event_id = data.get("event_id")

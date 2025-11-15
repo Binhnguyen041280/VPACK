@@ -1,7 +1,9 @@
 import os
 import subprocess
-from .cutter_utils import generate_merged_filename, generate_output_filename
+
 from modules.path_utils import get_tmp_dir
+
+from .cutter_utils import generate_merged_filename, generate_output_filename
 
 
 def cut_incomplete_event(event, video_buffer, video_length, output_file):

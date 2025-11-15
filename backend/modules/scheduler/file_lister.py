@@ -28,24 +28,26 @@ Performance Optimizations:
     - Queue limits to prevent memory overload
 """
 
+import json
 import os
 import sqlite3
-import json
+import subprocess
 import time
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 from statistics import median
-from typing import List, Tuple, Dict, Optional, Any
+from typing import Any, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
+
+from modules.config.logging_config import get_logger
 from modules.db_utils import find_project_root
 from modules.db_utils.safe_connection import safe_db_connection
-from modules.config.logging_config import get_logger
-from modules.utils.simple_timezone import get_system_timezone_from_db
 from modules.path_utils import get_paths
+from modules.utils.simple_timezone import get_system_timezone_from_db
+
+from .config.scheduler_config import SchedulerConfig
 
 # Removed video_timezone_detector - using simple video detection
 from .db_sync import db_rwlock, retry_in_progress_flag
-from .config.scheduler_config import SchedulerConfig
-import subprocess
 
 # Use centralized path configuration
 paths = get_paths()
@@ -455,8 +457,9 @@ def save_files_to_db(
                 camera_name = "CamTest"
 
         # Check if health check required for this camera
-        from modules.technician.camera_health_checker import should_run_health_check
         import json
+
+        from modules.technician.camera_health_checker import should_run_health_check
 
         health_check_needed = should_run_health_check(camera_name)
 

@@ -4,9 +4,10 @@ Validates video files for training purposes with duration requirements (1-5 minu
 """
 
 import os
-import cv2
 import time
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
+import cv2
 from modules.config.logging_config import get_logger
 
 logger = get_logger(__name__)

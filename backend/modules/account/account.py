@@ -1,8 +1,9 @@
 # backend/modules/account/account.py
 """User management for first-run detection"""
 import logging
-from typing import Dict, Optional
 from datetime import datetime
+from typing import Dict, Optional
+
 from modules.db_utils.safe_connection import safe_db_connection
 
 logger = logging.getLogger(__name__)

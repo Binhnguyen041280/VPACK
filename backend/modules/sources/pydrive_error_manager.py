@@ -6,10 +6,10 @@ Focus: Essential error recovery only, no complex user communication
 
 import logging
 import socket
-import time
 import threading
-from typing import Dict, Callable
+import time
 from enum import Enum
+from typing import Callable, Dict
 
 logger = logging.getLogger(__name__)
 

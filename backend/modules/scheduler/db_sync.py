@@ -30,9 +30,10 @@ Event Flow:
     4. Frame samplers wait on event_detector_done before continuing to next video
 """
 
-from readerwriterlock import rwlock
 import threading
 from typing import Optional
+
+from readerwriterlock import rwlock
 
 # Import logger conditionally to avoid circular imports during initialization
 try:

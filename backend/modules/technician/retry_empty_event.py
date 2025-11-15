@@ -23,16 +23,17 @@ Threading:
     - Signals completion by clearing system_idle_event
 """
 
-import cv2
-import os
+import json
 import logging
+import os
 import sqlite3
 import threading
-import json
-from modules.db_utils.safe_connection import safe_db_connection
-from modules.scheduler.db_sync import db_rwlock, system_idle_event, retry_in_progress_flag
-from modules.technician.frame_sampler_trigger import FrameSamplerTrigger
+
+import cv2
 from modules.config.logging_config import get_logger
+from modules.db_utils.safe_connection import safe_db_connection
+from modules.scheduler.db_sync import db_rwlock, retry_in_progress_flag, system_idle_event
+from modules.technician.frame_sampler_trigger import FrameSamplerTrigger
 
 
 class RetryEmptyEventProcessor:

@@ -2,11 +2,11 @@
 Machine fingerprinting for license binding
 """
 
-import platform
 import hashlib
-import uuid
 import json
 import logging
+import platform
+import uuid
 
 logger = logging.getLogger(__name__)
 

@@ -3,17 +3,18 @@ ROI Configuration Service Layer
 Handles video streaming, frame extraction, and ROI processing for web-based configuration
 """
 
-import os
-import cv2
-import json
 import base64
+import json
 import logging
-from typing import Dict, Any, Optional, Tuple, List
-from flask import Response
 import mimetypes
-from werkzeug.datastructures import Range
+import os
 import uuid
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
+import cv2
+from flask import Response
+from werkzeug.datastructures import Range
 
 # Set up logging
 logger = logging.getLogger(__name__)

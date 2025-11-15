@@ -1,8 +1,9 @@
-import cv2
 import logging
-import time
 import os
+import time
 from datetime import timedelta
+
+import cv2
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.scheduler.db_sync import db_rwlock
 

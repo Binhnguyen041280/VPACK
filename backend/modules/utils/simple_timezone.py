@@ -3,10 +3,10 @@ Simple timezone utilities using Python's standard zoneinfo library.
 Replaces 670+ lines of custom timezone code with native implementations.
 """
 
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo, available_timezones
-from typing import Optional, Dict, Any
 import logging
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
+from zoneinfo import ZoneInfo, available_timezones
 
 logger = logging.getLogger(__name__)
 
@@ -120,8 +120,8 @@ def get_video_creation_time_utc(video_path: str) -> Dict[str, Any]:
             'confidence': 'high' | 'low'
         }
     """
-    import subprocess
     import json
+    import subprocess
     from pathlib import Path
 
     # Priority 1: Read from video metadata (ffprobe)

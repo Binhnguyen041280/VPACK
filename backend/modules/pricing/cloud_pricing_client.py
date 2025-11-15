@@ -3,12 +3,13 @@ Cloud Pricing Client for V_Track Desktop
 Fetch pricing from CloudFunction on-demand
 """
 
-import requests
+import json
 import logging
 import os
-import json
-from typing import Dict, Any, Optional
 from datetime import datetime
+from typing import Any, Dict, Optional
+
+import requests
 
 logger = logging.getLogger(__name__)
 

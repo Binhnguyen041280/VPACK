@@ -1,7 +1,8 @@
-import cv2
 import argparse
-import os
 import logging
+import os
+
+import cv2
 
 
 def setup_logging():

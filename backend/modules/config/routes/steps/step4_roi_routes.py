@@ -3,16 +3,17 @@ ROI Configuration Routes for Step 4
 Web-based ROI selection and video streaming endpoints
 """
 
-import os
 import json
 import logging
+import os
 from datetime import datetime
-from flask import Blueprint, request, jsonify, make_response
-from werkzeug.exceptions import BadRequest
+
+from flask import Blueprint, jsonify, make_response, request
 from modules.config.services.step4_roi_service import roi_video_service
 from modules.config.shared.error_handlers import handle_general_error
 from modules.config.shared.validation import validate_required_fields
 from modules.db_utils import find_project_root
+from werkzeug.exceptions import BadRequest
 
 # Import QR baseline cache for retrieving cached baseline during save
 try:
@@ -407,8 +408,9 @@ def save_roi_configuration():
 
         # Save to database (packing_profiles table)
         try:
-            from modules.db_utils import get_db_connection
             import json
+
+            from modules.db_utils import get_db_connection
 
             conn = get_db_connection()
             cursor = conn.cursor()

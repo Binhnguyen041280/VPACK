@@ -1,12 +1,13 @@
-import sqlite3
-import os
 import json
-from modules.path_utils import get_paths
-from modules.db_utils.safe_connection import safe_db_connection
+import logging
+import os
+import sqlite3
 import time
 from datetime import datetime, timedelta
-import logging
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
+from modules.db_utils.safe_connection import safe_db_connection
+from modules.path_utils import get_paths
 
 # 🔒 SECURITY: Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -52,8 +53,8 @@ def get_default_storage_paths():
     - Falls back to OS-specific paths for local development
     - Supports environment variable overrides for flexibility
     """
-    import platform
     import os
+    import platform
 
     # DOCKER MODE: Check if running in Docker container
     if os.getenv("VTRACK_IN_DOCKER") == "true":

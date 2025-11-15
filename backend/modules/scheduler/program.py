@@ -30,21 +30,23 @@ Thread Safety:
     with BatchScheduler for safe concurrent operations.
 """
 
-from flask import Blueprint, request, jsonify
-import os
 import json
+import os
 import threading
 from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
-from typing import Dict, Any, List, Optional
+
+from flask import Blueprint, jsonify, request
+from modules.config.logging_config import get_logger
 from modules.db_utils import find_project_root
 from modules.db_utils.safe_connection import safe_db_connection
-from modules.config.logging_config import get_logger
+from modules.path_utils import get_logs_dir, get_paths
 from modules.utils.simple_timezone import get_system_timezone_from_db
-from modules.path_utils import get_paths, get_logs_dir
-from .file_lister import run_file_scan, get_db_path
+
 from .batch_scheduler import BatchScheduler
-from .db_sync import frame_sampler_event, event_detector_event
+from .db_sync import event_detector_event, frame_sampler_event
+from .file_lister import get_db_path, run_file_scan
 
 program_bp = Blueprint("program", __name__)
 
@@ -270,8 +272,8 @@ def program():
                         result = cursor.fetchone()
                 if result:
                     from .program_runner import (
-                        start_frame_sampler_thread,
                         start_event_detector_thread,
+                        start_frame_sampler_thread,
                     )
 
                     frame_sampler_event.set()

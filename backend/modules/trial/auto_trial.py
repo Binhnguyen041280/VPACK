@@ -3,19 +3,20 @@ Auto Trial Service with CloudFunction Integration
 Siêu đơn giản: Auto create trial cho first-time users
 """
 
-import logging
 import json
+import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 # Import existing infrastructure
 try:
-    from modules.payments.cloud_function_client import get_cloud_client
     from modules.db_utils.safe_connection import safe_db_connection
+    from modules.payments.cloud_function_client import get_cloud_client
+
     from .machine_id import generate_machine_id
 except ImportError:
-    from backend.modules.payments.cloud_function_client import get_cloud_client
     from backend.modules.db_utils.safe_connection import safe_db_connection
+    from backend.modules.payments.cloud_function_client import get_cloud_client
     from backend.modules.trial.machine_id import generate_machine_id
 
 logger = logging.getLogger(__name__)
