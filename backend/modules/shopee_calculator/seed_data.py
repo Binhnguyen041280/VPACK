@@ -12,12 +12,18 @@ import sqlite3
 import os
 from datetime import datetime
 
+try:
+    from .database import get_db_path
+except ImportError:
+    # When running standalone
+    from database import get_db_path
+
 
 def seed_shopee_data(db_path=None):
     """Seed Shopee Calculator tables with initial data."""
 
     if db_path is None:
-        db_path = '/app/database/events.db'
+        db_path = get_db_path()
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()

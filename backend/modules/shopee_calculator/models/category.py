@@ -5,18 +5,19 @@ Manages product categories with fee rates for mall and non-mall sellers.
 
 import sqlite3
 from typing import Optional, Dict, Any, List
+from ..database import get_db_path
 
 
 class Category:
     """Model for Shopee product categories."""
 
-    def __init__(self, db_path: str = '/app/database/events.db'):
+    def __init__(self, db_path: str = None):
         """Initialize Category model.
 
         Args:
-            db_path: Path to SQLite database
+            db_path: Path to SQLite database (defaults to Shopee Calculator DB)
         """
-        self.db_path = db_path
+        self.db_path = db_path or get_db_path()
 
     def get_by_code(self, category_code: str) -> Optional[Dict[str, Any]]:
         """Get category by code.

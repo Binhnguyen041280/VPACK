@@ -7,18 +7,19 @@ import sqlite3
 import json
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+from ..database import get_db_path
 
 
 class Calculation:
     """Model for Shopee calculations."""
 
-    def __init__(self, db_path: str = '/app/database/events.db'):
+    def __init__(self, db_path: str = None):
         """Initialize Calculation model.
 
         Args:
-            db_path: Path to SQLite database
+            db_path: Path to SQLite database (defaults to Shopee Calculator DB)
         """
-        self.db_path = db_path
+        self.db_path = db_path or get_db_path()
 
     def create(self, calc_data: Dict[str, Any]) -> int:
         """Create a new calculation.

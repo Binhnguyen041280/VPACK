@@ -5,6 +5,7 @@ Coordinates all calculation workflows and database operations.
 
 from typing import Dict, Any, Optional
 from ..models import Calculation, FeeConfig, Category
+from ..database import get_db_path
 from .profit_calculator import ProfitCalculator
 from .pricing_calculator import PricingCalculator
 from .breakdown_formatter import BreakdownFormatter
@@ -13,16 +14,16 @@ from .breakdown_formatter import BreakdownFormatter
 class CalculatorService:
     """Main service for Shopee Calculator operations."""
 
-    def __init__(self, db_path: str = '/app/database/events.db'):
+    def __init__(self, db_path: str = None):
         """Initialize calculator service.
 
         Args:
-            db_path: Path to SQLite database
+            db_path: Path to SQLite database (defaults to Shopee Calculator DB)
         """
-        self.db_path = db_path
-        self.calculation_model = Calculation(db_path)
-        self.fee_config_model = FeeConfig(db_path)
-        self.category_model = Category(db_path)
+        self.db_path = db_path or get_db_path()
+        self.calculation_model = Calculation(self.db_path)
+        self.fee_config_model = FeeConfig(self.db_path)
+        self.category_model = Category(self.db_path)
         self.profit_calc = ProfitCalculator()
         self.pricing_calc = PricingCalculator()
 

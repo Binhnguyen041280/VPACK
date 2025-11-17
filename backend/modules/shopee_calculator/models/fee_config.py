@@ -6,18 +6,19 @@ Manages Shopee seller fee configurations with effective dates.
 import sqlite3
 from typing import Optional, Dict, Any
 from datetime import datetime
+from ..database import get_db_path
 
 
 class FeeConfig:
     """Model for Shopee fee configurations."""
 
-    def __init__(self, db_path: str = '/app/database/events.db'):
+    def __init__(self, db_path: str = None):
         """Initialize FeeConfig model.
 
         Args:
-            db_path: Path to SQLite database
+            db_path: Path to SQLite database (defaults to Shopee Calculator DB)
         """
-        self.db_path = db_path
+        self.db_path = db_path or get_db_path()
 
     def get_active_config(self) -> Optional[Dict[str, Any]]:
         """Get currently active fee configuration.

@@ -5,18 +5,19 @@ Manages user-defined and system cost presets.
 
 import sqlite3
 from typing import Optional, Dict, Any, List
+from ..database import get_db_path
 
 
 class CustomCostPreset:
     """Model for custom cost presets."""
 
-    def __init__(self, db_path: str = '/app/database/events.db'):
+    def __init__(self, db_path: str = None):
         """Initialize CustomCostPreset model.
 
         Args:
-            db_path: Path to SQLite database
+            db_path: Path to SQLite database (defaults to Shopee Calculator DB)
         """
-        self.db_path = db_path
+        self.db_path = db_path or get_db_path()
 
     def get_system_presets(self) -> List[Dict[str, Any]]:
         """Get all system-defined cost presets.
