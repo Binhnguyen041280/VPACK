@@ -39,6 +39,7 @@ from modules.technician.frame_sampler_no_trigger import FrameSamplerNoTrigger
 from modules.technician.IdleMonitor import IdleMonitor
 from modules.technician.event_detector import process_single_log
 from modules.technician.retry_empty_event import start_retry_processor
+from modules.utils.file_stability import validate_video_file
 from .db_sync import db_rwlock, frame_sampler_event, event_detector_event, event_detector_done
 from .config.scheduler_config import SchedulerConfig
 import json
@@ -59,6 +60,123 @@ running_state: Dict[str, Any] = {
 # Video-specific locks to prevent concurrent processing of the same file
 # Key: video file path, Value: threading.Lock instance
 video_locks: Dict[str, threading.Lock] = {}
+
+# ==================== RETRY MECHANISM CONFIGURATION ====================
+MAX_RETRIES = 3              # Retry 3 times before marking as Failed
+RETRY_DELAY_SECONDS = 300    # Wait 5 minutes between retries
+
+
+def get_retry_metadata(health_check_message_json):
+    """
+    Extract retry metadata from health_check_message JSON field.
+
+    Args:
+        health_check_message_json (str): JSON string from database
+
+    Returns:
+        dict: Retry metadata with keys: retry_count, retry_after, last_error
+    """
+    try:
+        if health_check_message_json:
+            data = json.loads(health_check_message_json)
+            return {
+                'retry_count': data.get('retry_count', 0),
+                'retry_after': data.get('retry_after', 0),
+                'last_error': data.get('last_error', None)
+            }
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    return {'retry_count': 0, 'retry_after': 0, 'last_error': None}
+
+
+def mark_for_retry(conn, video_file, error_reason):
+    """
+    Mark video file for retry with updated metadata.
+
+    Args:
+        conn: Database connection
+        video_file (str): Path to video file
+        error_reason (str): Reason for retry
+    """
+    cursor = conn.cursor()
+
+    # Get current retry metadata
+    cursor.execute(
+        "SELECT health_check_message FROM file_list WHERE file_path = ?",
+        (video_file,)
+    )
+    result = cursor.fetchone()
+
+    if not result:
+        logger.error(f"File not found in database for retry: {video_file}")
+        return
+
+    current_metadata = get_retry_metadata(result[0])
+    retry_count = current_metadata['retry_count'] + 1
+
+    if retry_count > MAX_RETRIES:
+        # Max retries exceeded - mark as Failed
+        logger.error(
+            f"❌ Max retries ({MAX_RETRIES}) exceeded for {os.path.basename(video_file)}: {error_reason}"
+        )
+        cursor.execute(
+            "UPDATE file_list SET status = ?, is_processed = 1 WHERE file_path = ?",
+            ("Failed", video_file)
+        )
+        return
+
+    # Calculate next retry time
+    retry_after = time.time() + RETRY_DELAY_SECONDS
+
+    # Update metadata with retry info
+    try:
+        if result[0]:
+            metadata = json.loads(result[0])
+        else:
+            metadata = {}
+    except (json.JSONDecodeError, TypeError):
+        metadata = {}
+
+    metadata.update({
+        'retry_count': retry_count,
+        'retry_after': retry_after,
+        'last_error': error_reason,
+        'timestamp': datetime.now().isoformat()
+    })
+
+    # Keep status as 'pending' so it will be picked up again
+    cursor.execute(
+        """UPDATE file_list
+           SET status = ?, health_check_message = ?
+           WHERE file_path = ?""",
+        ("pending", json.dumps(metadata), video_file)
+    )
+
+    logger.warning(
+        f"⏳ Retry {retry_count}/{MAX_RETRIES} scheduled for {os.path.basename(video_file)} "
+        f"in {RETRY_DELAY_SECONDS//60} minutes: {error_reason}"
+    )
+
+
+def should_retry_now(health_check_message_json):
+    """
+    Check if enough time has passed to retry processing.
+
+    Args:
+        health_check_message_json (str): JSON metadata from database
+
+    Returns:
+        bool: True if should retry now, False if need to wait
+    """
+    metadata = get_retry_metadata(health_check_message_json)
+
+    if metadata['retry_count'] == 0:
+        return True  # First attempt, no retry delay
+
+    retry_after = metadata.get('retry_after', 0)
+    return time.time() >= retry_after
+
 
 def start_frame_sampler_thread(batch_size: int = 1) -> List[threading.Thread]:
     """Start multiple frame sampler threads for parallel video processing.
@@ -123,12 +241,17 @@ def run_frame_sampler() -> None:
         frame_sampler_event.wait()
         logger.debug("Frame sampler event received")
         try:
-            # Get list of pending video files from database queue
+            # Get list of pending video files from database queue (including retry metadata)
             with db_rwlock.gen_rlock():
                 with safe_db_connection() as conn:
                     cursor = conn.cursor()
-                    cursor.execute("SELECT file_path, camera_name FROM file_list WHERE is_processed = 0 ORDER BY priority DESC, created_at ASC")
-                    video_files = [(row[0], row[1]) for row in cursor.fetchall()]
+                    cursor.execute(
+                        "SELECT file_path, camera_name, health_check_message "
+                        "FROM file_list "
+                        "WHERE is_processed = 0 "
+                        "ORDER BY priority DESC, created_at ASC"
+                    )
+                    video_files = [(row[0], row[1], row[2]) for row in cursor.fetchall()]
                 logger.info(f"Found {len(video_files)} unprocessed video files")
 
             # If no work available, clear event and wait for new signals
@@ -138,7 +261,17 @@ def run_frame_sampler() -> None:
                 continue
 
             # Process each video file in the queue
-            for video_file, camera_name in video_files:
+            for video_file, camera_name, health_check_message in video_files:
+                # Check if enough time has passed for retry
+                if not should_retry_now(health_check_message):
+                    retry_meta = get_retry_metadata(health_check_message)
+                    wait_time = int(retry_meta['retry_after'] - time.time())
+                    logger.debug(
+                        f"Skipping {os.path.basename(video_file)}: "
+                        f"retry scheduled in {wait_time}s (attempt {retry_meta['retry_count']}/{MAX_RETRIES})"
+                    )
+                    continue
+
                 # Check if video is already being processed or completed
                 with db_rwlock.gen_rlock():
                     with safe_db_connection() as conn:
@@ -214,8 +347,39 @@ def run_frame_sampler() -> None:
                     # This optimization focuses processing on periods with actual activity
                     idle_monitor = IdleMonitor()
                     logger.info(f"Running IdleMonitor for {video_file}")
-                    idle_monitor.process_video(video_file, camera_name, packing_area)
-                    work_block_queue = idle_monitor.get_work_block_queue()
+
+                    # ==================== VIDEO VALIDATION & ERROR HANDLING ====================
+                    # Try to process video with IdleMonitor (may fail if file incomplete/corrupted)
+                    try:
+                        idle_monitor.process_video(video_file, camera_name, packing_area)
+                        work_block_queue = idle_monitor.get_work_block_queue()
+                    except Exception as e:
+                        # IdleMonitor failed - validate video file to determine if retry needed
+                        logger.error(f"IdleMonitor failed for {video_file}: {e}")
+
+                        is_valid, reason = validate_video_file(video_file)
+
+                        if not is_valid:
+                            # Video file is incomplete/corrupted - mark for retry
+                            logger.warning(f"Video validation failed: {reason}")
+                            with db_rwlock.gen_wlock():
+                                with safe_db_connection() as conn:
+                                    mark_for_retry(conn, video_file, f"OpenCV error: {reason}")
+                                    conn.commit()
+                        else:
+                            # Video file is valid but IdleMonitor failed for other reasons
+                            # This shouldn't happen, but mark as Failed to avoid infinite loop
+                            logger.error(f"Unexpected error: Video is valid but IdleMonitor failed: {e}")
+                            with db_rwlock.gen_wlock():
+                                with safe_db_connection() as conn:
+                                    cursor = conn.cursor()
+                                    cursor.execute(
+                                        "UPDATE file_list SET status = ?, is_processed = 1 WHERE file_path = ?",
+                                        ("Failed", video_file)
+                                    )
+                                    conn.commit()
+
+                        continue  # Skip to next file
 
                     # Skip videos with no active periods to save processing time
                     if work_block_queue.empty():

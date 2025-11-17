@@ -377,7 +377,12 @@ class PyDriveCore:
             
             file_obj = drive.CreateFile({'id': file_info['id']})
             file_obj.GetContentFile(local_path)
-            
+
+            # Remove rotation metadata to match OpenCV processing expectations
+            if not self._remove_rotation_metadata(local_path, file_name):
+                logger.error(f"❌ Failed to process rotation metadata for {file_name}")
+                return False
+
             logger.info(f"✅ Downloaded: {file_name} - Success")
             return True
             
@@ -692,3 +697,72 @@ class PyDriveCore:
         import re
         sanitized = re.sub(r'[<>:"/\\|?*]', '_', filename)
         return sanitized.strip()
+
+    def _remove_rotation_metadata(self, file_path: str, file_name: str) -> bool:
+        """
+        Remove rotation metadata from video file using ffmpeg.
+
+        This fixes orientation mismatch between Google Drive preview and OpenCV processing.
+        Google Drive may show videos with rotation metadata applied, but OpenCV ignores it,
+        causing ROI coordinates to be invalid when video orientation differs.
+
+        Args:
+            file_path: Full path to downloaded video file
+            file_name: Filename for logging purposes
+
+        Returns:
+            True if successful or if ffmpeg not needed, False only on critical failure
+        """
+        import subprocess
+
+        try:
+            # Create temp file path
+            temp_path = file_path + '.tmp'
+
+            # Run ffmpeg to remove rotation metadata (stream copy, no re-encoding)
+            cmd = [
+                'ffmpeg',
+                '-i', file_path,
+                '-metadata:s:v', 'rotate=0',  # Remove rotation metadata (use rotate=0, not rotate="0" in list)
+                '-c', 'copy',  # Stream copy (no re-encoding, preserves quality)
+                '-y',  # Overwrite output file
+                temp_path
+            ]
+
+            logger.debug(f"Removing rotation metadata from {file_name}")
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+
+            if result.returncode == 0:
+                # Replace original with processed file
+                os.replace(temp_path, file_path)
+                logger.debug(f"✅ Removed rotation metadata from {file_name}")
+                return True
+            else:
+                logger.warning(f"⚠️ ffmpeg failed for {file_name}: {result.stderr[:200]}")
+                # Clean up temp file if exists
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                # Return True anyway - original file is still valid
+                return True
+
+        except subprocess.TimeoutExpired:
+            logger.warning(f"⚠️ ffmpeg timeout for {file_name} (>60s)")
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            return True  # Continue with original file
+
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to remove rotation metadata from {file_name}: {e}")
+            # Clean up temp file if exists
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except:
+                    pass
+            # Return True anyway - continue with original file
+            return True

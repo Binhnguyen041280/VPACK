@@ -1,0 +1,83 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: vtrack-backend:phase2
+    container_name: vtrack-backend
+    platform: linux/arm64
+    ports:
+    - 8080:8080
+    env_file:
+    - .env
+    environment:
+    - VTRACK_IN_DOCKER=true
+    - FLASK_HOST=0.0.0.0
+    - FLASK_PORT=8080
+    - FLASK_ENV=production
+    - FLASK_DEBUG=false
+    - VTRACK_INPUT_DIR=/app/resources/input
+    - VTRACK_OUTPUT_DIR=/app/resources/output
+    - VTRACK_RESOURCES_DIR=/app/resources
+    - VTRACK_SESSION_DIR=/app/var/flask_session
+    volumes:
+    - ${VTRACK_DATA_DIR}/database:/app/database
+    - ${VTRACK_DATA_DIR}/logs:/app/logs
+    - ${VTRACK_DATA_DIR}/logs:/app/var/logs
+    - ${VTRACK_DATA_DIR}/sessions:/app/var/flask_session
+    - ${VTRACK_DATA_DIR}/cache:/app/var/cache
+    - ${VTRACK_DATA_DIR}/uploads:/app/var/uploads
+    - ${LOCAL_VIDEO_PATH}:/app/resources/input:ro
+    - ${VTRACK_DATA_DIR}/output:/app/resources/output
+    - /var/run/docker.sock:/var/run/docker.sock
+    - ./docker-compose.yml:/app/docker-compose.yml:rw
+    - ./.env:/app/../.env:rw
+    networks:
+    - vtrack-network
+    restart: unless-stopped
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8080/health
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: vtrack-frontend:phase3
+    container_name: vtrack-frontend
+    platform: linux/arm64
+    ports:
+    - 3000:3000
+    environment:
+    - NODE_ENV=production
+    - PORT=3000
+    - HOSTNAME=0.0.0.0
+    - NEXT_PUBLIC_API_URL=http://backend:8080
+    networks:
+    - vtrack-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+      - CMD
+      - wget
+      - --no-verbose
+      - --tries=1
+      - --spider
+      - http://localhost:3000
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+networks:
+  vtrack-network:
+    driver: bridge
+    name: vtrack-network

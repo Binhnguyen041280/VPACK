@@ -44,6 +44,7 @@ from modules.path_utils import get_paths
 # Removed video_timezone_detector - using simple video detection
 from .db_sync import db_rwlock, retry_in_progress_flag
 from .config.scheduler_config import SchedulerConfig
+from modules.utils.file_stability import is_file_stable, get_file_age, validate_video_file
 import subprocess
 
 # Use centralized path configuration
@@ -380,7 +381,20 @@ def save_files_to_db(conn: Any, video_files: List[str], file_ctimes: List[float]
             absolute_path = custom_path
         else:
             absolute_path = os.path.join(video_root, file_path)
-            
+
+        # ==================== VIDEO FILE VALIDATION ====================
+        # Validate that video file can be opened with OpenCV
+        # This prevents processing incomplete downloads (e.g., moov atom not found)
+        # More reliable than file stability check as it directly validates video integrity
+        is_valid, reason = validate_video_file(absolute_path)
+        if not is_valid:
+            file_age = get_file_age(absolute_path)
+            logger.info(
+                f"⏳ Skipping invalid video file: {os.path.basename(absolute_path)} "
+                f"(reason: {reason}, age: {file_age:.0f}s)"
+            )
+            continue  # Skip this file, will be picked up in next scan
+
         # Convert timestamp to datetime object with system timezone
         user_timezone = _get_system_tz()
         file_ctime_dt = datetime.fromtimestamp(file_ctime, tz=user_timezone)

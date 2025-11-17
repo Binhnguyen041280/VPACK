@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  vtrack-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vtrack-backend
+    ports:
+      - "8080:8080"
+    environment:
+      # Docker mode flag
+      - VTRACK_IN_DOCKER=true
+
+      # Storage paths
+      - VTRACK_INPUT_DIR=/app/resources/input
+      - VTRACK_OUTPUT_DIR=/app/resources/output
+      - VTRACK_SESSION_DIR=/app/var/flask_session
+
+      # Database
+      - DATABASE_PATH=/app/database/vtrack.db
+
+      # Flask configuration
+      - SECRET_KEY=your_secret_key_here_change_me
+      - FLASK_ENV=production
+      - FLASK_DEBUG=false
+
+      # CORS
+      - FRONTEND_URL=http://localhost:3000
+
+      # Timezone
+      - TZ=Asia/Ho_Chi_Minh
+
+    volumes:
+      # Persistent data volumes
+      - ./database:/app/database
+      - ./logs:/app/logs
+      - ./resources/input:/app/resources/input
+      - ./resources/output:/app/resources/output
+
+      # Optional: Mount credentials if using Google Drive
+      # - ./keys:/app/keys:ro
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
+    restart: unless-stopped
+
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+
+# Optional: Add frontend service
+#   vtrack-frontend:
+#     build:
+#       context: ../frontend
+#       dockerfile: Dockerfile
+#     container_name: vtrack-frontend
+#     ports:
+#       - "3000:3000"
+#     environment:
+#       - REACT_APP_BACKEND_URL=http://localhost:8080
+#     depends_on:
+#       - vtrack-backend
+#     restart: unless-stopped

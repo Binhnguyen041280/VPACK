@@ -28,6 +28,32 @@ logger = get_logger(__name__)
 paths = get_paths()
 DB_PATH = paths["DB_PATH"]
 
+# Docker-compatible output directory fallback
+def get_default_output_dir():
+    """
+    Get Docker-compatible default output directory.
+
+    Priority:
+    1. Environment variable VTRACK_OUTPUT_DIR
+    2. Docker default (/app/resources/output)
+    3. Local development default based on OS
+    """
+    if os.getenv('VTRACK_IN_DOCKER') == 'true':
+        return os.getenv('VTRACK_OUTPUT_DIR', '/app/resources/output')
+    else:
+        # Local development mode - OS-specific paths
+        import platform
+        system = platform.system().lower()
+        if system == "darwin":  # macOS
+            username = os.environ.get('USER', 'user')
+            return os.getenv('VTRACK_OUTPUT_DIR', f"/Users/{username}/Movies/VTrack/Output")
+        elif system == "windows":
+            username = os.environ.get('USERNAME', 'User')
+            return os.getenv('VTRACK_OUTPUT_DIR', f"C:\\Users\\{username}\\Videos\\VTrack\\Output")
+        else:  # Linux
+            username = os.environ.get('USER', 'user')
+            return os.getenv('VTRACK_OUTPUT_DIR', f"/home/{username}/Videos/VTrack/Output")
+
 @query_bp.route('/get-csv-headers', methods=['POST'])
 def get_csv_headers():
     data = request.get_json()
@@ -989,7 +1015,7 @@ def process_event():
                         cursor = conn.cursor()
                         cursor.execute("SELECT output_path FROM processing_config WHERE id = 1")
                         result = cursor.fetchone()
-                        output_dir = result[0] if result else "/Users/annhu/Movies/VTrack/Output"
+                        output_dir = result[0] if result else get_default_output_dir()
 
                     # Create date-organized output directory
                     today = datetime.now().strftime("%Y-%m-%d")
@@ -1518,7 +1544,7 @@ def export_zoom_video():
             cursor = conn.cursor()
             cursor.execute("SELECT output_path FROM processing_config WHERE id = 1")
             result = cursor.fetchone()
-            output_dir = result[0] if result else "/Users/annhu/Movies/VTrack/Output"
+            output_dir = result[0] if result else get_default_output_dir()
 
         # Create date-organized output directory
         today = datetime.now().strftime("%Y-%m-%d")

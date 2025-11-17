@@ -21,7 +21,7 @@ import {
   MenuItem,
   useColorModeValue,
 } from '@chakra-ui/react';
-import { useEffect, useState, useContext, useRef } from 'react';
+import { useEffect, useState, useContext, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { MdAutoAwesome, MdEdit, MdPerson, MdAdd, MdAttachFile, MdImage, MdVideoFile } from 'react-icons/md';
 import Bg from '../public/img/chat/bg-image.png';
@@ -2417,6 +2417,28 @@ function Chat(props: { apiKeyApp: string }) {
   );
 }
 
+// Loading component for Suspense fallback
+function ChatLoading() {
+  return (
+    <Flex
+      w="100%"
+      h="100vh"
+      justifyContent="center"
+      alignItems="center"
+      bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+    >
+      <Text color="white" fontSize="xl">
+        Loading V.PACK...
+      </Text>
+    </Flex>
+  );
+}
+
+// Wrap Chat in Suspense to handle useSearchParams() in Next.js 15
 export default function HomePage() {
-  return <Chat apiKeyApp="" />;
+  return (
+    <Suspense fallback={<ChatLoading />}>
+      <Chat apiKeyApp="" />
+    </Suspense>
+  );
 }

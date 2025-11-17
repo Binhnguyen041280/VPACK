@@ -15,11 +15,13 @@ import {
   Spinner,
   Alert,
   AlertIcon,
+  AlertTitle,
   AlertDescription,
   Wrap,
   WrapItem,
+  Icon,
 } from '@chakra-ui/react';
-import { MdVideoLibrary } from 'react-icons/md';
+import { MdVideoLibrary, MdFolder, MdSearch } from 'react-icons/md';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
 import GoogleDriveFolderTree from './GoogleDriveFolderTree';
 import { useState, useEffect, useRef } from 'react';
@@ -98,7 +100,12 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   const [scanningFolders, setScanningFolders] = useState(false);
   const [scanError, setScanError] = useState<string>('');
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
+  // Local source configuration state
+  const [configuringLocalSource, setConfiguringLocalSource] = useState(false);
+  const [localSourceConfigured, setLocalSourceConfigured] = useState(false);
+  const [restartCommand, setRestartCommand] = useState('');
+
   // Google Drive connection state
   const [driveConnected, setDriveConnected] = useState(false);
   const [driveUserEmail, setDriveUserEmail] = useState('');
@@ -242,15 +249,10 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
     setSelectedCameras([]);
     setScanError('');
     
-    // Only scan if we have a valid path and local storage is selected
-    if (!inputPath.trim() || selectedSourceType !== 'local_storage') {
-      return;
-    }
-    
-    // Debounce API call by 500ms to prevent excessive requests
-    scanTimeoutRef.current = setTimeout(async () => {
-      await scanFoldersInPath(inputPath);
-    }, 500);
+    // Disable auto-scan for local source setup
+    // User must click "Configure Local Source" button first
+    // The button will mount the path and then scan
+    return;
     
     // Cleanup timeout on unmount
     return () => {
@@ -259,6 +261,88 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
       }
     };
   }, [inputPath, selectedSourceType]);
+
+  // Function to setup local source (update .env, docker-compose.yml, restart)
+  const handleSetupLocalSource = async () => {
+    if (!inputPath || !inputPath.trim()) {
+      setScanError('Please enter a valid path');
+      return;
+    }
+
+    try {
+      setConfiguringLocalSource(true);
+      setScanError('');
+
+      console.log(`🔧 Setting up local video source: ${inputPath}`);
+
+      // Call backend API to setup local source
+      const response = await fetch('http://localhost:8080/api/docker/setup-local-source', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ local_path: inputPath })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        if (data.restart_required) {
+          // Configuration successful - show restart instruction
+          setLocalSourceConfigured(true);
+          setRestartCommand(data.restart_command || 'docker-compose restart backend');
+          setScanError(''); // Clear any previous errors
+          console.log('✅ Local source configured:', data.message);
+        } else {
+          console.log('✅ Local source configured successfully');
+          setLocalSourceConfigured(true);
+        }
+      } else {
+        setScanError(data.error || 'Failed to configure local source');
+        console.error('❌ Configuration failed:', data.error);
+      }
+
+    } catch (error: any) {
+      console.error('❌ Error setting up local source:', error);
+      setScanError(error.message || 'Failed to configure local source');
+    } finally {
+      setConfiguringLocalSource(false);
+    }
+  };
+
+  // Function to poll backend health after restart
+  const pollBackendHealth = async (): Promise<void> => {
+    const maxAttempts = 30; // 30 attempts * 2 seconds = 1 minute max
+    let attempts = 0;
+
+    return new Promise((resolve, reject) => {
+      const pollInterval = setInterval(async () => {
+        attempts++;
+
+        try {
+          const response = await fetch('http://localhost:8080/health', {
+            method: 'GET',
+            credentials: 'include',
+          });
+
+          if (response.ok) {
+            console.log('✅ Backend is online');
+            clearInterval(pollInterval);
+            resolve();
+          }
+        } catch (error) {
+          // Backend not ready yet, continue polling
+          console.log(`⏳ Waiting for backend... (${attempts}/${maxAttempts})`);
+        }
+
+        if (attempts >= maxAttempts) {
+          clearInterval(pollInterval);
+          reject(new Error('Backend restart timeout'));
+        }
+      }, 2000); // Poll every 2 seconds
+    });
+  };
 
   // Function to scan folders in the given path
   const scanFoldersInPath = async (path: string) => {
@@ -692,39 +776,129 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                 <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
                   📝 Choose where your input videos are stored for processing
                 </Text>
-                <Text fontSize={adaptiveConfig.fontSize.small} color="orange.500" fontStyle="italic">
-                  💡 Tip: Open folder in explorer, copy path from address bar and paste here
-                </Text>
               </VStack>
-              <Input
-                value={inputPath}
-                placeholder="Copy and paste input video folder path here..."
-                size="sm"
-                borderColor={borderColor}
-                _focus={{ borderColor: currentColors.brand500 }}
-                bg={bgColor}
-                mb="12px"
-                maxW="100%"
-                onFocus={(e) => {
-                  e.target.select(); // Select all text for easy replacement
-                }}
-                onChange={(e) => {
-                  setInputPath(e.target.value);
-                }}
-              />
-              <Text 
-                fontSize={adaptiveConfig.fontSize.small} 
-                color={secondaryText}
-                maxW="400px"
-                overflow="hidden"
-                textOverflow="ellipsis"
-                whiteSpace="nowrap"
-                textAlign="right"
-                title={inputPath || 'No path specified'}
-              >
-                📋 Input folder: {inputPath || 'No path specified'}
-              </Text>
-              
+
+              {/* Local Video Folder Path Input */}
+              <VStack align="stretch" spacing="8px" mb="16px">
+                <Text fontSize="sm" fontWeight="600" color={textColor}>
+                  📁 Local Video Folder Path
+                </Text>
+                <Text fontSize="xs" color={secondaryText} mb="4px">
+                  Enter the full path to your video folder:
+                </Text>
+
+                {/* Path input */}
+                <Input
+                  value={inputPath}
+                  placeholder="/Users/username/Videos/CCTV"
+                  size="sm"
+                  borderColor={borderColor}
+                  _focus={{ borderColor: currentColors.brand500 }}
+                  bg={bgColor}
+                  fontFamily="monospace"
+                  fontSize="xs"
+                  onFocus={(e) => {
+                    e.target.select(); // Select all text for easy replacement
+                  }}
+                  onChange={(e) => {
+                    setInputPath(e.target.value);
+                  }}
+                />
+
+                {/* Examples for different OS */}
+                <Box
+                  bg={useColorModeValue('gray.50', 'whiteAlpha.50')}
+                  p="8px"
+                  borderRadius="md"
+                  fontSize="xs"
+                >
+                  <Text color={secondaryText} mb="4px" fontWeight="600">
+                    📝 Examples:
+                  </Text>
+                  <VStack align="stretch" spacing="2px" color={secondaryText} fontFamily="monospace">
+                    <Text>• macOS: /Users/username/Videos/CCTV</Text>
+                    <Text>• Windows: C:\Videos\CCTV</Text>
+                    <Text>• Linux: /home/username/Videos/CCTV</Text>
+                  </VStack>
+                </Box>
+
+                {/* Important note */}
+                <Box
+                  bg={useColorModeValue('yellow.50', 'yellow.900')}
+                  p="8px"
+                  borderRadius="md"
+                  fontSize="xs"
+                  borderLeft="3px solid"
+                  borderColor="yellow.500"
+                >
+                  <Text color={useColorModeValue('yellow.800', 'yellow.200')} fontWeight="600" mb="2px">
+                    ⚠️ Important:
+                  </Text>
+                  <VStack align="stretch" spacing="2px" color={useColorModeValue('yellow.700', 'yellow.300')}>
+                    <Text>• Camera must save videos to this folder</Text>
+                    <Text>• Subfolders = Camera names (Camera1, Camera2)</Text>
+                    <Text>• Docker will restart to apply changes</Text>
+                  </VStack>
+                </Box>
+
+                {/* Configure button */}
+                <Button
+                  onClick={handleSetupLocalSource}
+                  colorScheme="brand"
+                  size="sm"
+                  w="full"
+                  leftIcon={<Icon as={MdFolder} />}
+                  isDisabled={!inputPath || inputPath.trim().length === 0 || configuringLocalSource || localSourceConfigured}
+                  isLoading={configuringLocalSource}
+                  loadingText="Updating configuration..."
+                >
+                  Configure Local Source
+                </Button>
+              </VStack>
+
+              {/* NEW: Restart Instruction & Manual Scan */}
+              {localSourceConfigured && (
+                <Box mt="16px">
+                  {/* Restart Instruction */}
+                  <Alert status="success" mb="12px" borderRadius="8px">
+                    <AlertIcon />
+                    <Box flex="1">
+                      <AlertTitle fontSize={adaptiveConfig.fontSize.body} mb="4px">
+                        ✅ Configuration Updated!
+                      </AlertTitle>
+                      <AlertDescription fontSize={adaptiveConfig.fontSize.small}>
+                        <Text mb="8px">Please restart Docker backend from your terminal:</Text>
+                        <Box
+                          bg={useColorModeValue('gray.100', 'gray.700')}
+                          p="8px"
+                          borderRadius="6px"
+                          fontFamily="mono"
+                          fontSize="12px"
+                        >
+                          {restartCommand}
+                        </Box>
+                        <Text mt="8px" fontSize="11px" color={secondaryText}>
+                          After restarting, click "Scan for Cameras" below
+                        </Text>
+                      </AlertDescription>
+                    </Box>
+                  </Alert>
+
+                  {/* Manual Scan Button */}
+                  <Button
+                    onClick={() => scanFoldersInPath('/app/resources/input')}
+                    colorScheme="green"
+                    size="sm"
+                    w="full"
+                    leftIcon={<Icon as={MdSearch} />}
+                    isLoading={scanningFolders}
+                    loadingText="Scanning for cameras..."
+                  >
+                    Scan for Cameras
+                  </Button>
+                </Box>
+              )}
+
               {/* NEW: Camera Folders Auto-Detection */}
               {inputPath && (
                 <Box mt="16px">

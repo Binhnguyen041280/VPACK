@@ -82,7 +82,7 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
 
         // Determine license validity
         const hasValidLicense = licenseData.is_active && (daysRemaining === null || daysRemaining > 0);
-        const isTrialActive = licenseData.is_trial && hasValidLicense;
+        const isTrialActive = !!(licenseData.is_trial && hasValidLicense);
         const isExpired = daysRemaining !== null && daysRemaining <= 0;
 
         setLicense({

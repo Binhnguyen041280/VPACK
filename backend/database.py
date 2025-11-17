@@ -41,29 +41,48 @@ def _ensure_paths_initialized():
 
 # Đường dẫn mặc định - OS-aware paths for Canvas compatibility
 def get_default_storage_paths():
-    """Get OS-specific default storage paths matching Canvas frontend expectations"""
+    """
+    Get OS-specific default storage paths matching Canvas frontend expectations.
+
+    Docker Compatibility:
+    - Checks VTRACK_IN_DOCKER environment variable first
+    - Uses Docker-friendly paths (/app/resources) when in container
+    - Falls back to OS-specific paths for local development
+    - Supports environment variable overrides for flexibility
+    """
     import platform
+    import os
+
+    # DOCKER MODE: Check if running in Docker container
+    if os.getenv('VTRACK_IN_DOCKER') == 'true':
+        # Docker/container mode - use container-friendly paths
+        input_dir = os.getenv('VTRACK_INPUT_DIR', '/app/resources/input')
+        output_dir = os.getenv('VTRACK_OUTPUT_DIR', '/app/resources/output')
+        return input_dir, output_dir
+
+    # LOCAL DEVELOPMENT MODE: OS-specific paths
     system = platform.system().lower()
-    
+
     if system == "windows":
         # Windows: C:\Users\%USERNAME%\Videos\VTrack
-        import os
         username = os.environ.get('USERNAME', 'User')
-        input_dir = f"C:\\Users\\{username}\\Videos\\VTrack\\Input"
-        output_dir = f"C:\\Users\\{username}\\Videos\\VTrack\\Output"
+        default_input = f"C:\\Users\\{username}\\Videos\\VTrack\\Input"
+        default_output = f"C:\\Users\\{username}\\Videos\\VTrack\\Output"
     elif system == "darwin":  # macOS
-        # Mac: /Users/%USER%/Movies/VTrack  
-        import os
+        # Mac: /Users/%USER%/Movies/VTrack
         username = os.environ.get('USER', 'user')
-        input_dir = f"/Users/{username}/Movies/VTrack/Input"
-        output_dir = f"/Users/{username}/Movies/VTrack/Output"
+        default_input = f"/Users/{username}/Movies/VTrack/Input"
+        default_output = f"/Users/{username}/Movies/VTrack/Output"
     else:  # Linux and others
         # Linux: /home/%USER%/Videos/VTrack
-        import os
         username = os.environ.get('USER', 'user')
-        input_dir = f"/home/{username}/Videos/VTrack/Input"
-        output_dir = f"/home/{username}/Videos/VTrack/Output"
-    
+        default_input = f"/home/{username}/Videos/VTrack/Input"
+        default_output = f"/home/{username}/Videos/VTrack/Output"
+
+    # Allow environment variable overrides even in local development
+    input_dir = os.getenv('VTRACK_INPUT_DIR', default_input)
+    output_dir = os.getenv('VTRACK_OUTPUT_DIR', default_output)
+
     return input_dir, output_dir
 
 # Lazy initialization: Get video storage paths only when needed
