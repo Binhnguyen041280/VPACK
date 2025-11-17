@@ -78,6 +78,12 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
+# Build metadata labels
+ARG BUILD_DATE
+LABEL service="FRONTEND" \
+      build.date="${BUILD_DATE}" \
+      description="V_Track Frontend Service"
+
 # Switch to non-root user
 USER nextjs
 

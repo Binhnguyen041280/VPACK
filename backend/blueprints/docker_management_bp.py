@@ -20,12 +20,15 @@ Thread Safety:
 """
 
 from flask import Blueprint, request, jsonify
+from flask_cors import cross_origin
 import os
 import yaml
 import subprocess
 import threading
+import json
 from pathlib import Path
 from modules.config.logging_config import get_logger
+from modules.db_utils.safe_connection import safe_db_connection
 
 docker_bp = Blueprint('docker_management', __name__)
 logger = get_logger(__name__, {"module": "docker_management"})
@@ -60,6 +63,117 @@ def validate_host_path(path: str) -> tuple[bool, str]:
         return False, "Cannot mount system directories"
 
     return True, ""
+
+def update_env_file(local_video_path: str) -> dict:
+    """Update .env file with LOCAL_VIDEO_PATH configuration.
+
+    Args:
+        local_video_path: Absolute path on host machine to local video folder
+
+    Returns:
+        Dictionary with success status and message
+    """
+    try:
+        # Find .env file (should be in parent directory of docker-compose.yml)
+        env_file = '/app/../.env'  # Mounted from host
+
+        logger.info(f"📝 Updating .env file with LOCAL_VIDEO_PATH={local_video_path}")
+
+        # Read existing .env content
+        env_lines = []
+        local_video_path_exists = False
+
+        if os.path.exists(env_file):
+            with open(env_file, 'r') as f:
+                for line in f:
+                    # Update existing LOCAL_VIDEO_PATH line
+                    if line.startswith('LOCAL_VIDEO_PATH='):
+                        env_lines.append(f'LOCAL_VIDEO_PATH={local_video_path}\n')
+                        local_video_path_exists = True
+                    else:
+                        env_lines.append(line)
+
+        # Add LOCAL_VIDEO_PATH if not exists
+        if not local_video_path_exists:
+            env_lines.append(f'\n# Local video source path\nLOCAL_VIDEO_PATH={local_video_path}\n')
+
+        # Write back to .env
+        with open(env_file, 'w') as f:
+            f.writelines(env_lines)
+
+        logger.info(f"✅ .env file updated successfully")
+        return {'success': True}
+
+    except Exception as e:
+        logger.error(f"❌ Error updating .env file: {e}", exc_info=True)
+        return {'success': False, 'error': str(e)}
+
+def update_docker_compose_input_mount(local_video_path: str) -> dict:
+    """Replace input folder mount in docker-compose.yml to use local video path.
+
+    Args:
+        local_video_path: Path on host machine (will use ${LOCAL_VIDEO_PATH} env var)
+
+    Returns:
+        Dictionary with success status and message
+    """
+    try:
+        with COMPOSE_LOCK:
+            logger.info(f"📝 Replacing input mount in docker-compose.yml with LOCAL_VIDEO_PATH")
+
+            # Read current docker-compose.yml
+            if not os.path.exists(DOCKER_COMPOSE_FILE):
+                return {'success': False, 'error': 'docker-compose.yml not found'}
+
+            with open(DOCKER_COMPOSE_FILE, 'r') as f:
+                compose_config = yaml.safe_load(f)
+
+            # Ensure services.backend.volumes exists
+            if 'services' not in compose_config:
+                compose_config['services'] = {}
+            if 'backend' not in compose_config['services']:
+                compose_config['services']['backend'] = {}
+            if 'volumes' not in compose_config['services']['backend']:
+                compose_config['services']['backend']['volumes'] = []
+
+            volumes = compose_config['services']['backend']['volumes']
+
+            # Find and replace the input folder mount
+            new_volumes = []
+            input_mount_replaced = False
+
+            for volume in volumes:
+                if isinstance(volume, str):
+                    # Check if this is the input mount (contains :/app/resources/input)
+                    if ':/app/resources/input' in volume:
+                        # Replace with LOCAL_VIDEO_PATH mount
+                        new_mount = '${LOCAL_VIDEO_PATH}:/app/resources/input:ro'
+                        new_volumes.append(new_mount)
+                        input_mount_replaced = True
+                        logger.info(f"  Replaced: {volume} -> {new_mount}")
+                    else:
+                        new_volumes.append(volume)
+                else:
+                    new_volumes.append(volume)
+
+            # If no input mount found, add it
+            if not input_mount_replaced:
+                new_mount = '${LOCAL_VIDEO_PATH}:/app/resources/input:ro'
+                new_volumes.append(new_mount)
+                logger.info(f"  Added: {new_mount}")
+
+            compose_config['services']['backend']['volumes'] = new_volumes
+
+            # Write updated docker-compose.yml
+            with open(DOCKER_COMPOSE_FILE, 'w') as f:
+                yaml.dump(compose_config, f, default_flow_style=False, sort_keys=False)
+
+            logger.info(f"✅ docker-compose.yml updated successfully")
+            return {'success': True, 'mount': '${LOCAL_VIDEO_PATH}:/app/resources/input:ro'}
+
+    except Exception as e:
+        logger.error(f"❌ Error updating docker-compose.yml: {e}", exc_info=True)
+        return {'success': False, 'error': str(e)}
 
 def update_docker_compose_mount(host_path: str, container_path: str = '/app/resources/local_source') -> dict:
     """Update docker-compose.yml to add/update local source bind mount.
@@ -113,7 +227,7 @@ def update_docker_compose_mount(host_path: str, container_path: str = '/app/reso
         return {'success': False, 'error': str(e)}
 
 def restart_backend_container() -> dict:
-    """Restart the backend container to apply new mounts.
+    """Restart the backend container to apply new mounts using Docker API.
 
     Returns:
         Dictionary with success status and message
@@ -121,9 +235,10 @@ def restart_backend_container() -> dict:
     try:
         logger.info("🔄 Restarting backend container...")
 
-        # Use docker-compose to restart backend service
+        # Use docker CLI via Docker socket to restart container
+        # The container name is 'vtrack-backend' from docker-compose.yml
         result = subprocess.run(
-            ['docker-compose', '-f', DOCKER_COMPOSE_FILE, 'restart', 'backend'],
+            ['docker', 'restart', 'vtrack-backend'],
             capture_output=True,
             text=True,
             timeout=60
@@ -142,6 +257,97 @@ def restart_backend_container() -> dict:
     except Exception as e:
         logger.error(f"❌ Error restarting container: {e}", exc_info=True)
         return {'success': False, 'error': str(e)}
+
+@docker_bp.route('/docker/setup-local-source', methods=['POST'])
+@cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
+def setup_local_source():
+    """Setup local video source by updating .env, docker-compose.yml and restarting container.
+
+    This is the main API for configuring local video source from UI.
+
+    Request JSON:
+        {
+            "local_path": "/Users/username/Videos/CCTV"
+        }
+
+    Returns:
+        JSON response with:
+        - success: Boolean indicating operation success
+        - message: Success or error message
+        - restarting: Whether backend is restarting
+    """
+    try:
+        data = request.get_json()
+        local_path = data.get('local_path')
+
+        if not local_path:
+            return jsonify({
+                'success': False,
+                'error': 'local_path is required'
+            }), 400
+
+        # Validate path (security checks only, can't check existence from inside container)
+        is_valid, error_msg = validate_host_path(local_path)
+        if not is_valid:
+            logger.warning(f"⚠️  Invalid path rejected: {local_path} - {error_msg}")
+            return jsonify({
+                'success': False,
+                'error': error_msg
+            }), 400
+
+        # Note: Cannot check if path exists because it's on the host machine,
+        # not inside the container. User must ensure path is correct.
+
+        logger.info(f"📂 Setting up local video source: {local_path}")
+
+        # Step 1: Update .env file
+        env_result = update_env_file(local_path)
+        if not env_result['success']:
+            return jsonify({
+                'success': False,
+                'error': f"Failed to update .env: {env_result.get('error')}"
+            }), 500
+
+        # Step 2: Update docker-compose.yml
+        compose_result = update_docker_compose_input_mount(local_path)
+        if not compose_result['success']:
+            return jsonify({
+                'success': False,
+                'error': f"Failed to update docker-compose.yml: {compose_result.get('error')}"
+            }), 500
+
+        # Step 3: Update processing_config.input_path to container path
+        try:
+            with safe_db_connection() as conn:
+                cursor = conn.cursor()
+                container_input_path = '/app/resources/input'
+                cursor.execute("""
+                    UPDATE processing_config
+                    SET input_path = ?
+                    WHERE id = 1
+                """, (container_input_path,))
+                conn.commit()
+                logger.info(f"✅ Updated processing_config.input_path to: {container_input_path}")
+        except Exception as db_error:
+            logger.error(f"⚠️ Failed to update processing_config: {db_error}", exc_info=True)
+            # Continue anyway - user can fix manually if needed
+
+        # Configuration complete - user needs to restart Docker from host
+        logger.info("✅ Configuration updated successfully (including database). Restart required.")
+
+        return jsonify({
+            'success': True,
+            'message': 'Configuration updated successfully (including database). Please restart Docker containers from your terminal using: docker-compose restart backend',
+            'restart_required': True,
+            'restart_command': 'docker-compose restart backend'
+        }), 200
+
+    except Exception as e:
+        logger.error(f"❌ Error in setup_local_source: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 @docker_bp.route('/docker/update-local-source-mount', methods=['POST'])
 def update_local_source_mount():

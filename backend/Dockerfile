@@ -21,6 +21,7 @@ ENV PYTHONUNBUFFERED=1 \
 # ffmpeg for video processing
 # libzbar0 for QR code scanning (pyzbar)
 # gcc/g++/make for building Python packages with native extensions
+# docker.io for Docker CLI (to restart container via Docker socket)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1-mesa-glx \
     libglib2.0-0 \
@@ -35,6 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     make \
     libzbar0 \
+    docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -112,6 +114,12 @@ ENV PATH="/home/appuser/.local/bin:$PATH" \
     VTRACK_INPUT_DIR="/app/resources/input" \
     VTRACK_OUTPUT_DIR="/app/resources/output" \
     VTRACK_SESSION_DIR="/app/var/flask_session"
+
+# Build metadata labels
+ARG BUILD_DATE
+LABEL service="BACKEND" \
+      build.date="${BUILD_DATE}" \
+      description="V_Track Backend Service"
 
 # Switch to non-root user
 USER appuser

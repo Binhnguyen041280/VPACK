@@ -49,6 +49,34 @@ logger.info(f"   General log: {log_paths['app_log']}")
 logger.info(f"   Event log: {log_paths['event_log']}")
 logger.info(f"   Session ID: {log_paths['session_id']}")
 
+# ==================== ENSURE DATA DIRECTORIES ====================
+def ensure_data_directories():
+    """
+    Ensure all required data directories exist on startup.
+    Creates directories automatically if they don't exist.
+    No manual folder creation needed!
+    """
+    required_dirs = [
+        '/app/database',           # SQLite database files
+        '/app/logs',               # Application logs (legacy)
+        '/app/var/logs',           # Application + frame processing logs
+        '/app/var/cache',          # Google Drive downloads
+        '/app/var/flask_session',  # Flask sessions
+        '/app/var/uploads',        # User uploads
+        '/app/resources/input',    # Input video sources
+        '/app/resources/output'    # Processed videos
+    ]
+
+    logger.info("📁 Checking required directories...")
+    for dir_path in required_dirs:
+        os.makedirs(dir_path, exist_ok=True)
+        logger.info(f"  ✅ {dir_path}")
+
+    logger.info("✅ All directories ready")
+
+# Call directory setup before database initialization
+ensure_data_directories()
+
 # ==================== INITIALIZE DATABASE FIRST ====================
 # CRITICAL: Database must exist before importing modules that query it
 try:
@@ -64,7 +92,7 @@ except Exception as e:
 # ==================== CONTINUE IMPORTS ====================
 from modules.config.config import config_bp, init_app_and_config
 from modules.db_utils.safe_connection import safe_db_connection
-from modules.scheduler.program import program_bp, scheduler
+from modules.scheduler.program import program_bp, scheduler, init_default_program
 from modules.query.query import query_bp
 from blueprints.cutter_bp import cutter_bp
 from blueprints.simple_hand_detection_bp import simple_hand_detection_bp
@@ -938,7 +966,10 @@ if __name__ == "__main__":
     
     # Initialize auto-sync
     initialize_auto_sync()
-    
+
+    # Initialize default program (auto-starts scheduler if first_run_completed)
+    init_default_program()
+
     try:
         app.run(
             host='0.0.0.0',
