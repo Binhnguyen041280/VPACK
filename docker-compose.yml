@@ -22,6 +22,9 @@ services:
   # Backend Service - Flask Python API
   # ==========================================================================
   backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     image: vtrack-backend:phase2
     container_name: vtrack-backend
     platform: linux/arm64
@@ -47,24 +50,19 @@ services:
       - VTRACK_SESSION_DIR=/app/var/flask_session
 
     # Persistent volumes for data storage
+    # All data stored at ${VTRACK_DATA_DIR} for easy access
     volumes:
-      # Database storage (SQLite files, backups)
-      - vtrack-db:/app/database
-      # Application logs
-      - vtrack-logs:/app/logs
-      # Flask session storage
-      - vtrack-sessions:/app/var/flask_session
-      # Cache directory
-      - vtrack-cache:/app/var/cache
-      # File uploads
-      - vtrack-uploads:/app/var/uploads
-      # Video input resources
-      - vtrack-input:/app/resources/input
-      # Video output/recordings
-      - vtrack-output:/app/resources/output
-      # Docker socket (for container management)
+      # ALL bind mounts - easy access from host filesystem
+      - ${VTRACK_DATA_DIR}/database:/app/database
+      - ${VTRACK_DATA_DIR}/logs:/app/logs
+      - ${VTRACK_DATA_DIR}/logs:/app/var/logs
+      - ${VTRACK_DATA_DIR}/sessions:/app/var/flask_session
+      - ${VTRACK_DATA_DIR}/cache:/app/var/cache
+      - ${VTRACK_DATA_DIR}/uploads:/app/var/uploads
+      - ${VTRACK_DATA_DIR}/input:/app/resources/input
+      - ${VTRACK_DATA_DIR}/output:/app/resources/output
+      # Docker management
       - /var/run/docker.sock:/var/run/docker.sock
-      # Docker Compose file (for dynamic mount updates)
       - ./docker-compose.yml:/app/docker-compose.yml:rw
 
     networks:
@@ -149,62 +147,27 @@ networks:
     name: vtrack-network
 
 # ============================================================================
-# Named Volumes - Persistent Data Storage
+# Data Storage - Full Bind Mounts
 # ============================================================================
-volumes:
-  # Database files and backups
-  vtrack-db:
-    driver: local
-    name: vtrack-db
-
-  # Application logs
-  vtrack-logs:
-    driver: local
-    name: vtrack-logs
-
-  # Flask session storage
-  vtrack-sessions:
-    driver: local
-    name: vtrack-sessions
-
-  # Cache directory
-  vtrack-cache:
-    driver: local
-    name: vtrack-cache
-
-  # File uploads
-  vtrack-uploads:
-    driver: local
-    name: vtrack-uploads
-
-  # Video input resources
-  vtrack-input:
-    driver: local
-    name: vtrack-input
-
-  # Video output and recordings
-  vtrack-output:
-    driver: local
-    name: vtrack-output
-
-# ============================================================================
-# Volume Management Commands
-# ============================================================================
-# List volumes:
-#   docker volume ls
+# All data stored using bind mounts at ${VTRACK_DATA_DIR}
+# No named volumes - everything accessible from host filesystem
 #
-# Inspect volume:
-#   docker volume inspect vtrack-db
+# Benefits:
+#   - Easy access via Finder/Explorer
+#   - Simple backup: tar -czf backup.tar.gz ${VTRACK_DATA_DIR}
+#   - No Docker volume complexity
 #
-# Backup volume data:
-#   docker run --rm -v vtrack-db:/data -v $(pwd)/backup:/backup alpine tar czf /backup/vtrack-db-backup.tar.gz -C /data .
+# Data location configured in .env:
+#   macOS:   VTRACK_DATA_DIR=~/docker/volumes/vtrack
+#   Windows: VTRACK_DATA_DIR=C:/VTrack
+#   Linux:   VTRACK_DATA_DIR=/opt/vtrack/data
 #
-# Restore volume data:
-#   docker run --rm -v vtrack-db:/data -v $(pwd)/backup:/backup alpine tar xzf /backup/vtrack-db-backup.tar.gz -C /data
-#
-# Remove all volumes (WARNING: Data loss!):
-#   docker-compose down -v
-#
-# Access volume data:
-#   docker run --rm -it -v vtrack-db:/data alpine sh
+# Directories auto-created on startup by ensure_data_directories():
+#   - database/  - SQLite files
+#   - logs/      - Application + frame processing logs
+#   - cache/     - Google Drive downloads
+#   - sessions/  - Flask sessions
+#   - uploads/   - User uploads
+#   - input/     - Input video sources
+#   - output/    - Processed videos
 # ============================================================================
