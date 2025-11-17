@@ -5,6 +5,7 @@ Flask blueprint with endpoints for profit/pricing calculations and data manageme
 
 from flask import Blueprint, request, jsonify
 from .services import CalculatorService
+from .services.breakdown_formatter import BreakdownFormatter
 from .models import CustomCostPreset, FeeConfig
 import traceback
 
@@ -133,6 +134,58 @@ def calculate_pricing():
         return jsonify({
             'success': True,
             'data': result
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 400
+
+
+@shopee_calculator_bp.route('/calculate/breakdown', methods=['POST'])
+def get_price_breakdown():
+    """Get detailed breakdown for a specific price option.
+
+    Request body:
+    {
+        "calculation_type": "profit" or "pricing",
+        "price_data": {...},  # Price option data
+        "cost_price": 300000,
+        "sale_price": 500000  # For profit type
+    }
+
+    Returns:
+        JSON with detailed breakdown
+    """
+    try:
+        data = request.json
+        calc_type = data.get('calculation_type', 'profit')
+
+        if calc_type == 'profit':
+            # For profit calculation, use provided data
+            breakdown = BreakdownFormatter.format_profit_breakdown(data['price_data'])
+        else:
+            # For pricing calculation
+            calc_result = data.get('calc_result', {})
+            selected_price = data.get('selected_price')
+            price_option = data.get('price_option', {})
+
+            breakdown = BreakdownFormatter.format_pricing_breakdown(
+                calc_result,
+                selected_price,
+                price_option
+            )
+
+        breakdown_text = BreakdownFormatter.format_text_breakdown(breakdown)
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'breakdown': breakdown,
+                'breakdown_text': breakdown_text
+            }
         }), 200
 
     except Exception as e:

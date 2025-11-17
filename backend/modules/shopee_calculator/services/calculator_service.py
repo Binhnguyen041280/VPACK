@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional
 from ..models import Calculation, FeeConfig, Category
 from .profit_calculator import ProfitCalculator
 from .pricing_calculator import PricingCalculator
+from .breakdown_formatter import BreakdownFormatter
 
 
 class CalculatorService:
@@ -89,6 +90,11 @@ class CalculatorService:
             is_voucher_xtra_special=is_voucher_xtra_special,
             expected_quantity_monthly=expected_quantity_monthly
         )
+
+        # Add detailed breakdown
+        breakdown = BreakdownFormatter.format_profit_breakdown(result)
+        result['breakdown'] = breakdown
+        result['breakdown_text'] = BreakdownFormatter.format_text_breakdown(breakdown)
 
         # Save to database if requested
         if save_calculation:
@@ -209,6 +215,31 @@ class CalculatorService:
             is_voucher_xtra_special=is_voucher_xtra_special,
             expected_quantity_monthly=expected_quantity_monthly
         )
+
+        # Add cost_price to result for breakdown
+        result['cost_price'] = cost_price
+
+        # Add detailed breakdown for recommended price
+        recommended_price = result['recommended_price']
+        # Find the price option closest to recommended
+        selected_option = None
+        for option in result['price_options']:
+            if option.get('is_recommended') or abs(option['price'] - recommended_price) < 1000:
+                selected_option = option
+                break
+
+        if not selected_option and result['price_options']:
+            # Use first option if no recommended found
+            selected_option = result['price_options'][0]
+
+        if selected_option:
+            breakdown = BreakdownFormatter.format_pricing_breakdown(
+                result,
+                selected_option['price'],
+                selected_option
+            )
+            result['breakdown'] = breakdown
+            result['breakdown_text'] = BreakdownFormatter.format_text_breakdown(breakdown)
 
         # Save to database if requested
         if save_calculation:
