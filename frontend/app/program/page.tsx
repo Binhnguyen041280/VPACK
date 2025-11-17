@@ -552,7 +552,7 @@ export default function Program() {
                       color: 'white',
                       cursor: 'pointer',
                       _hover: {
-                        bg: currentColors.brand600
+                        bg: currentColors.brand500
                       }
                     }
                   }}
