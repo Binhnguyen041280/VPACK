@@ -1,0 +1,3 @@
+"""
+Shopee Calculator Test Suite.
+"""
