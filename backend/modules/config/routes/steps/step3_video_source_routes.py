@@ -1,5 +1,5 @@
 """
-Step 3 Video Source Configuration Routes for V.PACK.
+Step 3 Video Source Configuration Routes for ePACK.
 
 RESTful endpoints for managing video source configuration with 
 proper data mapping between video_sources and processing_config tables.

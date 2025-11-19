@@ -18,14 +18,14 @@ def get_output_directory():
     Get output directory with Docker compatibility.
 
     Priority:
-    1. Environment variable (VTRACK_OUTPUT_DIR) - takes precedence in Docker
+    1. Environment variable (EPACK_OUTPUT_DIR) - takes precedence in Docker
     2. Docker default (/app/resources/output) - when in Docker mode
     3. Database configuration (processing_config.output_path) - local development only
     4. Local development default (../../resources/output_clips)
     """
     # Docker mode: Use environment variable or Docker default (ignore database)
-    if os.getenv('VTRACK_IN_DOCKER') == 'true':
-        return os.getenv('VTRACK_OUTPUT_DIR', '/app/resources/output')
+    if os.getenv('EPACK_IN_DOCKER') == 'true':
+        return os.getenv('EPACK_OUTPUT_DIR', '/app/resources/output')
 
     # Local development: Check database first
     try:
@@ -40,7 +40,7 @@ def get_output_directory():
         print(f"Warning: Could not read output_path from database: {e}")
 
     # Local development fallback
-    return os.getenv('VTRACK_OUTPUT_DIR',
+    return os.getenv('EPACK_OUTPUT_DIR',
                     os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../resources/output_clips"))
 
 # Initialize output directory at module load time

@@ -1,13 +1,13 @@
-# V_Track Docker Compose - Quick Start
+# ePACK Docker Compose - Quick Start
 
-Fast setup guide for V_Track deployment using Docker Compose.
+Fast setup guide for ePACK deployment using Docker Compose.
 
 ---
 
 ## Prerequisites
 
 - Docker Desktop installed and running
-- Pre-built images: `vtrack-backend:phase2` and `vtrack-frontend:phase3`
+- Pre-built images: `epack-backend:phase2` and `epack-frontend:phase3`
 - Mac M1/M2/M3 (ARM64)
 
 ---
@@ -135,15 +135,15 @@ docker-compose up -d
 ```bash
 # Backup database
 docker run --rm \
-  -v vtrack-db:/data \
+  -v epack-db:/data \
   -v $(pwd)/backup:/backup \
-  alpine tar czf /backup/vtrack-db.tar.gz -C /data .
+  alpine tar czf /backup/epack-db.tar.gz -C /data .
 
 # Restore database
 docker run --rm \
-  -v vtrack-db:/data \
+  -v epack-db:/data \
   -v $(pwd)/backup:/backup \
-  alpine tar xzf /backup/vtrack-db.tar.gz -C /data
+  alpine tar xzf /backup/epack-db.tar.gz -C /data
 ```
 
 ---

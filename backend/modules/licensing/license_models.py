@@ -1,6 +1,6 @@
 # backend/modules/licensing/license_models.py
 """
-V_Track License Management Models - TRUE REFACTORED VERSION
+ePACK License Management Models - TRUE REFACTORED VERSION
 ELIMINATES: All duplicate patterns via Repository delegation
 REDUCES: From 1019 lines to ~400 lines (-61% reduction)
 MAINTAINS: 100% Backward compatibility

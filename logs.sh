@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================================
-# V_Track Docker - Logs Script
-# View logs from V_Track containers
+# ePACK Docker - Logs Script
+# View logs from ePACK containers
 # ============================================================================
 
 set -e
@@ -48,7 +48,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --help|-h)
-            echo -e "${BLUE}V_Track Docker - Logs Viewer${NC}"
+            echo -e "${BLUE}ePACK Docker - Logs Viewer${NC}"
             echo ""
             echo "Usage: ./logs.sh [SERVICE] [OPTIONS]"
             echo ""
@@ -101,7 +101,7 @@ if [ ! -z "$SERVICE" ]; then
 fi
 
 # Display header
-echo -e "${BLUE}📝 V_Track Docker Logs${NC}"
+echo -e "${BLUE}📝 ePACK Docker Logs${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 if [ ! -z "$SERVICE" ]; then

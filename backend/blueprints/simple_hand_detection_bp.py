@@ -187,7 +187,7 @@ def test_endpoint():
         # Use the test video from the project (Docker-compatible path)
         # In Docker: /app/resources/Inputvideo/Cam1D/...
         # In local dev: use relative path from project root
-        if os.getenv('VTRACK_IN_DOCKER') == 'true':
+        if os.getenv('EPACK_IN_DOCKER') == 'true':
             test_video = "/app/resources/Inputvideo/Cam1D/Cam1D_20250604_110517.mp4"
         else:
             # Local development - use relative path

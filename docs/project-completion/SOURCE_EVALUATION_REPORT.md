@@ -389,7 +389,7 @@ Kết hợp 3 nguồn top:
 
 1. ✅ **Tạo framework dựa trên 3 nguồn trên**
 2. ✅ **Điều chỉnh cho desktop application context**
-3. ✅ **Audit V_Track theo framework này**
+3. ✅ **Audit ePACK theo framework này**
 4. ✅ **Tạo action plan cụ thể**
 
 ---

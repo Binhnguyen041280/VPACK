@@ -684,7 +684,7 @@ config_routes_bp.register_blueprint(step3_bp)
 config_routes_bp.register_blueprint(step4_bp)
 config_routes_bp.register_blueprint(step5_bp)
 
-print("✅ V.PACK Modular Config Routes Registered:")
+print("✅ ePACK Modular Config Routes Registered:")
 print("   - Step 1: /step/brandname (GET, PUT)")
 print("   - Step 2: /step/location-time (GET, PUT)")
 print("   - Step 3: /step/video-source (GET, PUT)")

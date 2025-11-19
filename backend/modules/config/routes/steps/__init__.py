@@ -1,5 +1,5 @@
 """
-Step-based configuration routes for V.PACK.
+Step-based configuration routes for ePACK.
 
 This package contains modular route handlers for each configuration step,
 providing clean separation of concerns and maintainable code structure.

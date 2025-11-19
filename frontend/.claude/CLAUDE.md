@@ -1,4 +1,4 @@
-# Claude Code Guidelines for V_Track Frontend
+# Claude Code Guidelines for ePACK Frontend
 
 ## 🌍 Language Policy: ENGLISH ONLY
 

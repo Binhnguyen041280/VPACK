@@ -59,7 +59,7 @@ Report your choices.
 
 #### **Best Practice Compliance**
 - [ ] For 3+ step tasks: Did Claude consider parallel agents?
-- [ ] For V_Track specific: Did Claude use domain specialists?
+- [ ] For ePACK specific: Did Claude use domain specialists?
 - [ ] For research: Did Claude use Plan Mode or subagents?
 
 ### **🚨 RED FLAGS - When Claude is doing it WRONG**
@@ -80,7 +80,7 @@ Report your choices.
 # Force specific tool
 "Use only Read/Edit tools for this task"
 "Use subagent for this research"
-"Use @backend-developer for this V_Track issue"
+"Use @backend-developer for this ePACK issue"
 
 # Request transparency
 "Show me your decision process step by step"
@@ -116,7 +116,7 @@ Report your choices.
 1. **Efficiency**: Did Claude choose right-sized tools today?
 2. **Intelligence**: Did Claude adapt when initial approach failed?
 3. **Speed**: Did Claude avoid unnecessary complexity?
-4. **Quality**: Did Claude use domain experts for V_Track tasks?
+4. **Quality**: Did Claude use domain experts for ePACK tasks?
 
 ### **Weekly Review**
 - Count how often Claude escalated appropriately

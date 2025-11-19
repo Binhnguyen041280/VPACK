@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-V_Track Error Handler Module
+ePACK Error Handler Module
 Centralized error handling with retry mechanisms, exponential backoff, and error classification
 """
 
@@ -32,7 +32,7 @@ class ErrorSeverity(Enum):
     CRITICAL = 4
 
 class VTrackError(Exception):
-    """Base exception class for V_Track errors"""
+    """Base exception class for ePACK errors"""
     def __init__(self, message: str, error_type: ErrorType, severity: ErrorSeverity = ErrorSeverity.MEDIUM, details: Dict = None):
         super().__init__(message)
         self.error_type = error_type

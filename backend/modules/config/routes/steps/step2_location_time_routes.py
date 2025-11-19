@@ -1,5 +1,5 @@
 """
-Step 2 Location/Time Configuration Routes for V.PACK.
+Step 2 Location/Time Configuration Routes for ePACK.
 
 RESTful endpoints for managing location and time configuration with 
 enhanced timezone validation and working days management.

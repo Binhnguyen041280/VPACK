@@ -1,5 +1,5 @@
 """
-Timezone utilities for V_Track.
+Timezone utilities for ePACK.
 All datetime operations should use UTC internally.
 Created: Phase 3 - Timezone & UTC-aware
 """

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-V_Track is a comprehensive desktop video monitoring and processing application with integrated licensing and payment systems. The system is designed for end-users requiring automated video analysis with commercial licensing.
+ePACK is a comprehensive desktop video monitoring and processing application with integrated licensing and payment systems. The system is designed for end-users requiring automated video analysis with commercial licensing.
 
 ### System Architecture
 - **Backend**: Flask-based Python API server (port 8080)
@@ -69,7 +69,7 @@ python3 app.py
 cd frontend
 npm run dev
 
-# Or use VSCode tasks: Run "Run V_Track (Both)" task
+# Or use VSCode tasks: Run "Run ePACK (Both)" task
 ```
 
 ### License System Commands
@@ -161,7 +161,7 @@ The system supports three main video source types:
 3. **Camera**: ONVIF-compatible IP cameras (backend implemented, frontend pending)
 
 ### Background Service Philosophy
-V_Track is designed as a "set it and forget it" monitoring system:
+ePACK is designed as a "set it and forget it" monitoring system:
 - Long authentication sessions (90 days)
 - Aggressive auto-refresh to prevent expiry
 - Silent operation without user popups
@@ -273,12 +273,12 @@ def verify_license_with_cloud(license_key, email, fingerprint):
 ### CRITICAL: Always run Python from backend/ directory
 ```bash
 # ✅ ĐÚNG - Luôn chạy từ backend/
-cd /Users/annhu/vtrack_app/V_Track/backend
+cd /Users/annhu/vtrack_app/ePACK/backend
 python3 app.py
 python3 -c "from modules.license.license_manager import LicenseManager; print(LicenseManager())"
 
 # ❌ SAI - Sẽ gây lỗi ModuleNotFoundError
-cd /Users/annhu/vtrack_app/V_Track
+cd /Users/annhu/vtrack_app/ePACK
 python3 backend/app.py
 ```
 
@@ -316,9 +316,9 @@ result = LicenseManager()
 
 ### Project Root Path (for Claude reference)
 ```
-PROJECT_ROOT: /Users/annhu/vtrack_app/V_Track/
-BACKEND_ROOT: /Users/annhu/vtrack_app/V_Track/backend/
-FRONTEND_ROOT: /Users/annhu/vtrack_app/V_Track/frontend/
+PROJECT_ROOT: /Users/annhu/vtrack_app/ePACK/
+BACKEND_ROOT: /Users/annhu/vtrack_app/ePACK/backend/
+FRONTEND_ROOT: /Users/annhu/vtrack_app/ePACK/frontend/
 ```
 
 ## Important Notes for Development

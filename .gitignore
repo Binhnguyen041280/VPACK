@@ -1,4 +1,4 @@
-# ===== V_TRACK PROJECT GITIGNORE =====
+# ===== ePACK PROJECT GITIGNORE =====
 
 # ===== IDE & EDITOR CONFIG =====
 pyrightconfig.json
@@ -75,7 +75,7 @@ logs/
 backend/modules/sources/credentials/
 backend/modules/sources/tokens/
 backend/keys/
-.vtrack/
+.epack/
 *.pem
 
 # ===== DATABASE FILES =====

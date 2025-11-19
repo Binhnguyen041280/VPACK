@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# V_Track Docker - Image Cleanup Script
+# ePACK Docker - Image Cleanup Script
 # Removes old/duplicate Docker images, keeps production images
 # ============================================================================
 
@@ -14,7 +14,7 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🧹 V_Track Docker - Image Cleanup${NC}"
+echo -e "${BLUE}🧹 ePACK Docker - Image Cleanup${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
@@ -51,14 +51,14 @@ while [[ $# -gt 0 ]]; do
             echo "  --help, -h       Show this help message"
             echo ""
             echo "Images to be removed:"
-            echo "  - vtrack-backend:v2 (duplicate of phase2)"
-            echo "  - vtrack-backend:fixed (old version)"
-            echo "  - vtrack-frontend:production (old version)"
-            echo "  - vtrack-frontend-deps:latest (build artifact)"
+            echo "  - epack-backend:v2 (duplicate of phase2)"
+            echo "  - epack-backend:fixed (old version)"
+            echo "  - epack-frontend:production (old version)"
+            echo "  - epack-frontend-deps:latest (build artifact)"
             echo ""
             echo "Images to be kept:"
-            echo "  ✅ vtrack-backend:phase2 (production)"
-            echo "  ✅ vtrack-frontend:phase3 (production)"
+            echo "  ✅ epack-backend:phase2 (production)"
+            echo "  ✅ epack-frontend:phase3 (production)"
             exit 0
             ;;
         *)
@@ -71,16 +71,16 @@ done
 
 # Define images to remove
 IMAGES_TO_REMOVE=(
-    "vtrack-backend:v2"
-    "vtrack-backend:fixed"
-    "vtrack-frontend:production"
-    "vtrack-frontend-deps:latest"
+    "epack-backend:v2"
+    "epack-backend:fixed"
+    "epack-frontend:production"
+    "epack-frontend-deps:latest"
 )
 
 # Define production images (must keep)
 PRODUCTION_IMAGES=(
-    "vtrack-backend:phase2"
-    "vtrack-frontend:phase3"
+    "epack-backend:phase2"
+    "epack-frontend:phase3"
 )
 
 echo -e "${YELLOW}⚠️  Images to be removed:${NC}"
@@ -209,8 +209,8 @@ else
     echo ""
     echo -e "${RED}⚠️  WARNING: Some production images are missing!${NC}"
     echo -e "${YELLOW}   Rebuild with:${NC}"
-    echo "   docker build --platform linux/arm64 -t vtrack-backend:phase2 ./backend"
-    echo "   docker build --platform linux/arm64 -t vtrack-frontend:phase3 ./frontend"
+    echo "   docker build --platform linux/arm64 -t epack-backend:phase2 ./backend"
+    echo "   docker build --platform linux/arm64 -t epack-frontend:phase3 ./frontend"
 fi
 
 echo ""

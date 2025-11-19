@@ -47,7 +47,7 @@ class SecurityConfig:
         self.silent_operation = True  # No user popups/interruptions
         self.emergency_grace_period = timedelta(days=7)  # Grace period if refresh fails
         
-        logger.info("V_track Background Service authentication initialized")
+        logger.info("ePACK Background Service authentication initialized")
         logger.info(f"JWT Session Duration: {self.session_duration}")
         logger.info(f"Refresh Token Duration: {self.refresh_token_duration}")
         logger.info(f"Auto-refresh Threshold: {self.refresh_threshold}")    

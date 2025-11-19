@@ -1,5 +1,5 @@
 """
-Step 4 Packing Area Configuration Routes for V.PACK.
+Step 4 Packing Area Configuration Routes for ePACK.
 
 REST wrapper endpoints for existing packing area/ROI detection logic.
 Integrates with existing packing_profiles table and hand detection functions.

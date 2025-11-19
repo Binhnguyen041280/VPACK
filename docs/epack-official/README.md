@@ -1,13 +1,13 @@
-# V_Track Official Documentation
+# ePACK Official Documentation
 
-Welcome to the official documentation for V_Track - Intelligent Video Processing & Tracking System.
+Welcome to the official documentation for ePACK - Intelligent Video Processing & Tracking System.
 
 ## Documentation Structure
 
 This documentation is organized into two main sections:
 
 ### 👤 [For Users](for-users/)
-End-user guides covering installation, configuration, and day-to-day usage of V_Track.
+End-user guides covering installation, configuration, and day-to-day usage of ePACK.
 
 **Getting Started**:
 1. [Installation Guide](for-users/installation.md) - Setup backend and frontend
@@ -20,7 +20,7 @@ End-user guides covering installation, configuration, and day-to-day usage of V_
 - [Cloud Sync](for-users/cloud-sync-advanced.md) - Google Drive integration
 
 ### 👨‍💻 [For Developers](for-developers/)
-Technical documentation for developers working on or integrating with V_Track.
+Technical documentation for developers working on or integrating with ePACK.
 
 **Architecture**:
 - [System Overview](for-developers/architecture/overview.md) - Complete architecture and database schema
@@ -46,27 +46,27 @@ Technical documentation for developers working on or integrating with V_Track.
 
 ## Quick Links
 
-**V_Track Main Application**:
+**ePACK Main Application**:
 - **Main Project README**: [/README.md](../../README.md)
 - **Backend Code**: `/backend/`
 - **Frontend Code**: `/frontend/`
 - **Documentation Assets**: [assets/](assets/)
 
-**V_Track Cloud Functions** (Serverless Backend):
-- **CloudFunctions Repository**: `/V_Track_CloudFunctions/`
+**ePACK Cloud Functions** (Serverless Backend):
+- **CloudFunctions Repository**: `/ePACK_CloudFunctions/`
 - **CloudFunctions Docs**: [for-developers/cloud-functions/](for-developers/cloud-functions/)
 - **API Reference**: [Cloud Functions API](for-developers/cloud-functions/api-reference.md)
 - **Deployment Guide**: [Setup & Deploy](for-developers/cloud-functions/deployment-guide.md)
 
 ## Version Information
 
-- **V_Track Version**: 2.1.0
+- **ePACK Version**: 2.1.0
 - **Documentation Last Updated**: 2025-10-06
 - **Platform**: Desktop (Windows, macOS, Linux)
 
 ## Support
 
-- **Email**: support@vtrack.com
+- **Email**: support@epack.com
 - **Health Check**: http://localhost:8080/health
 - **Issue Tracker**: Contact development team
 

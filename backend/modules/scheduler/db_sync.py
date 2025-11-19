@@ -1,4 +1,4 @@
-"""Database Synchronization Module for V_Track Video Processing System.
+"""Database Synchronization Module for ePACK Video Processing System.
 
 This module provides thread synchronization primitives for coordinating between
 different components of the video processing pipeline. It ensures thread-safe

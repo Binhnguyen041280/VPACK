@@ -3,12 +3,12 @@ import { Box, useColorModeValue } from '@chakra-ui/react';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
 import Image from 'next/image';
 
-interface VPackIconProps {
+interface EPackIconProps {
   size?: string;
   collapsed?: boolean;
 }
 
-export const VPackIcon = ({ size = '40px', collapsed = false }: VPackIconProps) => {
+export const EPackIcon = ({ size = '40px', collapsed = false }: EPackIconProps) => {
   const { currentColors } = useColorTheme();
   
   // Convert size string to number for calculations
@@ -26,7 +26,7 @@ export const VPackIcon = ({ size = '40px', collapsed = false }: VPackIconProps) 
       {/* SVG Logo using Next.js Image component for optimized loading */}
       <Image
         src="/LOGO ICON.svg"
-        alt="V.PACK Logo"
+        alt="ePACK Logo"
         width={sizeNum}
         height={sizeNum}
         style={{
@@ -42,4 +42,4 @@ export const VPackIcon = ({ size = '40px', collapsed = false }: VPackIconProps) 
   );
 };
 
-export default VPackIcon;
+export default EPackIcon;

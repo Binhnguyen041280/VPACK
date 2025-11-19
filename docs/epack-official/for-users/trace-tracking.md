@@ -1,6 +1,6 @@
 # Trace Tracking User Guide
 
-**V_Track Event Tracking & Video Analysis**
+**ePACK Event Tracking & Video Analysis**
 
 ---
 
@@ -20,7 +20,7 @@
 
 ## Overview
 
-The Trace page is V_Track's core event tracking interface, allowing you to search for and analyze packing events captured from your camera system. It supports multiple search methods including manual tracking code entry, Excel/CSV batch uploads, and QR code image scanning.
+The Trace page is ePACK's core event tracking interface, allowing you to search for and analyze packing events captured from your camera system. It supports multiple search methods including manual tracking code entry, Excel/CSV batch uploads, and QR code image scanning.
 
 ### Key Features
 
@@ -263,7 +263,7 @@ Event ID: 12345
 
 ### Platform Column Mappings
 
-V_Track remembers which column contains tracking codes for each platform.
+ePACK remembers which column contains tracking codes for each platform.
 
 **Create New Platform**:
 
@@ -509,4 +509,4 @@ WHERE vs.active = 1 AND cc.is_selected = 1;
 
 **Last Updated**: 2025-10-06
 **Version**: 1.0.0
-**Author**: V_Track Documentation Team
+**Author**: ePACK Documentation Team

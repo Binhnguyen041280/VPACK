@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================================
-# V_Track Docker - Status Script
-# Check the status of V_Track containers and services
+# ePACK Docker - Status Script
+# Check the status of ePACK containers and services
 # ============================================================================
 
 set -e
@@ -14,7 +14,7 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}📊 V_Track Docker - System Status${NC}"
+echo -e "${BLUE}📊 ePACK Docker - System Status${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
@@ -104,17 +104,17 @@ echo ""
 # Network
 echo -e "${CYAN}🌐 Docker Networks:${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-if docker network ls | grep -q vtrack-network; then
-    docker network inspect vtrack-network --format "Name: {{.Name}}\nDriver: {{.Driver}}\nContainers: {{len .Containers}}"
+if docker network ls | grep -q epack-network; then
+    docker network inspect epack-network --format "Name: {{.Name}}\nDriver: {{.Driver}}\nContainers: {{len .Containers}}"
     echo ""
 
     # Show connected containers
-    if [ $(docker network inspect vtrack-network --format "{{len .Containers}}") -gt 0 ]; then
+    if [ $(docker network inspect epack-network --format "{{len .Containers}}") -gt 0 ]; then
         echo -e "${YELLOW}Connected Containers:${NC}"
-        docker network inspect vtrack-network --format '{{range $k, $v := .Containers}}  - {{$v.Name}} ({{$v.IPv4Address}}){{"\n"}}{{end}}'
+        docker network inspect epack-network --format '{{range $k, $v := .Containers}}  - {{$v.Name}} ({{$v.IPv4Address}}){{"\n"}}{{end}}'
     fi
 else
-    echo -e "${YELLOW}⚠️  Network 'vtrack-network' not found${NC}"
+    echo -e "${YELLOW}⚠️  Network 'epack-network' not found${NC}"
 fi
 echo ""
 
@@ -136,7 +136,7 @@ if [ $RUNNING -gt 0 ]; then
     echo "  View logs:      ./logs.sh"
     echo "  Stop services:  ./stop.sh"
     echo "  Restart:        docker-compose restart"
-    echo "  Shell (backend): docker exec -it vtrack-backend bash"
+    echo "  Shell (backend): docker exec -it epack-backend bash"
 else
     echo "  Start services: ./start.sh"
     echo "  Start dev mode: ./start.sh --dev"

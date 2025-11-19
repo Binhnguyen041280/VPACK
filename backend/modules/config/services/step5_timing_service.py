@@ -1,5 +1,5 @@
 """
-Step 5 Timing/Storage Service Layer for V.PACK Configuration.
+Step 5 Timing/Storage Service Layer for ePACK Configuration.
 
 Wrapper service for existing timing and storage configuration logic.
 Uses existing processing_config table and save_config validation.
@@ -38,9 +38,9 @@ class Step5TimingService:
     def _get_default_output_path():
         """Get Docker-aware default output path"""
         import os
-        if os.getenv('VTRACK_IN_DOCKER') == 'true':
+        if os.getenv('EPACK_IN_DOCKER') == 'true':
             return '/app/resources/output'
-        return os.getenv('VTRACK_OUTPUT_DIR', '/app/resources/output')
+        return os.getenv('EPACK_OUTPUT_DIR', '/app/resources/output')
 
     @property
     def DEFAULT_OUTPUT_PATH(self):

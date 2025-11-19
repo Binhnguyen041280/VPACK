@@ -45,7 +45,7 @@ def get_default_storage_paths():
     Get OS-specific default storage paths matching Canvas frontend expectations.
 
     Docker Compatibility:
-    - Checks VTRACK_IN_DOCKER environment variable first
+    - Checks EPACK_IN_DOCKER environment variable first
     - Uses Docker-friendly paths (/app/resources) when in container
     - Falls back to OS-specific paths for local development
     - Supports environment variable overrides for flexibility
@@ -54,10 +54,10 @@ def get_default_storage_paths():
     import os
 
     # DOCKER MODE: Check if running in Docker container
-    if os.getenv('VTRACK_IN_DOCKER') == 'true':
+    if os.getenv('EPACK_IN_DOCKER') == 'true':
         # Docker/container mode - use container-friendly paths
-        input_dir = os.getenv('VTRACK_INPUT_DIR', '/app/resources/input')
-        output_dir = os.getenv('VTRACK_OUTPUT_DIR', '/app/resources/output')
+        input_dir = os.getenv('EPACK_INPUT_DIR', '/app/resources/input')
+        output_dir = os.getenv('EPACK_OUTPUT_DIR', '/app/resources/output')
         return input_dir, output_dir
 
     # LOCAL DEVELOPMENT MODE: OS-specific paths
@@ -80,8 +80,8 @@ def get_default_storage_paths():
         default_output = f"/home/{username}/Videos/VTrack/Output"
 
     # Allow environment variable overrides even in local development
-    input_dir = os.getenv('VTRACK_INPUT_DIR', default_input)
-    output_dir = os.getenv('VTRACK_OUTPUT_DIR', default_output)
+    input_dir = os.getenv('EPACK_INPUT_DIR', default_input)
+    output_dir = os.getenv('EPACK_OUTPUT_DIR', default_output)
 
     return input_dir, output_dir
 

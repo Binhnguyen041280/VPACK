@@ -1,4 +1,4 @@
-"""Scheduler Program API Module for V_Track Video Processing System.
+"""Scheduler Program API Module for ePACK Video Processing System.
 
 This module provides Flask REST API endpoints for controlling video processing programs.
 It manages different processing modes (First Run, Default, Custom) and coordinates with

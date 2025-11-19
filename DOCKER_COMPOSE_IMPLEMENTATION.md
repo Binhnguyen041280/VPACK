@@ -1,7 +1,7 @@
 # Docker Compose Implementation Report
 
 **Date**: 2025-11-12
-**Project**: V_Track Application
+**Project**: ePACK Application
 **Version**: Phase 2 (Backend) + Phase 3 (Frontend)
 **Platform**: linux/arm64 (Mac M1/M2/M3)
 
@@ -9,7 +9,7 @@
 
 ## Implementation Summary
 
-Successfully created a complete Docker Compose setup for V_Track application with production and development configurations, including persistent storage, health checks, and comprehensive documentation.
+Successfully created a complete Docker Compose setup for ePACK application with production and development configurations, including persistent storage, health checks, and comprehensive documentation.
 
 ---
 
@@ -19,23 +19,23 @@ Successfully created a complete Docker Compose setup for V_Track application wit
 
 | File | Location | Purpose |
 |------|----------|---------|
-| `docker-compose.yml` | `/Users/annhu/vtrack_app/V_Track/` | Production deployment with pre-built images |
-| `docker-compose.dev.yml` | `/Users/annhu/vtrack_app/V_Track/` | Development deployment with live code reloading |
-| `Dockerfile.dev` | `/Users/annhu/vtrack_app/V_Track/frontend/` | Frontend development image with HMR |
+| `docker-compose.yml` | `/Users/annhu/vtrack_app/ePACK/` | Production deployment with pre-built images |
+| `docker-compose.dev.yml` | `/Users/annhu/vtrack_app/ePACK/` | Development deployment with live code reloading |
+| `Dockerfile.dev` | `/Users/annhu/vtrack_app/ePACK/frontend/` | Frontend development image with HMR |
 
 ### Updated Configuration
 
 | File | Location | Changes |
 |------|----------|---------|
-| `.env.docker.example` | `/Users/annhu/vtrack_app/V_Track/` | Added Docker Compose settings section |
+| `.env.docker.example` | `/Users/annhu/vtrack_app/ePACK/` | Added Docker Compose settings section |
 
 ### Documentation
 
 | File | Location | Description |
 |------|----------|-------------|
-| `DOCKER_COMPOSE_GUIDE.md` | `/Users/annhu/vtrack_app/V_Track/` | Complete deployment guide (14KB) |
-| `DOCKER_QUICKSTART.md` | `/Users/annhu/vtrack_app/V_Track/` | Quick reference guide (2.6KB) |
-| `DOCKER_COMPOSE_IMPLEMENTATION.md` | `/Users/annhu/vtrack_app/V_Track/` | This implementation report |
+| `DOCKER_COMPOSE_GUIDE.md` | `/Users/annhu/vtrack_app/ePACK/` | Complete deployment guide (14KB) |
+| `DOCKER_QUICKSTART.md` | `/Users/annhu/vtrack_app/ePACK/` | Quick reference guide (2.6KB) |
+| `DOCKER_COMPOSE_IMPLEMENTATION.md` | `/Users/annhu/vtrack_app/ePACK/` | This implementation report |
 
 ---
 
@@ -44,18 +44,18 @@ Successfully created a complete Docker Compose setup for V_Track application wit
 ### Services Configured
 
 #### Backend Service
-- **Image**: `vtrack-backend:phase2`
+- **Image**: `epack-backend:phase2`
 - **Platform**: `linux/arm64`
 - **Port**: `8080:8080`
 - **Environment**: Loaded from `.env` file
 - **Volumes** (7 persistent volumes):
-  - `vtrack-db` → `/app/database` (SQLite databases)
-  - `vtrack-logs` → `/app/logs` (Application logs)
-  - `vtrack-sessions` → `/app/var/flask_session` (Session storage)
-  - `vtrack-cache` → `/app/var/cache` (Cache files)
-  - `vtrack-uploads` → `/app/var/uploads` (File uploads)
-  - `vtrack-input` → `/app/resources/input` (Video input)
-  - `vtrack-output` → `/app/resources/output` (Video output)
+  - `epack-db` → `/app/database` (SQLite databases)
+  - `epack-logs` → `/app/logs` (Application logs)
+  - `epack-sessions` → `/app/var/flask_session` (Session storage)
+  - `epack-cache` → `/app/var/cache` (Cache files)
+  - `epack-uploads` → `/app/var/uploads` (File uploads)
+  - `epack-input` → `/app/resources/input` (Video input)
+  - `epack-output` → `/app/resources/output` (Video output)
 - **Restart Policy**: `unless-stopped`
 - **Health Check**: `curl http://localhost:8080/health`
   - Interval: 30s
@@ -64,7 +64,7 @@ Successfully created a complete Docker Compose setup for V_Track application wit
   - Start period: 40s
 
 #### Frontend Service
-- **Image**: `vtrack-frontend:phase3`
+- **Image**: `epack-frontend:phase3`
 - **Platform**: `linux/arm64`
 - **Port**: `3000:3000`
 - **Environment**:
@@ -79,7 +79,7 @@ Successfully created a complete Docker Compose setup for V_Track application wit
   - Start period: 30s
 
 ### Network Configuration
-- **Network Name**: `vtrack-network`
+- **Network Name**: `epack-network`
 - **Driver**: `bridge`
 - **Purpose**: Isolated network for service communication
 
@@ -120,7 +120,7 @@ All volumes use named volumes with local driver for data persistence across cont
 
 ### Development Features
 - **Live Code Reloading**: Changes in `./backend` and `./frontend` reflect immediately
-- **Separate Volumes**: Development uses `-dev` suffix (e.g., `vtrack-db-dev`)
+- **Separate Volumes**: Development uses `-dev` suffix (e.g., `epack-db-dev`)
 - **Debug Logging**: Enabled for troubleshooting
 - **Hot Module Replacement**: React Fast Refresh for instant UI updates
 
@@ -136,8 +136,8 @@ All volumes use named volumes with local driver for data persistence across cont
 # ============================================================================
 COMPOSE_PROJECT_NAME=vtrack
 DEPLOYMENT_MODE=production
-BACKEND_IMAGE=vtrack-backend:phase2
-FRONTEND_IMAGE=vtrack-frontend:phase3
+BACKEND_IMAGE=epack-backend:phase2
+FRONTEND_IMAGE=epack-frontend:phase3
 DOCKER_PLATFORM=linux/arm64
 ```
 
@@ -218,10 +218,10 @@ All environment variables correctly reference:
 │  Browser (localhost:3000) ──► Frontend (localhost:8080) ◄─┐│
 │                                      │                     ││
 │  ┌───────────────────────────────────┼────────────────────┼┤
-│  │  Docker: vtrack-network (bridge)  │                    ││
+│  │  Docker: epack-network (bridge)  │                    ││
 │  │                                    ▼                    ││
 │  │  ┌──────────────────────┐  ┌─────────────────────┐    ││
-│  │  │  vtrack-backend      │  │  vtrack-frontend    │    ││
+│  │  │  epack-backend      │  │  epack-frontend    │    ││
 │  │  │  Image: phase2       │◄─┤  Image: phase3      │    ││
 │  │  │  Port: 8080          │  │  Port: 3000         │    ││
 │  │  │  Health: /health     │  │  Health: wget /     │    ││
@@ -229,13 +229,13 @@ All environment variables correctly reference:
 │  │             │                                          ││
 │  │     ┌───────┴────────────────────┐                    ││
 │  │     │  Named Volumes (7)         │                    ││
-│  │     │  - vtrack-db               │                    ││
-│  │     │  - vtrack-logs             │                    ││
-│  │     │  - vtrack-sessions         │                    ││
-│  │     │  - vtrack-cache            │                    ││
-│  │     │  - vtrack-uploads          │                    ││
-│  │     │  - vtrack-input            │                    ││
-│  │     │  - vtrack-output           │                    ││
+│  │     │  - epack-db               │                    ││
+│  │     │  - epack-logs             │                    ││
+│  │     │  - epack-sessions         │                    ││
+│  │     │  - epack-cache            │                    ││
+│  │     │  - epack-uploads          │                    ││
+│  │     │  - epack-input            │                    ││
+│  │     │  - epack-output           │                    ││
 │  │     └────────────────────────────┘                    ││
 │  └────────────────────────────────────────────────────────┼┤
 │                                                            ││
@@ -297,7 +297,7 @@ docker-compose down
 docker-compose down -v
 
 # Backup database
-docker run --rm -v vtrack-db:/data -v $(pwd)/backup:/backup \
+docker run --rm -v epack-db:/data -v $(pwd)/backup:/backup \
   alpine tar czf /backup/db-backup.tar.gz -C /data .
 ```
 
@@ -331,12 +331,12 @@ docker run --rm -v vtrack-db:/data -v $(pwd)/backup:/backup \
    - Only removed with `docker-compose down -v`
 
 2. **Backup Strategy**:
-   - Regular backups recommended for `vtrack-db`
+   - Regular backups recommended for `epack-db`
    - Use provided backup scripts
    - Test restore procedures
 
 3. **Development vs Production**:
-   - Separate volumes for dev/prod (e.g., `vtrack-db` vs `vtrack-db-dev`)
+   - Separate volumes for dev/prod (e.g., `epack-db` vs `epack-db-dev`)
    - No data conflict between environments
 
 ### Platform Compatibility
@@ -374,7 +374,7 @@ docker run --rm -v vtrack-db:/data -v $(pwd)/backup:/backup \
 2. **Verify Images Exist**:
    ```bash
    docker images | grep vtrack
-   # Should show vtrack-backend:phase2 and vtrack-frontend:phase3
+   # Should show epack-backend:phase2 and epack-frontend:phase3
    ```
 
 3. **Start Services**:

@@ -34,7 +34,7 @@ class LicenseUI:
                 
                 # Show dialog
                 license_key = simpledialog.askstring(
-                    title="V_Track License",
+                    title="ePACK License",
                     prompt="Enter your license key:",
                     parent=root
                 )

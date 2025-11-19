@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class LicenseGenerator:
     """
-    Cryptographic license generator for V_track desktop application
+    Cryptographic license generator for ePACK desktop application
     Supports offline validation với RSA digital signatures
     """
     
@@ -173,7 +173,7 @@ class LicenseGenerator:
                 'expiry_date': (datetime.now() + timedelta(days=license_info.get('duration_days', 365))).isoformat(),
                 'license_id': str(uuid.uuid4()),
                 'version': '1.0',
-                'issuer': 'V_track License System'
+                'issuer': 'ePACK License System'
             }
             
             # Serialize license data
@@ -458,7 +458,7 @@ class LicenseGenerator:
                 'instructions': {
                     'installation': [
                         '1. Save this license package to a secure location',
-                        '2. Install V_track desktop application',
+                        '2. Install ePACK desktop application',
                         '3. Enter license key when prompted during first run',
                         '4. Application will automatically validate and activate'
                     ],

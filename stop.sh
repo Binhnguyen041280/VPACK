@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================================
-# V_Track Docker - Stop Script
-# Stops the V_Track application stack using Docker Compose
+# ePACK Docker - Stop Script
+# Stops the ePACK application stack using Docker Compose
 # ============================================================================
 
 set -e
@@ -13,7 +13,7 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🛑 V_Track Docker - Stopping Application Stack${NC}"
+echo -e "${BLUE}🛑 ePACK Docker - Stopping Application Stack${NC}"
 echo ""
 
 # Parse command line arguments
@@ -59,7 +59,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Build docker-compose command
-echo -e "${YELLOW}Stopping V_Track services...${NC}"
+echo -e "${YELLOW}Stopping ePACK services...${NC}"
 COMPOSE_CMD="docker-compose down"
 
 if [ "$REMOVE_ORPHANS" = true ]; then
@@ -89,7 +89,7 @@ echo ""
 eval $COMPOSE_CMD
 
 echo ""
-echo -e "${GREEN}✅ V_Track stack stopped successfully${NC}"
+echo -e "${GREEN}✅ ePACK stack stopped successfully${NC}"
 echo ""
 
 # Show remaining containers

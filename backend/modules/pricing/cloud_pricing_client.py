@@ -1,5 +1,5 @@
 """
-Cloud Pricing Client for V_Track Desktop
+Cloud Pricing Client for ePACK Desktop
 Fetch pricing from CloudFunction on-demand
 """
 

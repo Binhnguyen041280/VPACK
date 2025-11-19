@@ -1,10 +1,10 @@
-# V_Track User Documentation
+# ePACK User Documentation
 
-Comprehensive guides for end-users of V_Track video processing system.
+Comprehensive guides for end-users of ePACK video processing system.
 
 ## Getting Started
 
-New to V_Track? Follow these guides in order:
+New to ePACK? Follow these guides in order:
 
 1. **[Installation Guide](installation.md)** ⭐ START HERE
    - System requirements
@@ -60,7 +60,7 @@ New to V_Track? Follow these guides in order:
 
 | Feature | Guide | Page |
 |---------|-------|------|
-| Install V_Track | [Installation](installation.md) | Setup |
+| Install ePACK | [Installation](installation.md) | Setup |
 | First-time wizard | [Configuration Wizard](configuration-wizard.md) | Wizard |
 | Process videos | [Processing Modes](processing-modes.md) | Modes |
 | Configure cameras | [ROI Configuration](roi-configuration.md) | ROI |
@@ -86,7 +86,7 @@ Each guide includes a dedicated troubleshooting section. Common issues:
 
 If you can't find the answer in the documentation:
 
-- **Email**: support@vtrack.com
+- **Email**: support@epack.com
 - **Health Check**: http://localhost:8080/health
 - **Log Files**: `/var/logs/app_latest.log`, `/var/logs/event_processing_latest.log`
 

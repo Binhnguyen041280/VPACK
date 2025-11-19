@@ -1,4 +1,4 @@
-# V_Track Architecture Overview
+# ePACK Architecture Overview
 
 **Version**: 2.1.1
 **Last Updated**: 2025-10-07
@@ -23,7 +23,7 @@
 
 ## System Architecture Overview
 
-V_Track is a desktop application for automated video processing, event detection, and tracking code analysis. The system follows a **client-server architecture** with a React frontend and Flask backend.
+ePACK is a desktop application for automated video processing, event detection, and tracking code analysis. The system follows a **client-server architecture** with a React frontend and Flask backend.
 
 ### High-Level Component Diagram
 
@@ -68,7 +68,7 @@ V_Track is a desktop application for automated video processing, event detection
                          │
 ┌────────────────────────▼────────────────────────────────────────┐
 │                   Data Layer (SQLite WAL)                       │
-│          /Users/annhu/vtrack_app/V_Track/backend/database/      │
+│          /Users/annhu/vtrack_app/ePACK/backend/database/      │
 ├─────────────────────────────────────────────────────────────────┤
 │  events.db (23 tables, 50+ indexes, 4 views)                   │
 │  • Core: events, file_list, processing_config                  │
@@ -171,7 +171,7 @@ PRAGMA foreign_keys = ON           # Enforce relationships
 
 ### Schema Overview
 
-V_Track uses a **single SQLite database** (`events.db`) with 23 tables organized into 7 functional domains:
+ePACK uses a **single SQLite database** (`events.db`) with 23 tables organized into 7 functional domains:
 
 1. **Core Processing** (4 tables)
 2. **Video Sources & Sync** (6 tables)
@@ -184,10 +184,10 @@ V_Track uses a **single SQLite database** (`events.db`) with 23 tables organized
 ### Database File Location
 
 ```
-/Users/annhu/vtrack_app/V_Track/backend/database/events.db
+/Users/annhu/vtrack_app/ePACK/backend/database/events.db
 ```
 
-**Schema Definition**: `/Users/annhu/vtrack_app/V_Track/backend/database.py`
+**Schema Definition**: `/Users/annhu/vtrack_app/ePACK/backend/database.py`
 
 ---
 
@@ -854,7 +854,7 @@ END
 
 ### Database Views
 
-V_Track includes 3 materialized views for efficient querying:
+ePACK includes 3 materialized views for efficient querying:
 
 #### 1. `active_cameras` View
 
@@ -971,7 +971,7 @@ erDiagram
 
 ## Backend Module Structure
 
-The backend is organized into **8 primary modules** under `/Users/annhu/vtrack_app/V_Track/backend/modules/`:
+The backend is organized into **8 primary modules** under `/Users/annhu/vtrack_app/ePACK/backend/modules/`:
 
 ### Module Organization
 
@@ -992,7 +992,7 @@ backend/modules/
 
 ### 1. `config/` - System Configuration
 
-**Location**: `/Users/annhu/vtrack_app/V_Track/backend/modules/config/`
+**Location**: `/Users/annhu/vtrack_app/ePACK/backend/modules/config/`
 
 **Purpose**: Manages system configuration, logging, and OAuth authentication.
 
@@ -1036,7 +1036,7 @@ setup_dual_logging(
 
 ### 2. `db_utils/` - Database Operations
 
-**Location**: `/Users/annhu/vtrack_app/V_Track/backend/modules/db_utils/`
+**Location**: `/Users/annhu/vtrack_app/ePACK/backend/modules/db_utils/`
 
 **Purpose**: Provides thread-safe database access with connection pooling.
 
@@ -1064,14 +1064,14 @@ with safe_db_connection(timeout=60) as conn:
 from modules.db_utils import find_project_root
 
 BASE_DIR = find_project_root(os.path.abspath(__file__))
-# Returns: /Users/annhu/vtrack_app/V_Track
+# Returns: /Users/annhu/vtrack_app/ePACK
 ```
 
 ---
 
 ### 3. `scheduler/` - Batch Processing
 
-**Location**: `/Users/annhu/vtrack_app/V_Track/backend/modules/scheduler/`
+**Location**: `/Users/annhu/vtrack_app/ePACK/backend/modules/scheduler/`
 
 **Purpose**: Orchestrates batch video processing and background jobs.
 
@@ -1130,7 +1130,7 @@ with db_rwlock.gen_rlock():
 
 ### 4. `technician/` - Computer Vision
 
-**Location**: `/Users/annhu/vtrack_app/V_Track/backend/modules/technician/`
+**Location**: `/Users/annhu/vtrack_app/ePACK/backend/modules/technician/`
 
 **Purpose**: Implements video processing, event detection, and ROI analysis.
 
@@ -1224,7 +1224,7 @@ events = detector.detect_events(
 
 ### 5. `sources/` - Video Source Management
 
-**Location**: `/Users/annhu/vtrack_app/V_Track/backend/modules/sources/`
+**Location**: `/Users/annhu/vtrack_app/ePACK/backend/modules/sources/`
 
 **Purpose**: Manages local files, Google Drive, and camera streams.
 
@@ -1289,8 +1289,8 @@ client.download_file(
 ### 6. `license/` & `licensing/` - License Management
 
 **Location**:
-- `/Users/annhu/vtrack_app/V_Track/backend/modules/license/` (deprecated)
-- `/Users/annhu/vtrack_app/V_Track/backend/modules/licensing/` (new)
+- `/Users/annhu/vtrack_app/ePACK/backend/modules/license/` (deprecated)
+- `/Users/annhu/vtrack_app/ePACK/backend/modules/licensing/` (new)
 
 **Purpose**: RSA-based license validation and device activation.
 
@@ -1368,7 +1368,7 @@ activation_result = service.activate_license(
 
 ### 7. `payments/` - Payment Integration
 
-**Location**: `/Users/annhu/vtrack_app/V_Track/backend/modules/payments/`
+**Location**: `/Users/annhu/vtrack_app/ePACK/backend/modules/payments/`
 
 **Purpose**: PayOS payment gateway integration.
 
@@ -1409,7 +1409,7 @@ def handle_webhook():
 
 ### 8. `utils/` - Shared Utilities
 
-**Location**: `/Users/annhu/vtrack_app/V_Track/backend/modules/utils/`
+**Location**: `/Users/annhu/vtrack_app/ePACK/backend/modules/utils/`
 
 **Purpose**: Common helper functions.
 
@@ -1510,7 +1510,7 @@ frontend/
 
 ### State Management
 
-V_Track uses **React Context API** for global state:
+ePACK uses **React Context API** for global state:
 
 ```typescript
 // AppWrappers.tsx
@@ -1783,7 +1783,7 @@ cloud_client = get_cloud_client()
 payment = cloud_client.create_payment({
     'orderCode': generate_order_code(),
     'amount': 500000,
-    'description': 'V_Track Desktop License',
+    'description': 'ePACK Desktop License',
     'returnUrl': 'http://localhost:8080/payment/redirect',
     'cancelUrl': 'http://localhost:8080/cancel'
 })
@@ -2158,29 +2158,29 @@ with ThreadPoolExecutor(max_workers=3) as executor:
 
 | Component | Path |
 |-----------|------|
-| Main App | `/Users/annhu/vtrack_app/V_Track/backend/app.py` |
-| Database Schema | `/Users/annhu/vtrack_app/V_Track/backend/database.py` |
-| Database File | `/Users/annhu/vtrack_app/V_Track/backend/database/events.db` |
-| Config Blueprint | `/Users/annhu/vtrack_app/V_Track/backend/modules/config/config.py` |
-| Program Blueprint | `/Users/annhu/vtrack_app/V_Track/backend/modules/scheduler/program.py` |
-| ROI Blueprint | `/Users/annhu/vtrack_app/V_Track/backend/blueprints/roi_bp.py` |
-| Hand Detection | `/Users/annhu/vtrack_app/V_Track/backend/modules/technician/hand_detection.py` |
-| QR Detection | `/Users/annhu/vtrack_app/V_Track/backend/modules/technician/qr_detector.py` |
-| Event Detector | `/Users/annhu/vtrack_app/V_Track/backend/modules/technician/event_detector.py` |
-| Cloud Sync | `/Users/annhu/vtrack_app/V_Track/backend/modules/sources/pydrive_downloader.py` |
+| Main App | `/Users/annhu/vtrack_app/ePACK/backend/app.py` |
+| Database Schema | `/Users/annhu/vtrack_app/ePACK/backend/database.py` |
+| Database File | `/Users/annhu/vtrack_app/ePACK/backend/database/events.db` |
+| Config Blueprint | `/Users/annhu/vtrack_app/ePACK/backend/modules/config/config.py` |
+| Program Blueprint | `/Users/annhu/vtrack_app/ePACK/backend/modules/scheduler/program.py` |
+| ROI Blueprint | `/Users/annhu/vtrack_app/ePACK/backend/blueprints/roi_bp.py` |
+| Hand Detection | `/Users/annhu/vtrack_app/ePACK/backend/modules/technician/hand_detection.py` |
+| QR Detection | `/Users/annhu/vtrack_app/ePACK/backend/modules/technician/qr_detector.py` |
+| Event Detector | `/Users/annhu/vtrack_app/ePACK/backend/modules/technician/event_detector.py` |
+| Cloud Sync | `/Users/annhu/vtrack_app/ePACK/backend/modules/sources/pydrive_downloader.py` |
 
 ### Frontend
 
 | Component | Path |
 |-----------|------|
-| Main Dashboard | `/Users/annhu/vtrack_app/V_Track/frontend/app/page.tsx` |
-| Layout | `/Users/annhu/vtrack_app/V_Track/frontend/app/layout.tsx` |
-| App Wrappers | `/Users/annhu/vtrack_app/V_Track/frontend/app/AppWrappers.tsx` |
-| Program Page | `/Users/annhu/vtrack_app/V_Track/frontend/app/program/page.tsx` |
-| Trace Page | `/Users/annhu/vtrack_app/V_Track/frontend/app/trace/page.tsx` |
+| Main Dashboard | `/Users/annhu/vtrack_app/ePACK/frontend/app/page.tsx` |
+| Layout | `/Users/annhu/vtrack_app/ePACK/frontend/app/layout.tsx` |
+| App Wrappers | `/Users/annhu/vtrack_app/ePACK/frontend/app/AppWrappers.tsx` |
+| Program Page | `/Users/annhu/vtrack_app/ePACK/frontend/app/program/page.tsx` |
+| Trace Page | `/Users/annhu/vtrack_app/ePACK/frontend/app/trace/page.tsx` |
 
 ---
 
 **Document End**
 
-This architecture overview provides a comprehensive reference for developers working on the V_Track system. For specific implementation details, refer to the source code files listed in the appendix.
+This architecture overview provides a comprehensive reference for developers working on the ePACK system. For specific implementation details, refer to the source code files listed in the appendix.

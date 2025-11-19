@@ -1,6 +1,6 @@
-# V_Track Installation Guide
+# ePACK Installation Guide
 
-This comprehensive guide will walk you through installing and setting up V_Track on your system.
+This comprehensive guide will walk you through installing and setting up ePACK on your system.
 
 ## Table of Contents
 
@@ -43,7 +43,7 @@ This comprehensive guide will walk you through installing and setting up V_Track
 
 ## Pre-Installation Checklist
 
-Before installing V_Track, ensure you have:
+Before installing ePACK, ensure you have:
 
 - [ ] Python 3.8+ installed (`python --version`)
 - [ ] Node.js 18+ installed (`node --version`)
@@ -113,12 +113,12 @@ npm --version
 
 ```bash
 # If using Git
-git clone https://github.com/your-org/V_Track.git
-cd V_Track
+git clone https://github.com/your-org/ePACK.git
+cd ePACK
 
 # If using downloaded archive
-unzip V_Track.zip
-cd V_Track
+unzip ePACK.zip
+cd ePACK
 ```
 
 ### Step 2: Navigate to Backend Directory
@@ -193,9 +193,9 @@ GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 
 # Cloud Functions (if using payment system)
-CLOUD_PAYMENT_URL=https://asia-southeast1-v-track-payments.cloudfunctions.net/create-payment
-CLOUD_WEBHOOK_URL=https://asia-southeast1-v-track-payments.cloudfunctions.net/webhook-handler
-CLOUD_LICENSE_URL=https://asia-southeast1-v-track-payments.cloudfunctions.net/license-service
+CLOUD_PAYMENT_URL=https://asia-southeast1-epack-payments.cloudfunctions.net/create-payment
+CLOUD_WEBHOOK_URL=https://asia-southeast1-epack-payments.cloudfunctions.net/webhook-handler
+CLOUD_LICENSE_URL=https://asia-southeast1-epack-payments.cloudfunctions.net/license-service
 
 # Database Path (auto-generated)
 DB_PATH=backend/database/events.db
@@ -275,7 +275,7 @@ python database.py
 
 **Expected output:**
 ```
-🎉 Database updated successfully at /path/to/V_Track/backend/database/events.db
+🎉 Database updated successfully at /path/to/ePACK/backend/database/events.db
 ✅ All 23 tables created successfully
 ✅ Platform management system implemented
 ✅ Enhanced timezone management system implemented
@@ -330,7 +330,7 @@ python app.py
 
 **Expected output:**
 ```
-🚀 V_Track Desktop App Starting...
+🚀 ePACK Desktop App Starting...
 📡 Server: http://0.0.0.0:8080
 🔧 Core Features:
    ✅ Computer Vision Processing
@@ -364,7 +364,7 @@ npm run dev
 ### Step 3: Access Application
 
 1. Open browser and navigate to `http://localhost:3000`
-2. You should see the V_Track login/dashboard page
+2. You should see the ePACK login/dashboard page
 
 ### Step 4: Google Authentication Setup
 
@@ -376,7 +376,7 @@ npm run dev
    - View your email address
    - View your basic profile info
    - (Optional) Access Google Drive for cloud sync
-4. You'll be redirected back to V_Track
+4. You'll be redirected back to ePACK
 
 **Note**: Your Google account credentials are encrypted and stored securely in the database.
 
@@ -494,7 +494,7 @@ After completing the wizard:
    sqlite3 backend/database/events.db "SELECT profile_name, packing_area, qr_trigger_area FROM packing_profiles;"
    ```
 
-## Running V_Track
+## Running ePACK
 
 ### Development Mode
 
@@ -534,19 +534,19 @@ Access: `http://localhost:3000`
 
 ### Running as Service (Linux/macOS)
 
-Create systemd service file `/etc/systemd/system/vtrack-backend.service`:
+Create systemd service file `/etc/systemd/system/epack-backend.service`:
 
 ```ini
 [Unit]
-Description=V_Track Backend Service
+Description=ePACK Backend Service
 After=network.target
 
 [Service]
 Type=simple
 User=youruser
-WorkingDirectory=/path/to/V_Track/backend
-Environment="PATH=/path/to/V_Track/backend/venv/bin"
-ExecStart=/path/to/V_Track/backend/venv/bin/python app.py
+WorkingDirectory=/path/to/ePACK/backend
+Environment="PATH=/path/to/ePACK/backend/venv/bin"
+ExecStart=/path/to/ePACK/backend/venv/bin/python app.py
 Restart=always
 
 [Install]
@@ -556,9 +556,9 @@ WantedBy=multi-user.target
 Enable and start:
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable vtrack-backend
-sudo systemctl start vtrack-backend
-sudo systemctl status vtrack-backend
+sudo systemctl enable epack-backend
+sudo systemctl start epack-backend
+sudo systemctl status epack-backend
 ```
 
 ## Troubleshooting
@@ -691,7 +691,7 @@ After successful installation:
 ## Support
 
 For installation support:
-- Email: support@vtrack.com
+- Email: support@epack.com
 - Documentation: `/docs` folder
 - Health Check: `http://localhost:8080/health`
 

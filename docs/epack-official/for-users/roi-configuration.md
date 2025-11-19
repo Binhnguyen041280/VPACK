@@ -1,6 +1,6 @@
 # ROI Configuration Guide
 
-Region of Interest (ROI) configuration is a critical step in V_Track setup. This guide explains how to properly configure detection zones for accurate event detection.
+Region of Interest (ROI) configuration is a critical step in ePACK setup. This guide explains how to properly configure detection zones for accurate event detection.
 
 ## Table of Contents
 
@@ -34,7 +34,7 @@ With ROI configuration:
 
 ## ROI Types
 
-V_Track supports two types of ROI:
+ePACK supports two types of ROI:
 
 ### 1. Packing Area (Required)
 
@@ -310,7 +310,7 @@ curl -X POST http://localhost:8080/finalize-roi \
 
 ### Understanding ROI Format
 
-V_Track uses two coordinate formats:
+ePACK uses two coordinate formats:
 
 #### Format 1: [x, y, width, height] (Database Storage)
 

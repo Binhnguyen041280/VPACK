@@ -1,6 +1,6 @@
 # backend/modules/licensing/repositories/base_repository.py
 """
-Base Repository Pattern - Foundation for V_Track License System
+Base Repository Pattern - Foundation for ePACK License System
 Eliminates duplicate database patterns found in 8+ locations
 Created: 2025-08-11 - Phase 1 Refactoring
 """
@@ -22,7 +22,7 @@ except ImportError as e:
     logger = logging.getLogger(__name__)
     logger.error(f"❌ Critical: Cannot import database utilities: {e}")
     logger.error("💡 Ensure you're running from backend/ directory:")
-    logger.error("   cd /Users/annhu/vtrack_app/V_Track/backend")
+    logger.error("   cd /Users/annhu/vtrack_app/ePACK/backend")
     logger.error("   python3 your_script.py")
     logger.error("📁 Current working directory: %s", os.getcwd())
     logger.error("🐍 Python path: %s", sys.path[:3])

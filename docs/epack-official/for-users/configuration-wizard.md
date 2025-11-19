@@ -1,6 +1,6 @@
 # Configuration Wizard Guide
 
-The Configuration Wizard is your first step to setting up V_Track. This 5-step guided process collects all essential information needed for the system to start detecting and tracking packing events.
+The Configuration Wizard is your first step to setting up ePACK. This 5-step guided process collects all essential information needed for the system to start detecting and tracking packing events.
 
 ## Table of Contents
 
@@ -21,7 +21,7 @@ The Configuration Wizard is your first step to setting up V_Track. This 5-step g
 
 The Configuration Wizard is a **first-time setup process** that:
 
-- Appears automatically when V_Track is launched for the first time
+- Appears automatically when ePACK is launched for the first time
 - Guides you through 5 sequential configuration steps
 - Must be completed before the system can process videos
 - Saves all settings to the database (general_info and processing_config tables)
@@ -114,7 +114,7 @@ Choose **ONE** of the following:
 
 **Route**: `/step/brandname`
 
-**Purpose**: Set your company or organization name to identify this V_Track installation.
+**Purpose**: Set your company or organization name to identify this ePACK installation.
 
 **Fields**:
 
@@ -334,7 +334,7 @@ curl -X POST http://localhost:8080/step/location-time/validate-timezone \
 
 **Route**: `/step/video-source`
 
-**Purpose**: Configure where V_Track should read video files from - either local storage or Google Drive cloud storage.
+**Purpose**: Configure where ePACK should read video files from - either local storage or Google Drive cloud storage.
 
 **Source Options**:
 
@@ -419,7 +419,7 @@ Use when videos are uploaded to Google Drive folders.
    Click "Connect Google Drive" button
    → Opens OAuth consent screen in new tab
    → Sign in to Google account
-   → Grant permission to V_Track
+   → Grant permission to ePACK
    → Returns to wizard with success message
    ```
 
@@ -517,12 +517,12 @@ curl -X PUT http://localhost:8080/step/video-source \
 
 **Local Storage**:
 - Use absolute paths (e.g., `/Users/john/Videos` not `~/Videos`)
-- Ensure V_Track has read permissions on directory
+- Ensure ePACK has read permissions on directory
 - Organize videos in camera-named subdirectories
 - Keep folder names consistent (e.g., "Camera1", not "Cam1", "Camera_1", etc.)
 
 **Google Drive**:
-- Use a dedicated Google account for V_Track
+- Use a dedicated Google account for ePACK
 - Organize one folder per camera for clean sync
 - Monitor sync status in dashboard after wizard
 - Initial sync may take time depending on video count
@@ -1305,7 +1305,7 @@ After completing Step 5:
    - User redirected to main dashboard
 
 3. **System Ready**:
-   - V_Track is now fully configured
+   - ePACK is now fully configured
    - Video processing can begin
    - Access VtrackConfig page for adjustments
 
@@ -1492,7 +1492,7 @@ After successful testing:
 
 1. **Check Database**:
    ```bash
-   sqlite3 /Users/annhu/vtrack_app/V_Track/backend/database/events.db
+   sqlite3 /Users/annhu/vtrack_app/ePACK/backend/database/events.db
 
    SELECT brand_name FROM general_info LIMIT 1;
 
@@ -1572,7 +1572,7 @@ After successful testing:
 
 3. **Check Backend Logs**:
    ```bash
-   tail -f /Users/annhu/vtrack_app/V_Track/backend/var/logs/app_latest.log | grep "ROI"
+   tail -f /Users/annhu/vtrack_app/ePACK/backend/var/logs/app_latest.log | grep "ROI"
 
    # Look for:
    # - MediaPipe errors
@@ -1645,7 +1645,7 @@ After successful testing:
 1. **Check Database Permissions**:
    ```bash
    # Verify database is writable
-   ls -la /Users/annhu/vtrack_app/V_Track/backend/database/events.db
+   ls -la /Users/annhu/vtrack_app/ePACK/backend/database/events.db
 
    # Should show: -rw-r--r-- (at minimum)
    # If read-only: chmod 644 events.db
@@ -1738,7 +1738,7 @@ After successful testing:
    pkill -f "python.*app.py"
 
    # Start backend
-   cd /Users/annhu/vtrack_app/V_Track/backend
+   cd /Users/annhu/vtrack_app/ePACK/backend
    python app.py
    ```
 
@@ -2092,7 +2092,7 @@ All wizard endpoints return responses in this format:
 
 ## Related Documentation
 
-- [Installation Guide](installation.md) - Set up V_Track before running wizard
+- [Installation Guide](installation.md) - Set up ePACK before running wizard
 - [ROI Configuration Guide](roi-configuration.md) - Detailed ROI concepts and troubleshooting
 - [Cloud Sync Advanced](cloud-sync-advanced.md) - Google Drive integration details
 - [Processing Modes](processing-modes.md) - How configuration affects video processing

@@ -259,10 +259,10 @@ function Chat(props: { apiKeyApp: string }) {
             type: 'bot',
             timestamp: new Date()
           };
-          
+
           const configMessage: Message = {
             id: (Date.now() + 1).toString(),
-            content: `⚙️ Continuing with your configuration setup...`,
+            content: `⚙️ Continuing with your ePACK configuration setup...`,
             type: 'bot',
             timestamp: new Date()
           };
@@ -1686,9 +1686,9 @@ function Chat(props: { apiKeyApp: string }) {
 
         // Show different message based on whether data was changed
         if (result.data.changed) {
-          return `✅ Configuration completed successfully!\n\n🎉 Your V.PACK system is now ready.\n\nRedirecting to Trace module for video processing and monitoring...`;
+          return `✅ Configuration completed successfully!\n\n🎉 Your ePACK system is now ready.\n\nRedirecting to Trace module for video processing and monitoring...`;
         } else {
-          return `✅ Configuration completed successfully!\n\n🎉 Your V.PACK system is now ready.\n\nRedirecting to Trace module for video processing and monitoring...`;
+          return `✅ Configuration completed successfully!\n\n🎉 Your ePACK system is now ready.\n\nRedirecting to Trace module for video processing and monitoring...`;
         }
       } else {
         // Hide loading state on error
@@ -2428,7 +2428,7 @@ function ChatLoading() {
       bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
     >
       <Text color="white" fontSize="xl">
-        Loading V.PACK...
+        Loading ePACK...
       </Text>
     </Flex>
   );

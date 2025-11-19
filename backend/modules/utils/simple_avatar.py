@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 class SimpleAvatarDownloader:
     def __init__(self):
         # Check if running in Docker
-        in_docker = os.getenv('VTRACK_IN_DOCKER') == 'true'
+        in_docker = os.getenv('EPACK_IN_DOCKER') == 'true'
 
         if in_docker:
             # In Docker: use backend-local storage (avatars not synced to frontend)

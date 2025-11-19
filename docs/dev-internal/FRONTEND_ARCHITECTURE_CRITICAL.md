@@ -3,7 +3,7 @@
 ## 🚨 URGENT AGENT INSTRUCTION
 
 ### ACTIVE FRONTEND SYSTEM
-- **LOCATION**: `/Users/annhu/vtrack_app/V_Track/frontend/`
+- **LOCATION**: `/Users/annhu/vtrack_app/ePACK/frontend/`
 - **FRAMEWORK**: Next.js 15.1.6 with TypeScript 4.9.5
 - **REACT VERSION**: React 19.2.0 (Stable) - Upgraded 2025-10-07
 - **START COMMAND**: `npm run dev` (port 3000)
@@ -14,7 +14,7 @@
   - `frontend/public/` - Static assets
 
 ### ❌ DEPRECATED SYSTEM (DO NOT USE)
-- **LOCATION**: `/Users/annhu/vtrack_app/V_Track/docs/FE/`
+- **LOCATION**: `/Users/annhu/vtrack_app/ePACK/docs/FE/`
 - **STATUS**: Legacy React app - INACTIVE
 - **WARNING**: Any work on docs/FE/ is wasted effort
 

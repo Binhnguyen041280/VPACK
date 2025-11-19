@@ -1,4 +1,4 @@
-"""Cleanup API endpoints for V_Track application
+"""Cleanup API endpoints for ePACK application
 
 Provides REST APIs for:
 - Manual system cleanup trigger

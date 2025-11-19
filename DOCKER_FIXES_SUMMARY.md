@@ -58,7 +58,7 @@
 ./stop.sh
 
 # Rebuild backend image với PyYAML dependency
-docker build --platform linux/arm64 -t vtrack-backend:phase2 ./backend
+docker build --platform linux/arm64 -t epack-backend:phase2 ./backend
 
 # Start lại containers
 ./start.sh
@@ -245,7 +245,7 @@ DOCKER_FIXES_SUMMARY.md                      # NEW: This file
 1. **Rebuild Docker image:**
    ```bash
    ./stop.sh
-   docker build --platform linux/arm64 -t vtrack-backend:phase2 ./backend
+   docker build --platform linux/arm64 -t epack-backend:phase2 ./backend
    ```
 
 2. **Start containers:**

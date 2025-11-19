@@ -1,20 +1,20 @@
 # Scheduler Module Documentation
 
-## V_Track Video Post-Processing System
+## ePACK Video Post-Processing System
 
-**Important: V_Track is NOT a live surveillance system**
+**Important: ePACK is NOT a live surveillance system**
 
-V_Track processes **existing video files** from:
+ePACK processes **existing video files** from:
 - Local storage directories
 - Google Drive cloud storage
 
-**What V_Track does:**
+**What ePACK does:**
 ✅ Batch video file analysis
 ✅ Computer vision processing (hand detection, QR codes)
 ✅ Automated result storage
 ✅ Cloud sync for processed files
 
-**What V_Track does NOT do:**
+**What ePACK does NOT do:**
 ❌ Live camera streaming
 ❌ Real-time surveillance monitoring
 ❌ Video recording from cameras
@@ -22,7 +22,7 @@ V_Track processes **existing video files** from:
 
 ---
 
-The scheduler module is the central orchestration component of the V_Track video post-processing system. It manages the entire video analysis pipeline from file discovery to event detection, with dynamic resource optimization and robust error handling.
+The scheduler module is the central orchestration component of the ePACK video post-processing system. It manages the entire video analysis pipeline from file discovery to event detection, with dynamic resource optimization and robust error handling.
 
 ## Architecture Overview
 

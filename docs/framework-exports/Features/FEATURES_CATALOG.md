@@ -1,14 +1,14 @@
-# V_Track Features Catalog
+# ePACK Features Catalog
 
 **Generated**: August 15, 2025
-**Project**: V_Track v2.1.0
+**Project**: ePACK v2.1.0
 **Status**: Production Ready
 
 ---
 
 ## 📊 Overview
 
-V_Track is a comprehensive desktop video monitoring and processing application with integrated licensing and payment systems. The project includes **18 major feature areas** organized into **11 categories**.
+ePACK is a comprehensive desktop video monitoring and processing application with integrated licensing and payment systems. The project includes **18 major feature areas** organized into **11 categories**.
 
 ### Quick Statistics
 - ✅ **18 Total Features**

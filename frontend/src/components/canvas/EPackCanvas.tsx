@@ -14,12 +14,12 @@ import {
 import { MdClose, MdSettings, MdVideoLibrary, MdCamera } from 'react-icons/md';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
 
-interface VtrackCanvasProps {
+interface EPackCanvasProps {
   isVisible: boolean;
   onClose: () => void;
 }
 
-export default function VtrackCanvas({ isVisible, onClose }: VtrackCanvasProps) {
+export default function EPackCanvas({ isVisible, onClose }: EPackCanvasProps) {
   const { currentColors } = useColorTheme();
   const bgColor = useColorModeValue('white', 'navy.800');
   const borderColor = useColorModeValue('gray.200', 'whiteAlpha.200');
@@ -49,7 +49,7 @@ export default function VtrackCanvas({ isVisible, onClose }: VtrackCanvasProps) 
       {/* Header */}
       <Flex justify="space-between" align="center" mb="20px">
         <Text fontSize="lg" fontWeight="700" color={textColor}>
-          V.PACK Configuration
+          ePACK Configuration
         </Text>
         <Button
           variant="ghost"

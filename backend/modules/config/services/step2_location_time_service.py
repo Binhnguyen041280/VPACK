@@ -1,5 +1,5 @@
 """
-Step 2 Location/Time Service Layer for V.PACK Configuration.
+Step 2 Location/Time Service Layer for ePACK Configuration.
 
 Handles business logic for location and time configuration including 
 timezone validation, working days management, and enhanced timezone support.

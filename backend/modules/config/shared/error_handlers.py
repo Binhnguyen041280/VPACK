@@ -1,5 +1,5 @@
 """
-Shared error handling utilities for V.PACK config routes.
+Shared error handling utilities for ePACK config routes.
 
 Provides consistent error response formatting and logging
 for the step-based configuration system.

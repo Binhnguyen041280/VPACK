@@ -1,5 +1,5 @@
 """
-Step 1 Brandname Configuration Routes for V.PACK.
+Step 1 Brandname Configuration Routes for ePACK.
 
 RESTful endpoints for managing brandname configuration with change detection
 and validation. Part of the modular step-based configuration system.

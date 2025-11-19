@@ -3,8 +3,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: vtrack-backend:phase2
-    container_name: vtrack-backend
+    image: epack-backend:phase2
+    container_name: epack-backend
     platform: linux/arm64
     ports:
     - 8080:8080
@@ -33,7 +33,7 @@ services:
     - ./docker-compose.yml:/app/docker-compose.yml:rw
     - ./.env:/app/../.env:rw
     networks:
-    - vtrack-network
+    - epack-network
     restart: unless-stopped
     healthcheck:
       test:
@@ -49,8 +49,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    image: vtrack-frontend:phase3
-    container_name: vtrack-frontend
+    image: epack-frontend:phase3
+    container_name: epack-frontend
     platform: linux/arm64
     ports:
     - 3000:3000
@@ -60,7 +60,7 @@ services:
     - HOSTNAME=0.0.0.0
     - NEXT_PUBLIC_API_URL=http://backend:8080
     networks:
-    - vtrack-network
+    - epack-network
     depends_on:
       backend:
         condition: service_healthy
@@ -78,6 +78,6 @@ services:
       retries: 3
       start_period: 30s
 networks:
-  vtrack-network:
+  epack-network:
     driver: bridge
-    name: vtrack-network
+    name: epack-network

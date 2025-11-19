@@ -407,7 +407,7 @@ def toggle_source_status(source_id):
 @cross_origin(origins=['http://localhost:3000'], supports_credentials=True)
 def scan_folders():
     """
-    V.PACK Step 3 Enhancement: Auto-scan subdirectories as camera folders
+    ePACK Step 3 Enhancement: Auto-scan subdirectories as camera folders
     
     POST /api/config/scan-folders
     Body: {"path": "directory_path"}

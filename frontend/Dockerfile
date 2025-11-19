@@ -1,5 +1,5 @@
 # =============================================================================
-# V_Track Frontend - Multi-stage Dockerfile
+# ePACK Frontend - Multi-stage Dockerfile
 # Next.js 15 + React 19 - Optimized for Mac M1/M2/M3 (ARM64)
 # =============================================================================
 
@@ -82,7 +82,7 @@ ENV HOSTNAME="0.0.0.0"
 ARG BUILD_DATE
 LABEL service="FRONTEND" \
       build.date="${BUILD_DATE}" \
-      description="V_Track Frontend Service"
+      description="ePACK Frontend Service"
 
 # Switch to non-root user
 USER nextjs

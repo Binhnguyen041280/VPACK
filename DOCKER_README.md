@@ -1,6 +1,6 @@
-# V_Track Docker Deployment Guide
+# ePACK Docker Deployment Guide
 
-Complete guide for deploying V_Track application using Docker and Docker Compose.
+Complete guide for deploying ePACK application using Docker and Docker Compose.
 
 ## 📋 Table of Contents
 
@@ -17,7 +17,7 @@ Complete guide for deploying V_Track application using Docker and Docker Compose
 
 ## 🚀 Quick Start
 
-Get V_Track running in 5 minutes:
+Get ePACK running in 5 minutes:
 
 ```bash
 # 1. Copy environment template
@@ -30,8 +30,8 @@ python3 -c "from cryptography.fernet import Fernet; print('ENCRYPTION_KEY=' + Fe
 # 3. Edit .env and paste the generated keys
 
 # 4. Build Docker images
-docker build --platform linux/arm64 -t vtrack-backend:phase2 ./backend
-docker build --platform linux/arm64 -t vtrack-frontend:phase3 ./frontend
+docker build --platform linux/arm64 -t epack-backend:phase2 ./backend
+docker build --platform linux/arm64 -t epack-frontend:phase3 ./frontend
 
 # 5. Start the stack
 ./start.sh
@@ -88,13 +88,13 @@ docker build --platform linux/arm64 -t vtrack-frontend:phase3 ./frontend
         ┌───────────────────┴────────────────────┐
         │         Named Volumes                  │
         ├────────────────────────────────────────┤
-        │ • vtrack-db (SQLite databases)        │
-        │ • vtrack-logs (Application logs)      │
-        │ • vtrack-sessions (Flask sessions)    │
-        │ • vtrack-cache (Cache files)          │
-        │ • vtrack-uploads (User uploads)       │
-        │ • vtrack-input (Video input)          │
-        │ • vtrack-output (Video output)        │
+        │ • epack-db (SQLite databases)        │
+        │ • epack-logs (Application logs)      │
+        │ • epack-sessions (Flask sessions)    │
+        │ • epack-cache (Cache files)          │
+        │ • epack-uploads (User uploads)       │
+        │ • epack-input (Video input)          │
+        │ • epack-output (Video output)        │
         └───────────────────────────────────────┘
 ```
 
@@ -155,10 +155,10 @@ VTRACK_SESSION_DIR=/app/var/flask_session
 
 ```bash
 # Backend (takes 5-10 minutes)
-docker build --platform linux/arm64 -t vtrack-backend:phase2 ./backend
+docker build --platform linux/arm64 -t epack-backend:phase2 ./backend
 
 # Frontend (takes 2-3 minutes)
-docker build --platform linux/arm64 -t vtrack-frontend:phase3 ./frontend
+docker build --platform linux/arm64 -t epack-frontend:phase3 ./frontend
 ```
 
 ### 5. Start the Application
@@ -252,14 +252,14 @@ docker-compose restart backend
 docker-compose ps
 
 # Execute command in container
-docker exec -it vtrack-backend bash
-docker exec -it vtrack-frontend sh
+docker exec -it epack-backend bash
+docker exec -it epack-frontend sh
 ```
 
 ## 🛠️ Helper Scripts
 
 ### start.sh
-**Purpose**: Start V_Track application stack
+**Purpose**: Start ePACK application stack
 
 **Options:**
 - `--dev, --development`: Start in development mode
@@ -275,7 +275,7 @@ docker exec -it vtrack-frontend sh
 ```
 
 ### stop.sh
-**Purpose**: Stop V_Track application stack
+**Purpose**: Stop ePACK application stack
 
 **Options:**
 - `--volumes, -v`: Remove volumes (data loss!)
@@ -337,25 +337,25 @@ docker exec -it vtrack-frontend sh
 
 | Volume Name | Mount Point | Purpose | Backup Priority |
 |------------|-------------|---------|----------------|
-| `vtrack-db` | `/app/database` | SQLite databases | **CRITICAL** |
-| `vtrack-logs` | `/app/logs` | Application logs | Medium |
-| `vtrack-sessions` | `/app/var/flask_session` | Flask sessions | Low |
-| `vtrack-cache` | `/app/var/cache` | Cache files | Low |
-| `vtrack-uploads` | `/app/var/uploads` | User uploads | High |
-| `vtrack-input` | `/app/resources/input` | Video input | High |
-| `vtrack-output` | `/app/resources/output` | Video output | **CRITICAL** |
+| `epack-db` | `/app/database` | SQLite databases | **CRITICAL** |
+| `epack-logs` | `/app/logs` | Application logs | Medium |
+| `epack-sessions` | `/app/var/flask_session` | Flask sessions | Low |
+| `epack-cache` | `/app/var/cache` | Cache files | Low |
+| `epack-uploads` | `/app/var/uploads` | User uploads | High |
+| `epack-input` | `/app/resources/input` | Video input | High |
+| `epack-output` | `/app/resources/output` | Video output | **CRITICAL** |
 
 ### Backup Volumes
 
 ```bash
 # Backup database
 docker run --rm \
-  -v vtrack-db:/data \
+  -v epack-db:/data \
   -v $(pwd)/backups:/backup \
   alpine tar czf /backup/db-$(date +%Y%m%d-%H%M%S).tar.gz -C /data .
 
 # Backup all volumes
-for vol in vtrack-db vtrack-output vtrack-input vtrack-uploads; do
+for vol in epack-db epack-output epack-input epack-uploads; do
   docker run --rm \
     -v $vol:/data \
     -v $(pwd)/backups:/backup \
@@ -368,15 +368,15 @@ done
 ```bash
 # Restore database
 docker run --rm \
-  -v vtrack-db:/data \
+  -v epack-db:/data \
   -v $(pwd)/backups:/backup \
   alpine tar xzf /backup/db-20251112-150000.tar.gz -C /data
 
 # List volume contents
-docker run --rm -it -v vtrack-db:/data alpine ls -la /data
+docker run --rm -it -v epack-db:/data alpine ls -la /data
 
 # Access volume shell
-docker run --rm -it -v vtrack-db:/data alpine sh
+docker run --rm -it -v epack-db:/data alpine sh
 ```
 
 ### Volume Management
@@ -386,7 +386,7 @@ docker run --rm -it -v vtrack-db:/data alpine sh
 docker volume ls | grep vtrack
 
 # Inspect volume
-docker volume inspect vtrack-db
+docker volume inspect epack-db
 
 # Check volume size
 docker system df -v | grep vtrack
@@ -419,13 +419,13 @@ PORT=3001
 
 #### 2. Images Not Found
 
-**Error**: `pull access denied for vtrack-backend`
+**Error**: `pull access denied for epack-backend`
 
 **Solution**:
 ```bash
 # Build images first
-docker build --platform linux/arm64 -t vtrack-backend:phase2 ./backend
-docker build --platform linux/arm64 -t vtrack-frontend:phase3 ./frontend
+docker build --platform linux/arm64 -t epack-backend:phase2 ./backend
+docker build --platform linux/arm64 -t epack-frontend:phase3 ./frontend
 ```
 
 #### 3. Permission Errors
@@ -450,12 +450,12 @@ docker build --platform linux/arm64 -t vtrack-frontend:phase3 ./frontend
 
 **Check network**:
 ```bash
-docker exec vtrack-frontend wget -O- http://backend:8080/health
+docker exec epack-frontend wget -O- http://backend:8080/health
 ```
 
 **Verify environment**:
 ```bash
-docker exec vtrack-frontend env | grep NEXT_PUBLIC_API_URL
+docker exec epack-frontend env | grep NEXT_PUBLIC_API_URL
 # Should show: NEXT_PUBLIC_API_URL=http://backend:8080
 ```
 
@@ -485,26 +485,26 @@ docker system prune -a --volumes
 
 ```bash
 # Check container health
-docker inspect vtrack-backend --format='{{.State.Health.Status}}'
+docker inspect epack-backend --format='{{.State.Health.Status}}'
 
 # View health check logs
-docker inspect vtrack-backend --format='{{json .State.Health}}' | python3 -m json.tool
+docker inspect epack-backend --format='{{json .State.Health}}' | python3 -m json.tool
 
 # Enter backend container
-docker exec -it vtrack-backend bash
+docker exec -it epack-backend bash
 
 # Enter frontend container
-docker exec -it vtrack-frontend sh
+docker exec -it epack-frontend sh
 
 # Check environment variables
-docker exec vtrack-backend env
-docker exec vtrack-frontend env
+docker exec epack-backend env
+docker exec epack-frontend env
 
 # Test API from inside frontend
-docker exec vtrack-frontend wget -O- http://backend:8080/health
+docker exec epack-frontend wget -O- http://backend:8080/health
 
 # Check network connectivity
-docker network inspect vtrack-network
+docker network inspect epack-network
 ```
 
 ## ⚙️ Advanced Configuration
@@ -596,8 +596,8 @@ See `.env.docker.example` for all available variables:
    - Use non-root users in containers (already configured)
 
 2. **Backups**
-   - Backup `vtrack-db` volume regularly (CRITICAL)
-   - Backup `vtrack-output` volume (processed videos)
+   - Backup `epack-db` volume regularly (CRITICAL)
+   - Backup `epack-output` volume (processed videos)
    - Keep backup scripts automated
 
 3. **Monitoring**

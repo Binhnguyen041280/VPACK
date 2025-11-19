@@ -501,7 +501,7 @@
 
   ```bash
   # Data-driven test setup
-  claude "use @backend-developer and analyze existing video files in /Users/annhu/vtrack_app/V_Track/resources/ then create 3 test datasets: small (10 files), medium (100 files), large (1000+ files) with realistic variety"
+  claude "use @backend-developer and analyze existing video files in /Users/annhu/vtrack_app/ePACK/resources/ then create 3 test datasets: small (10 files), medium (100 files), large (1000+ files) with realistic variety"
 
   # End-to-end user simulation
   claude "use @frontend-developer and simulate actual user opening http://localhost:3000, clicking through all 3 program modes, measuring response times and validating UI behavior"
@@ -741,9 +741,9 @@
   | Critical Issues | 0 | >0 |
   | Timeline Risk | Low-Medium | High |
 
-  ## 🎯 Project Context (V_Track Huey Migration)
+  ## 🎯 Project Context (ePACK Huey Migration)
 
-  ### Current Project: V_Track Threading → Huey Migration
+  ### Current Project: ePACK Threading → Huey Migration
   - **Goal:** Scale 5 → 1000+ concurrent video processing
   - **Timeline:** 3 weeks (Foundation → Core → Production)
   - **Critical Success Factors:** API compatibility, zero downtime, rollback safety
@@ -757,7 +757,7 @@
 
   ## 📞 Usage Instructions
 
-  1. **Load this file first:** `Read(/Users/annhu/vtrack_app/V_Track/AI_EVALUATION_PROTOCOL.md)`
+  1. **Load this file first:** `Read(/Users/annhu/vtrack_app/ePACK/AI_EVALUATION_PROTOCOL.md)`
   2. **Wait for completion confirmation** from user or other agent
   3. **Deploy appropriate agents** based on evaluation needs
   4. **Follow output format** for consistent reporting

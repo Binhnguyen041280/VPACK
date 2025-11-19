@@ -1,5 +1,5 @@
 """
-Shared utilities for V.PACK config routes.
+Shared utilities for ePACK config routes.
 
 This package provides common functionality used across all step-based configuration routes,
 including database operations, validation, and error handling.

@@ -1,6 +1,6 @@
 # Processing Modes Guide
 
-V_Track offers three distinct processing modes to handle different operational scenarios. This guide explains when and how to use each mode effectively.
+ePACK offers three distinct processing modes to handle different operational scenarios. This guide explains when and how to use each mode effectively.
 
 ## Table of Contents
 
@@ -63,7 +63,7 @@ V_Track offers three distinct processing modes to handle different operational s
 
 ### When to Use
 
-- ✅ **New V_Track installation**: Process past videos before going live
+- ✅ **New ePACK installation**: Process past videos before going live
 - ✅ **After configuration changes**: Reprocess videos with new ROI settings
 - ✅ **Data migration**: Import events from previous system
 - ✅ **System recovery**: Rebuild event database after data loss

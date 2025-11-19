@@ -1,6 +1,6 @@
 # Cloud Functions API Reference
 
-Complete API documentation for V_Track Cloud Functions.
+Complete API documentation for ePACK Cloud Functions.
 
 ---
 
@@ -19,7 +19,7 @@ Complete API documentation for V_Track Cloud Functions.
 
 Payment creation service with PayOS integration.
 
-**Base URL**: `https://asia-southeast1-v-track-payments.cloudfunctions.net/create-payment`
+**Base URL**: `https://asia-southeast1-epack-payments.cloudfunctions.net/create-payment`
 
 ### Create Payment Order
 
@@ -134,15 +134,15 @@ Check service health and dependencies.
   "firestore": {
     "status": "healthy",
     "available": true,
-    "project_id": "v-track-payments",
+    "project_id": "epack-payments",
     "timestamp": "2025-10-06T10:30:00.123456"
   },
   "pricing_service": {
     "status": "healthy",
     "available": true,
-    "url": "https://asia-southeast1-v-track-payments.cloudfunctions.net/pricing-service"
+    "url": "https://asia-southeast1-epack-payments.cloudfunctions.net/pricing-service"
   },
-  "project_id": "v-track-payments",
+  "project_id": "epack-payments",
   "features": [
     "payos_integration",
     "firestore_integration",
@@ -157,7 +157,7 @@ Check service health and dependencies.
 
 PayOS webhook processor for automated license delivery.
 
-**Base URL**: `https://asia-southeast1-v-track-payments.cloudfunctions.net/webhook-handler`
+**Base URL**: `https://asia-southeast1-epack-payments.cloudfunctions.net/webhook-handler`
 
 ### Process Payment Webhook
 
@@ -296,7 +296,7 @@ Test email delivery system.
 
 License validation and trial management service.
 
-**Base URL**: `https://asia-southeast1-v-track-payments.cloudfunctions.net/license-service`
+**Base URL**: `https://asia-southeast1-epack-payments.cloudfunctions.net/license-service`
 
 ### Validate License (GET)
 
@@ -552,7 +552,7 @@ Check license service health.
   "firestore": {
     "status": "healthy",
     "available": true,
-    "project_id": "v-track-payments",
+    "project_id": "epack-payments",
     "timestamp": "2025-10-06T10:30:00.123456"
   }
 }
@@ -564,7 +564,7 @@ Check license service health.
 
 Centralized pricing management service.
 
-**Base URL**: `https://asia-southeast1-v-track-payments.cloudfunctions.net/pricing-service`
+**Base URL**: `https://asia-southeast1-epack-payments.cloudfunctions.net/pricing-service`
 
 ### Get All Packages
 

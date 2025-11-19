@@ -82,14 +82,14 @@ OFFLINE_BEHAVIOR = {
 }
 
 # Environment-based overrides
-if os.getenv('VTRACK_OFFLINE_MODE'):
-    OFFLINE_MODE_ENABLED = os.getenv('VTRACK_OFFLINE_MODE', 'true').lower() == 'true'
+if os.getenv('EPACK_OFFLINE_MODE'):
+    OFFLINE_MODE_ENABLED = os.getenv('EPACK_OFFLINE_MODE', 'true').lower() == 'true'
 
-if os.getenv('VTRACK_GRACE_PERIOD_HOURS'):
-    OFFLINE_GRACE_PERIOD_HOURS = int(os.getenv('VTRACK_GRACE_PERIOD_HOURS', '72'))
+if os.getenv('EPACK_GRACE_PERIOD_HOURS'):
+    OFFLINE_GRACE_PERIOD_HOURS = int(os.getenv('EPACK_GRACE_PERIOD_HOURS', '72'))
 
-if os.getenv('VTRACK_SYNC_RETRY_MINUTES'):
-    CLOUD_SYNC_RETRY_MINUTES = int(os.getenv('VTRACK_SYNC_RETRY_MINUTES', '30'))
+if os.getenv('EPACK_SYNC_RETRY_MINUTES'):
+    CLOUD_SYNC_RETRY_MINUTES = int(os.getenv('EPACK_SYNC_RETRY_MINUTES', '30'))
 
 # Development/debug settings
 DEBUG_OFFLINE_MODE = os.getenv('DEBUG_OFFLINE_MODE', 'false').lower() == 'true'

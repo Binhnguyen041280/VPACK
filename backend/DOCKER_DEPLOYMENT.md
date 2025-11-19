@@ -1,4 +1,4 @@
-# V_Track Backend - Docker Deployment Guide
+# ePACK Backend - Docker Deployment Guide
 
 ## Critical Fixes Applied
 
@@ -27,8 +27,8 @@ This deployment addresses the following critical issues:
 ### 1. Build the Docker Image
 
 ```bash
-cd /Users/annhu/vtrack_app/V_Track/backend
-docker build -t vtrack-backend:latest .
+cd /Users/annhu/vtrack_app/ePACK/backend
+docker build -t epack-backend:latest .
 ```
 
 ### 2. Create Environment File
@@ -51,21 +51,21 @@ mkdir -p database logs resources/input resources/output
 
 ```bash
 docker run -d \
-  --name vtrack-backend \
+  --name epack-backend \
   -p 8080:8080 \
   --env-file .env.docker \
   -v $(pwd)/database:/app/database \
   -v $(pwd)/logs:/app/logs \
   -v $(pwd)/resources/input:/app/resources/input \
   -v $(pwd)/resources/output:/app/resources/output \
-  vtrack-backend:latest
+  epack-backend:latest
 ```
 
 ### 5. Verify Deployment
 
 ```bash
 # Check container logs
-docker logs vtrack-backend
+docker logs epack-backend
 
 # Check health endpoint
 curl http://localhost:8080/health
@@ -100,10 +100,10 @@ docker-compose up -d
 
 ```bash
 # View logs
-docker-compose logs -f vtrack-backend
+docker-compose logs -f epack-backend
 
 # Check health
-docker-compose exec vtrack-backend curl http://localhost:8080/health
+docker-compose exec epack-backend curl http://localhost:8080/health
 ```
 
 ---
@@ -165,7 +165,7 @@ docker-compose exec vtrack-backend curl http://localhost:8080/health
 
 2. Check environment variables:
    ```bash
-   docker exec vtrack-backend env | grep VTRACK
+   docker exec epack-backend env | grep VTRACK
    ```
 
 ### Issue: Container Exits Immediately
@@ -175,17 +175,17 @@ docker-compose exec vtrack-backend curl http://localhost:8080/health
 **Solution**:
 1. Check logs for errors:
    ```bash
-   docker logs vtrack-backend
+   docker logs epack-backend
    ```
 
 2. Verify required environment variables:
    ```bash
-   docker exec vtrack-backend env | grep -E "VTRACK_IN_DOCKER|SECRET_KEY"
+   docker exec epack-backend env | grep -E "VTRACK_IN_DOCKER|SECRET_KEY"
    ```
 
 3. Run interactively for debugging:
    ```bash
-   docker run -it --rm --env-file .env.docker vtrack-backend:latest /bin/bash
+   docker run -it --rm --env-file .env.docker epack-backend:latest /bin/bash
    ```
 
 ### Issue: Database Not Persisting
@@ -195,7 +195,7 @@ docker-compose exec vtrack-backend curl http://localhost:8080/health
 **Solution**:
 1. Verify volume mount:
    ```bash
-   docker inspect vtrack-backend | grep -A 5 Mounts
+   docker inspect epack-backend | grep -A 5 Mounts
    ```
 
 2. Check database directory permissions:
@@ -211,12 +211,12 @@ docker-compose exec vtrack-backend curl http://localhost:8080/health
 **Solution**:
 1. Verify `VTRACK_SESSION_DIR` is set correctly:
    ```bash
-   docker exec vtrack-backend env | grep VTRACK_SESSION_DIR
+   docker exec epack-backend env | grep VTRACK_SESSION_DIR
    ```
 
 2. Check directory exists and is writable:
    ```bash
-   docker exec vtrack-backend ls -la /app/var/flask_session
+   docker exec epack-backend ls -la /app/var/flask_session
    ```
 
 ---
@@ -232,7 +232,7 @@ curl http://localhost:8080/health
 # Expected response (healthy):
 {
   "status": "healthy",
-  "service": "V_Track Desktop Backend",
+  "service": "ePACK Desktop Backend",
   "version": "2.1.0",
   "timestamp": "2025-11-12T10:30:00.000000",
   "modules": {
@@ -243,7 +243,7 @@ curl http://localhost:8080/health
 }
 
 # Check Docker health status
-docker inspect vtrack-backend | grep -A 5 Health
+docker inspect epack-backend | grep -A 5 Health
 ```
 
 ---
@@ -271,22 +271,22 @@ docker inspect vtrack-backend | grep -A 5 Health
 ### Pull Latest Code
 
 ```bash
-cd /Users/annhu/vtrack_app/V_Track/backend
+cd /Users/annhu/vtrack_app/ePACK/backend
 git pull origin main
 ```
 
 ### Rebuild Image
 
 ```bash
-docker build -t vtrack-backend:latest .
+docker build -t epack-backend:latest .
 ```
 
 ### Restart Container
 
 ```bash
 # Using docker run
-docker stop vtrack-backend
-docker rm vtrack-backend
+docker stop epack-backend
+docker rm epack-backend
 # Then run the container again (see Quick Start)
 
 # Using docker-compose
@@ -339,7 +339,7 @@ MAX_PROCESSING_JOBS=2     # Concurrent video processing jobs
 3. **Network Isolation**: Use Docker networks to isolate services
    ```yaml
    networks:
-     - vtrack-network
+     - epack-network
    ```
 
 4. **Credentials**: Never commit `.env.docker` or credentials to version control
@@ -349,7 +349,7 @@ MAX_PROCESSING_JOBS=2     # Concurrent video processing jobs
 ## Support
 
 For issues or questions:
-1. Check application logs: `docker logs vtrack-backend`
+1. Check application logs: `docker logs epack-backend`
 2. Review this guide's Troubleshooting section
 3. Verify environment variables are set correctly
 4. Check container health status

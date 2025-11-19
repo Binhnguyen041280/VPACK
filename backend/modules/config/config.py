@@ -9,7 +9,7 @@ from modules.config.config_manager import ConfigManager
 """
 🎯 V_TRACK AUTOMATED VIDEO PROCESSING AUTHENTICATION STRATEGY
 
-V_track is designed as an automated video post-processing service that batch
+ePACK is designed as an automated video post-processing service that batch
 processes existing video files from local storage and Google Drive. Users expect:
 
 1. Setup once → Process videos automatically
@@ -115,7 +115,7 @@ if __name__ == '__main__':
 
         # Server info
         print("="*50)
-        print("🚀 V_Track Configuration Server")
+        print("🚀 ePACK Configuration Server")
         print("="*50)
         print(f"🌐 Server will start on: http://localhost:8080")
         print(f"📡 API Base: http://localhost:8080/api/config/")

@@ -1,6 +1,6 @@
 # Cloud Functions Deployment Guide
 
-Complete guide for setting up, deploying, and managing V_Track Cloud Functions.
+Complete guide for setting up, deploying, and managing ePACK Cloud Functions.
 
 ---
 
@@ -32,8 +32,8 @@ Complete guide for setting up, deploying, and managing V_Track Cloud Functions.
 
 1. **Create GCP Project**:
    ```bash
-   gcloud projects create v-track-payments
-   gcloud config set project v-track-payments
+   gcloud projects create epack-payments
+   gcloud config set project epack-payments
    ```
 
 2. **Enable Required APIs**:
@@ -54,14 +54,14 @@ Complete guide for setting up, deploying, and managing V_Track Cloud Functions.
 4. **Create Service Account** (for local development):
    ```bash
    gcloud iam service-accounts create v-track-functions \
-     --display-name="V_Track Cloud Functions"
+     --display-name="ePACK Cloud Functions"
 
-   gcloud projects add-iam-policy-binding v-track-payments \
-     --member="serviceAccount:v-track-functions@v-track-payments.iam.gserviceaccount.com" \
+   gcloud projects add-iam-policy-binding epack-payments \
+     --member="serviceAccount:v-track-functions@epack-payments.iam.gserviceaccount.com" \
      --role="roles/datastore.user"
 
    gcloud iam service-accounts keys create service-account.json \
-     --iam-account=v-track-functions@v-track-payments.iam.gserviceaccount.com
+     --iam-account=v-track-functions@epack-payments.iam.gserviceaccount.com
    ```
 
 ### PayOS Setup
@@ -81,7 +81,7 @@ Complete guide for setting up, deploying, and managing V_Track Cloud Functions.
 
 3. **Configure Webhook URL** (after deployment):
    - Set webhook URL to your `webhook-handler` function URL
-   - Example: `https://asia-southeast1-v-track-payments.cloudfunctions.net/webhook-handler`
+   - Example: `https://asia-southeast1-epack-payments.cloudfunctions.net/webhook-handler`
 
 ### Email Setup (Gmail)
 
@@ -101,8 +101,8 @@ Complete guide for setting up, deploying, and managing V_Track Cloud Functions.
 
 ```bash
 cd /Users/annhu/vtrack_app
-git clone <repository-url> V_Track_CloudFunctions
-cd V_Track_CloudFunctions
+git clone <repository-url> ePACK_CloudFunctions
+cd ePACK_CloudFunctions
 ```
 
 ### 2. Create Virtual Environment
@@ -139,7 +139,7 @@ Edit `.env`:
 
 ```bash
 # Google Cloud Configuration
-GOOGLE_CLOUD_PROJECT=v-track-payments
+GOOGLE_CLOUD_PROJECT=epack-payments
 GOOGLE_APPLICATION_CREDENTIALS=./service-account.json
 
 # PayOS Configuration
@@ -152,7 +152,7 @@ SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USERNAME=your-email@gmail.com
 SMTP_PASSWORD=your-app-password
-SENDER_NAME=V_track License System
+SENDER_NAME=ePACK License System
 SENDER_EMAIL=your-email@gmail.com
 
 # Development Settings
@@ -186,7 +186,7 @@ This creates initial Firestore collections:
 cd functions/create_payment
 
 # Set environment variables
-export GOOGLE_CLOUD_PROJECT=v-track-payments
+export GOOGLE_CLOUD_PROJECT=epack-payments
 export GOOGLE_APPLICATION_CREDENTIALS=../../service-account.json
 export PAYOS_CLIENT_ID=your_client_id
 export PAYOS_API_KEY=your_api_key
@@ -213,7 +213,7 @@ curl http://localhost:8081 \
 cd functions/webhook_handler
 
 # Set environment variables
-export GOOGLE_CLOUD_PROJECT=v-track-payments
+export GOOGLE_CLOUD_PROJECT=epack-payments
 export GOOGLE_APPLICATION_CREDENTIALS=../../service-account.json
 export SMTP_USER=your-email@gmail.com
 export SMTP_PASSWORD=your-app-password
@@ -242,7 +242,7 @@ curl http://localhost:8082 \
 ```bash
 cd functions/license_service
 
-export GOOGLE_CLOUD_PROJECT=v-track-payments
+export GOOGLE_CLOUD_PROJECT=epack-payments
 export GOOGLE_APPLICATION_CREDENTIALS=../../service-account.json
 
 functions-framework --target=main --debug --port=8083
@@ -486,7 +486,7 @@ gcloud firestore databases patch \
 Run unit tests:
 
 ```bash
-cd V_Track_CloudFunctions
+cd ePACK_CloudFunctions
 
 # Install test dependencies
 pip install pytest pytest-cov
@@ -514,7 +514,7 @@ pytest tests/test_e2e_payment.py -v
 #### Test Payment Creation
 
 ```bash
-PAYMENT_URL="https://asia-southeast1-v-track-payments.cloudfunctions.net/create-payment"
+PAYMENT_URL="https://asia-southeast1-epack-payments.cloudfunctions.net/create-payment"
 
 curl $PAYMENT_URL \
   -X POST \
@@ -540,7 +540,7 @@ Expected response:
 #### Test License Validation
 
 ```bash
-LICENSE_URL="https://asia-southeast1-v-track-payments.cloudfunctions.net/license-service"
+LICENSE_URL="https://asia-southeast1-epack-payments.cloudfunctions.net/license-service"
 
 curl "$LICENSE_URL?action=validate&license_key=VTRACK-P1Y-TEST123"
 ```
@@ -548,7 +548,7 @@ curl "$LICENSE_URL?action=validate&license_key=VTRACK-P1Y-TEST123"
 #### Test Pricing Service
 
 ```bash
-PRICING_URL="https://asia-southeast1-v-track-payments.cloudfunctions.net/pricing-service"
+PRICING_URL="https://asia-southeast1-epack-payments.cloudfunctions.net/pricing-service"
 
 curl "$PRICING_URL?action=get_packages"
 ```
@@ -556,7 +556,7 @@ curl "$PRICING_URL?action=get_packages"
 #### Test Email Delivery
 
 ```bash
-WEBHOOK_URL="https://asia-southeast1-v-track-payments.cloudfunctions.net/webhook-handler"
+WEBHOOK_URL="https://asia-southeast1-epack-payments.cloudfunctions.net/webhook-handler"
 
 curl "$WEBHOOK_URL?action=test_email"
 ```
@@ -567,16 +567,16 @@ Check all function health:
 
 ```bash
 # Create-payment health
-curl "https://asia-southeast1-v-track-payments.cloudfunctions.net/create-payment?action=health"
+curl "https://asia-southeast1-epack-payments.cloudfunctions.net/create-payment?action=health"
 
 # Webhook-handler health
-curl "https://asia-southeast1-v-track-payments.cloudfunctions.net/webhook-handler?action=health"
+curl "https://asia-southeast1-epack-payments.cloudfunctions.net/webhook-handler?action=health"
 
 # License-service health
-curl "https://asia-southeast1-v-track-payments.cloudfunctions.net/license-service?action=health"
+curl "https://asia-southeast1-epack-payments.cloudfunctions.net/license-service?action=health"
 
 # Pricing-service health
-curl "https://asia-southeast1-v-track-payments.cloudfunctions.net/pricing-service?action=health"
+curl "https://asia-southeast1-epack-payments.cloudfunctions.net/pricing-service?action=health"
 ```
 
 ---
@@ -663,7 +663,7 @@ gcloud auth list
 gcloud auth login
 
 # Set project
-gcloud config set project v-track-payments
+gcloud config set project epack-payments
 ```
 
 #### 2. Function Returns 500 Error
@@ -694,7 +694,7 @@ gcloud functions logs read FUNCTION_NAME \
 
 2. Verify service account has permissions:
    ```bash
-   gcloud projects get-iam-policy v-track-payments
+   gcloud projects get-iam-policy epack-payments
    ```
 
 3. Check Firestore database exists in correct region
@@ -881,7 +881,7 @@ gcloud functions deploy FUNCTION_NAME \
 
 After successful deployment:
 
-1. **Update V_Track Desktop App**:
+1. **Update ePACK Desktop App**:
    - Configure Cloud Function URLs in `/backend/.env`
    - Test payment flow end-to-end
    - Verify license activation

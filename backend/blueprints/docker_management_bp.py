@@ -1,4 +1,4 @@
-"""Docker Management API Module for V_Track.
+"""Docker Management API Module for ePACK.
 
 This module provides Flask REST API endpoints for managing Docker configuration
 dynamically at runtime. It allows the application to update docker-compose.yml

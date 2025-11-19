@@ -1,4 +1,4 @@
-# 🏷️ V_Track Naming Conventions & Anti-Pattern Guide
+# 🏷️ ePACK Naming Conventions & Anti-Pattern Guide
 
 **Purpose**: Prevent naming inconsistency bugs that cause CloudFunction integration failures
 
@@ -46,7 +46,7 @@ Result: 404 Not Found → 100% license activation failure
 **Run this script BEFORE every CloudFunction deployment:**
 
 ```bash
-# Location: V_Track_CloudFunctions/scripts/validate_naming.sh
+# Location: ePACK_CloudFunctions/scripts/validate_naming.sh
 ./scripts/validate_naming.sh
 ```
 
@@ -70,13 +70,13 @@ python scripts/test_endpoints.py
 
 ### 1. Backend Environment (`.env`)
 
-**Location**: `/Users/annhu/vtrack_app/V_Track/backend/.env`
+**Location**: `/Users/annhu/vtrack_app/ePACK/backend/.env`
 
 ```bash
 # ✅ CORRECT - Must match deployed function names exactly
-CLOUD_PAYMENT_URL=https://asia-southeast1-v-track-payments.cloudfunctions.net/create-payment
-CLOUD_WEBHOOK_URL=https://asia-southeast1-v-track-payments.cloudfunctions.net/webhook-handler
-CLOUD_LICENSE_URL=https://asia-southeast1-v-track-payments.cloudfunctions.net/license_service
+CLOUD_PAYMENT_URL=https://asia-southeast1-epack-payments.cloudfunctions.net/create-payment
+CLOUD_WEBHOOK_URL=https://asia-southeast1-epack-payments.cloudfunctions.net/webhook-handler
+CLOUD_LICENSE_URL=https://asia-southeast1-epack-payments.cloudfunctions.net/license_service
 
 # ❌ WRONG - These will cause 404 errors
 CLOUD_LICENSE_URL=https://.../license-service  # Wrong! Should be license_service
@@ -84,13 +84,13 @@ CLOUD_LICENSE_URL=https://.../license-service  # Wrong! Should be license_servic
 
 ### 2. Backend Fallback Defaults (`app.py`)
 
-**Location**: `/Users/annhu/vtrack_app/V_Track/backend/app.py` (Lines 101-103)
+**Location**: `/Users/annhu/vtrack_app/ePACK/backend/app.py` (Lines 101-103)
 
 ```python
 # ⚠️ DANGER ZONE: These defaults MUST match deployed function names
-os.environ.setdefault('CLOUD_PAYMENT_URL', 'https://asia-southeast1-v-track-payments.cloudfunctions.net/create-payment')
-os.environ.setdefault('CLOUD_WEBHOOK_URL', 'https://asia-southeast1-v-track-payments.cloudfunctions.net/webhook-handler')
-os.environ.setdefault('CLOUD_LICENSE_URL', 'https://asia-southeast1-v-track-payments.cloudfunctions.net/license_service')
+os.environ.setdefault('CLOUD_PAYMENT_URL', 'https://asia-southeast1-epack-payments.cloudfunctions.net/create-payment')
+os.environ.setdefault('CLOUD_WEBHOOK_URL', 'https://asia-southeast1-epack-payments.cloudfunctions.net/webhook-handler')
+os.environ.setdefault('CLOUD_LICENSE_URL', 'https://asia-southeast1-epack-payments.cloudfunctions.net/license_service')
                                                                                                     # ↑ UNDERSCORE!
 ```
 
@@ -252,7 +252,7 @@ Update this document when:
 
 **When in doubt, follow this order:**
 
-1. **Check deployed function name**: `gcloud functions list --project=v-track-payments`
+1. **Check deployed function name**: `gcloud functions list --project=epack-payments`
 2. **Match exactly in `.env`**: Copy deployed name exactly into `CLOUD_*_URL`
 3. **Update `app.py` defaults**: Keep fallbacks in sync
 4. **Test immediately**: Run health check after any change

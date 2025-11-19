@@ -1,5 +1,5 @@
 """
-Step 1 Brandname Service Layer for V.PACK Configuration.
+Step 1 Brandname Service Layer for ePACK Configuration.
 
 Handles business logic for brandname configuration including 
 validation, change detection, and database operations.

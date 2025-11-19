@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class EmailSender:
     """
-    Automated email sender for V_track license delivery
+    Automated email sender for ePACK license delivery
     Supports HTML templates, attachments, và retry logic
     """
     
@@ -26,7 +26,7 @@ class EmailSender:
         self.smtp_port = int(os.getenv('SMTP_PORT', '587'))
         self.smtp_username = os.getenv('SMTP_USERNAME')
         self.smtp_password = os.getenv('SMTP_PASSWORD')
-        self.sender_name = os.getenv('SENDER_NAME', 'V_track License System')
+        self.sender_name = os.getenv('SENDER_NAME', 'ePACK License System')
         self.sender_email = self.smtp_username
         
         # Template configuration
@@ -64,7 +64,7 @@ class EmailSender:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your V_track License</title>
+    <title>Your ePACK License</title>
     <style>
         body { font-family: Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; background-color: #f4f4f4; }
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
@@ -87,7 +87,7 @@ class EmailSender:
         
         <p>Dear Valued Customer,</p>
         
-        <p>Thank you for purchasing <strong>V_track {{ product_type|title }} License</strong>! Your license has been generated and is ready for activation.</p>
+        <p>Thank you for purchasing <strong>ePACK {{ product_type|title }} License</strong>! Your license has been generated and is ready for activation.</p>
         
         <div class="license-box">
             <h3>🔑 Your License Key</h3>
@@ -98,18 +98,18 @@ class EmailSender:
         <div class="instructions">
             <h3>📋 Activation Instructions</h3>
             <ol>
-                <li><strong>Download V_track:</strong> <a href="https://vtrack.app/download" class="btn">Download Now</a></li>
+                <li><strong>Download ePACK:</strong> <a href="https://vtrack.app/download" class="btn">Download Now</a></li>
                 <li><strong>Install the application</strong> on your computer</li>
-                <li><strong>Launch V_track</strong> for the first time</li>
+                <li><strong>Launch ePACK</strong> for the first time</li>
                 <li><strong>Enter your license key</strong> when prompted</li>
-                <li><strong>Complete activation</strong> and start using V_track!</li>
+                <li><strong>Complete activation</strong> and start using ePACK!</li>
             </ol>
         </div>
         
         <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 15px; margin: 20px 0;">
             <h4>📊 Your License Details:</h4>
             <ul style="list-style: none; padding-left: 0;">
-                <li><strong>Product:</strong> V_track {{ product_type|title }}</li>
+                <li><strong>Product:</strong> ePACK {{ product_type|title }}</li>
                 <li><strong>Features:</strong> {{ features|join(', ')|title }}</li>
                 <li><strong>Valid until:</strong> {{ expiry_date[:10] }}</li>
                 <li><strong>Transaction ID:</strong> {{ transaction_id }}</li>
@@ -129,7 +129,7 @@ class EmailSender:
         </div>
         
         <div class="footer">
-            <p><strong>V_track License System</strong><br>
+            <p><strong>ePACK License System</strong><br>
             Automated license delivery - Secure & Reliable</p>
             <p style="font-size: 12px; color: #999;">
                 This email was sent automatically. Please do not reply to this address.<br>
@@ -228,20 +228,20 @@ V_TRACK LICENSE DELIVERY
 
 Dear Customer,
 
-Thank you for purchasing V_track {content.get('product_type', 'Desktop')} License!
+Thank you for purchasing ePACK {content.get('product_type', 'Desktop')} License!
 
 YOUR LICENSE KEY:
 {content.get('license_key', 'N/A')}
 
 ACTIVATION INSTRUCTIONS:
-1. Download V_track from: https://vtrack.app/download
+1. Download ePACK from: https://vtrack.app/download
 2. Install the application on your computer
-3. Launch V_track for the first time
+3. Launch ePACK for the first time
 4. Enter your license key when prompted
-5. Complete activation and start using V_track!
+5. Complete activation and start using ePACK!
 
 LICENSE DETAILS:
-- Product: V_track {content.get('product_type', 'Desktop')}
+- Product: ePACK {content.get('product_type', 'Desktop')}
 - Features: {', '.join(content.get('features', []))}
 - Valid until: {content.get('expiry_date', 'N/A')[:10]}
 - Transaction ID: {content.get('transaction_id', 'N/A')}
@@ -253,7 +253,7 @@ Email: support@vtrack.app
 Documentation: https://docs.vtrack.app
 
 ---
-V_track License System
+ePACK License System
 Automated license delivery
         """
         return text_content.strip()
@@ -273,7 +273,7 @@ Automated license delivery
                     'purchase_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 }
             
-            subject = "V_track License Test Email"
+            subject = "ePACK License Test Email"
             
             result = self.send_license_email(
                 recipient=recipient,

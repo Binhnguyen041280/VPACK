@@ -1,6 +1,6 @@
 # Firestore Database Schema
 
-Database structure for V_Track Cloud Functions persistent storage.
+Database structure for ePACK Cloud Functions persistent storage.
 
 ---
 
@@ -17,7 +17,7 @@ Database structure for V_Track Cloud Functions persistent storage.
 
 ## Overview
 
-V_Track Cloud Functions uses Google Firestore (NoSQL document database) for persistent storage of:
+ePACK Cloud Functions uses Google Firestore (NoSQL document database) for persistent storage of:
 
 - License data
 - Payment metadata
@@ -26,7 +26,7 @@ V_Track Cloud Functions uses Google Firestore (NoSQL document database) for pers
 
 ### Database Location
 
-- **Project**: `v-track-payments`
+- **Project**: `epack-payments`
 - **Region**: `asia-southeast1` (Singapore)
 - **Mode**: Native mode
 - **Time Zone**: UTC
@@ -39,7 +39,7 @@ Functions automatically connect using Application Default Credentials:
 from google.cloud import firestore
 
 # Initialize client
-db = firestore.Client(project='v-track-payments')
+db = firestore.Client(project='epack-payments')
 
 # Access collection
 licenses_ref = db.collection('vtrack_licenses')
@@ -147,7 +147,7 @@ Stores payment metadata for webhook lookup.
   "updated_at": Timestamp(1728208800, 0),
   "status": "pending",
   "provider": "payos",
-  "project_id": "v-track-payments"
+  "project_id": "epack-payments"
 }
 ```
 
@@ -437,7 +437,7 @@ service cloud.firestore {
 
     function isCloudFunction() {
       // Cloud Functions use service account
-      return request.auth.token.email.matches('.*@v-track-payments.iam.gserviceaccount.com$');
+      return request.auth.token.email.matches('.*@epack-payments.iam.gserviceaccount.com$');
     }
 
     // vtrack_licenses - Read by authenticated users, write by Cloud Functions only
@@ -472,7 +472,7 @@ Apply rules:
 # Save to firestore.rules file
 gcloud firestore databases patch \
   --security-rules-file=firestore.rules \
-  --project=v-track-payments
+  --project=epack-payments
 ```
 
 ---

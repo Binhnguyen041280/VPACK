@@ -1,6 +1,6 @@
 # backend/modules/licensing/repositories/license_repository.py
 """
-License Repository - Unified Database Operations for V_Track License System
+License Repository - Unified Database Operations for ePACK License System
 ELIMINATES: 8x Database patterns, 6x Row-to-dict, 4x JSON parsing from license_models.py
 Created: 2025-08-11 - Phase 1 Refactoring Step 2
 """

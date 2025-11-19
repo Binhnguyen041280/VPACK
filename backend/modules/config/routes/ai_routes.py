@@ -1,5 +1,5 @@
 """
-AI Configuration Routes for V.PACK
+AI Configuration Routes for ePACK
 RESTful endpoints for AI configuration, API key testing, and usage stats
 Follows pattern from step1_brandname_routes.py
 """

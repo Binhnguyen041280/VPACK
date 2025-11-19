@@ -1,5 +1,5 @@
 """
-Shared utility functions for V_Track config module.
+Shared utility functions for ePACK config module.
 
 This module contains common functions used across multiple config route modules
 to avoid code duplication and maintain DRY principle.

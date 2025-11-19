@@ -1,4 +1,4 @@
-# 🎯 V_Track Setup & Deployment Pillar (Pillar 4) - Export Summary
+# 🎯 ePACK Setup & Deployment Pillar (Pillar 4) - Export Summary
 
 **Complete Setup & Deployment Assessment Package - Ready for Framework Integration**
 
@@ -8,7 +8,7 @@
 
 ### Files Generated
 ```
-/Users/annhu/vtrack_app/V_Track/docs/framework-exports/setup-deployment/
+/Users/annhu/vtrack_app/ePACK/docs/framework-exports/setup-deployment/
 ├── setup-deployment-pillar-export.json   (85 KB) ✅ Main data file
 ├── setup-deployment-manifest.json        (12 KB) ✅ Index file
 ├── README.md                             (20 KB) ✅ Documentation
@@ -305,7 +305,7 @@ Team Required: 1 DevOps + 1 Backend
 ## ✅ Export Complete
 
 **Generated**: 2025-10-30
-**Project**: V_Track v2.1.0
+**Project**: ePACK v2.1.0
 **Pillar**: Setup & Deployment (20% weight)
 **Setup & Deployment Score**: 5.2/10
 **Status**: NEEDS IMPROVEMENT

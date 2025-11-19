@@ -1,5 +1,5 @@
 """
-Step 4 Packing Area Service Layer for V.PACK Configuration.
+Step 4 Packing Area Service Layer for ePACK Configuration.
 
 Wrapper service for existing packing area/ROI detection logic.
 Uses existing packing_profiles table and hand detection functions.

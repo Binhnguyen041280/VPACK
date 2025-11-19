@@ -206,7 +206,7 @@ export default function TracePage() {
   useEffect(() => {
     const welcomeMessage: Message = {
       id: Date.now().toString(),
-      content: `🎉 Welcome to Trace Module!\n\nYour V.PACK system is ready for event querying and video processing.\n\n✨ Quick Start:\n• Set time range and cameras in the header\n• Enter tracking codes like: TC001, TC002\n• Upload CSV files for bulk queries\n• Process videos for event detection\n\nTry typing "time settings" to see current configuration!`,
+      content: `🎉 Welcome to Trace Module!\n\nYour ePACK system is ready for event querying and video processing.\n\n✨ Quick Start:\n• Set time range and cameras in the header\n• Enter tracking codes like: TC001, TC002\n• Upload CSV files for bulk queries\n• Process videos for event detection\n\nTry typing "time settings" to see current configuration!`,
       type: 'bot',
       timestamp: new Date()
     };

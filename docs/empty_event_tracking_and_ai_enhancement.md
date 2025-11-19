@@ -499,7 +499,7 @@ CREATE TABLE IF NOT EXISTS ai_config (
     ai_enabled BOOLEAN DEFAULT 0,
     api_provider TEXT DEFAULT 'claude',  -- 'claude' or 'openai'
     api_key_encrypted TEXT,              -- Encrypted API key
-    use_vtrack_key BOOLEAN DEFAULT 1,    -- TRUE = use V_Track's key, FALSE = use customer's key
+    use_vtrack_key BOOLEAN DEFAULT 1,    -- TRUE = use ePACK's key, FALSE = use customer's key
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -602,7 +602,7 @@ Return only the decoded text, nothing else.
 
 **2. `get_api_key() -> str`**
 - Returns API key based on config:
-  - If `use_vtrack_key=True`: Return V_Track managed key from env
+  - If `use_vtrack_key=True`: Return ePACK managed key from env
   - If `use_vtrack_key=False`: Return customer's key (decrypted)
 
 **3. `update_ai_config(ai_enabled, api_provider, api_key, use_vtrack_key)`**
@@ -930,7 +930,7 @@ Return only the decoded text."
 **Section 1: AI Configuration Card**
 - Toggle switch: Enable/Disable AI QR Recovery
 - Radio buttons:
-  - "V_Track Managed Key" (recommended)
+  - "ePACK Managed Key" (recommended)
   - "My Own API Key"
 - Conditional input field (shows if "My Own" selected):
   - API Key input (password field)
@@ -969,7 +969,7 @@ Return only the decoded text."
 │ │ [✓] Enable AI QR Recovery           │ │
 │ │                                     │ │
 │ │ API Source:                         │ │
-│ │ ○ V_Track Managed (recommended)     │ │
+│ │ ○ ePACK Managed (recommended)     │ │
 │ │ ● My Own API Key                    │ │
 │ │                                     │ │
 │ │ API Key: [sk-ant-•••••] [Test ✅]   │ │
@@ -1083,7 +1083,7 @@ export class AIService {
 1. User clicks "Usage" in sidebar
 2. Page loads with AI disabled
 3. User toggles ON "Enable AI Recovery"
-4. Selects "V_Track Managed" (default)
+4. Selects "ePACK Managed" (default)
 5. Clicks "Save Configuration"
 6. Backend enables AI
 7. Stats show "0 recoveries this month"
@@ -1893,9 +1893,9 @@ curl -H "Authorization: Bearer $OPENAI_API_KEY" \
 ENABLE_EMPTY_EVENTS=true          # Enable empty event tracking
 ENABLE_AI_RECOVERY=true           # Enable real-time AI recovery
 
-# AI Configuration (V_Track managed keys)
-VTRACK_CLAUDE_API_KEY=sk-ant-api03-...    # V_Track's Claude API key
-VTRACK_OPENAI_API_KEY=sk-...              # V_Track's OpenAI API key (optional)
+# AI Configuration (ePACK managed keys)
+VTRACK_CLAUDE_API_KEY=sk-ant-api03-...    # ePACK's Claude API key
+VTRACK_OPENAI_API_KEY=sk-...              # ePACK's OpenAI API key (optional)
 
 # API key encryption
 AI_KEY_ENCRYPTION_KEY=<fernet-key>        # Fernet encryption key for customer API keys
@@ -1935,7 +1935,7 @@ supervisorctl restart backend
 ### File Structure
 
 ```
-V_Track/
+ePACK/
 ├── backend/
 │   ├── modules/
 │   │   ├── ai/  ← NEW FOLDER
@@ -2089,7 +2089,7 @@ npm run dev
 # 1. Enable AI in UI
 # Go to: http://localhost:3000/usage
 # Toggle ON "Enable AI Recovery"
-# Select "V_Track Managed"
+# Select "ePACK Managed"
 # Click Save
 
 # 2. Process test video with failed QR
@@ -2110,7 +2110,7 @@ sqlite3 database.db "SELECT * FROM ai_recovery_logs LIMIT 5;"
 1. Click on avatar icon in sidebar (bottom left)
 2. Click "AI Usage" from dropdown menu
 3. Toggle ON "Enable AI QR Recovery"
-4. Select "V_Track Managed Key" (recommended)
+4. Select "ePACK Managed Key" (recommended)
 5. Click "Save Configuration"
 6. Wait for success message
 
@@ -2136,7 +2136,7 @@ sqlite3 database.db "SELECT * FROM ai_recovery_logs LIMIT 5;"
 
 ## Cost Management
 
-### For V_Track (Service Provider)
+### For ePACK (Service Provider)
 
 **Pricing Model:**
 - **Pro License**: $199/month (includes 1,000 AI requests)
@@ -2169,7 +2169,7 @@ Typical usage: 30-100 requests/month
 **Cost Optimization Tips:**
 1. Improve QR code print quality → Less failures
 2. Optimize camera setup → Better QR detection
-3. Use V_Track managed key → Built into license price
+3. Use ePACK managed key → Built into license price
 4. Monitor Usage page → Track spending trends
 
 ---

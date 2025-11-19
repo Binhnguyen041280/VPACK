@@ -1,6 +1,6 @@
-# V_Track API Documentation
+# ePACK API Documentation
 
-Complete reference for V_Track REST API endpoints.
+Complete reference for ePACK REST API endpoints.
 
 ## Base URL
 
@@ -24,7 +24,7 @@ Frontend: http://localhost:3000
 
 ### Google OAuth
 
-V_Track uses Google OAuth 2.0 for user authentication.
+ePACK uses Google OAuth 2.0 for user authentication.
 
 #### Login Endpoint
 
@@ -707,7 +707,7 @@ Get system health status.
 ```json
 {
   "status": "healthy",
-  "service": "V_Track Desktop Backend",
+  "service": "ePACK Desktop Backend",
   "version": "2.1.0",
   "timestamp": "2025-10-06T14:35:00",
   "modules": {
@@ -736,7 +736,7 @@ Get detailed system information.
 **Response**:
 ```json
 {
-  "service": "V_Track Desktop Backend",
+  "service": "ePACK Desktop Backend",
   "version": "2.1.0",
   "status": "running",
   "features": [

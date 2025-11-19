@@ -1,4 +1,4 @@
-# Claude Code Guidelines for V_Track Project
+# Claude Code Guidelines for ePACK Project
 
 ## Language Guidelines
 

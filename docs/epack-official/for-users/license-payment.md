@@ -1,6 +1,6 @@
 # License & Payment User Guide
 
-**V_Track Subscription Management & License Activation**
+**ePACK Subscription Management & License Activation**
 
 ---
 
@@ -20,7 +20,7 @@
 
 ## Overview
 
-V_Track uses a cloud-based licensing system with PayOS payment integration. Each license is tied to a specific machine using hardware fingerprinting, ensuring secure single-device activation.
+ePACK uses a cloud-based licensing system with PayOS payment integration. Each license is tied to a specific machine using hardware fingerprinting, ensuring secure single-device activation.
 
 ### Key Features
 
@@ -47,7 +47,7 @@ Frontend (Plan Page) → Backend API → Cloud Function → PayOS Gateway
 
 ### Available Plans
 
-V_Track offers four subscription tiers:
+ePACK offers four subscription tiers:
 
 #### 1. Personal Monthly (P1M)
 ```json
@@ -264,7 +264,7 @@ CREATE TABLE licenses (
 After payment, customer receives email:
 
 ```
-Subject: Your V_Track License Key
+Subject: Your ePACK License Key
 
 Dear Customer,
 
@@ -275,14 +275,14 @@ Package: Personal Annual
 Expires: 2026-01-15
 
 To activate:
-1. Open V_Track application
+1. Open ePACK application
 2. Go to Plan page
 3. Click "Activate License"
 4. Enter your license key
 5. Click "Activate"
 
 Best regards,
-V_Track Team
+ePACK Team
 ```
 
 #### Step 2: Enter License Key
@@ -431,7 +431,7 @@ cursor.execute("""
 
 ### How It Works
 
-V_Track generates a unique hardware fingerprint for each machine:
+ePACK generates a unique hardware fingerprint for each machine:
 
 **Source**: `backend/modules/license/machine_fingerprint.py`
 
@@ -934,4 +934,4 @@ CREATE INDEX idx_licenses_expires ON licenses(expires_at);
 
 **Last Updated**: 2025-10-06
 **Version**: 1.0.0
-**Author**: V_Track Documentation Team
+**Author**: ePACK Documentation Team

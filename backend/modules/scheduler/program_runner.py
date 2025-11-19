@@ -1,4 +1,4 @@
-"""Program Runner Module for V_Track Video Post-Processing System.
+"""Program Runner Module for ePACK Video Post-Processing System.
 
 This module manages the execution of video analysis threads for batch processing
 existing video files. It coordinates computer vision analysis pipeline including

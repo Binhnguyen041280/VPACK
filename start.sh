@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================================
-# V_Track Docker - Start Script
-# Starts the V_Track application stack using Docker Compose
+# ePACK Docker - Start Script
+# Starts the ePACK application stack using Docker Compose
 # ============================================================================
 
 set -e
@@ -13,7 +13,7 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🚀 V_Track Docker - Starting Application Stack${NC}"
+echo -e "${BLUE}🚀 ePACK Docker - Starting Application Stack${NC}"
 echo ""
 
 # Check if .env file exists
@@ -35,14 +35,14 @@ fi
 
 # Check if Docker images exist
 echo -e "${BLUE}📦 Checking Docker images...${NC}"
-if ! docker images | grep -q "vtrack-backend.*phase2"; then
+if ! docker images | grep -q "epack-backend.*phase2"; then
     echo -e "${YELLOW}⚠️  Backend image not found. Building...${NC}"
-    docker build --platform linux/arm64 -t vtrack-backend:phase2 ./backend
+    docker build --platform linux/arm64 -t epack-backend:phase2 ./backend
 fi
 
-if ! docker images | grep -q "vtrack-frontend.*phase3"; then
+if ! docker images | grep -q "epack-frontend.*phase3"; then
     echo -e "${YELLOW}⚠️  Frontend image not found. Building...${NC}"
-    docker build --platform linux/arm64 -t vtrack-frontend:phase3 ./frontend
+    docker build --platform linux/arm64 -t epack-frontend:phase3 ./frontend
 fi
 
 echo -e "${GREEN}✅ Docker images ready${NC}"
@@ -78,14 +78,14 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Start services
-echo -e "${BLUE}🚀 Starting V_Track Application...${NC}"
+echo -e "${BLUE}🚀 Starting ePACK Application...${NC}"
 echo ""
 docker-compose up $DETACHED
 
 # If running in detached mode, show status
 if [ ! -z "$DETACHED" ]; then
     echo ""
-    echo -e "${GREEN}✅ V_Track stack started successfully${NC}"
+    echo -e "${GREEN}✅ ePACK stack started successfully${NC}"
     echo ""
     echo -e "${BLUE}📊 Container Status:${NC}"
     docker-compose ps
@@ -119,5 +119,5 @@ if [ ! -z "$DETACHED" ]; then
     fi
 
     echo ""
-    echo -e "${GREEN}🎉 V_Track is ready!${NC}"
+    echo -e "${GREEN}🎉 ePACK is ready!${NC}"
 fi

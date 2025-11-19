@@ -1,5 +1,5 @@
 """
-AI Service Layer for V.PACK
+AI Service Layer for ePACK
 Handles AI configuration, API key management, and QR recovery
 Reuses encryption pattern from cloud_auth.py
 """

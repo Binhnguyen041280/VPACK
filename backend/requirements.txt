@@ -1,5 +1,5 @@
 # ============================================================================
-# V_Track Backend Dependencies - Production Ready
+# ePACK Backend Dependencies - Production Ready
 # Python 3.10+ required
 # Fixed: 2025-01-11 - Exact versions from working installation
 # ============================================================================

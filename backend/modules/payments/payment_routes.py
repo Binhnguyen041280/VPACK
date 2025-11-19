@@ -1,6 +1,6 @@
 # backend/modules/payments/payment_routes.py
 """
-V_Track Payment Routes - CloudFunction Integration Blueprint with Offline Fallback
+ePACK Payment Routes - CloudFunction Integration Blueprint with Offline Fallback
 Handles all payment-related API endpoints
 Updated: 2025-08-11 - Enhanced offline fallback for license validation and activation
 """
@@ -1126,7 +1126,7 @@ def get_license_status():
                                     'reason': 'authentication_required',
                                     'message': 'Please sign up to access trial'
                                 },
-                                'message': 'Please sign up to access V_Track features',
+                                'message': 'Please sign up to access ePACK features',
                                 'system_status': {
                                     'online': False,
                                     'source': 'unauthenticated',

@@ -40,7 +40,7 @@ JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'your-secret-key-change-in-producti
 from .cloud_auth import ENCRYPTION_KEY
 
 def generate_session_token(user_email, user_info, expires_minutes=129600):  # 90 days = 90*24*60 = 129600 minutes
-    """Generate JWT session token for V_track background service (90 days duration)"""
+    """Generate JWT session token for ePACK background service (90 days duration)"""
     try:
         payload = {
             'user_email': user_email,
@@ -552,7 +552,7 @@ def _create_gmail_success_page(data):
             <h2 class="success">✅ Gmail Authentication Successful!</h2>
             <p><strong>Welcome:</strong> {data.get('user_email', 'Unknown')}</p>
             <p><strong>Authentication Method:</strong> Gmail Only</p>
-            <p class="info">You can now use V_Track with your Gmail identity. Google Drive connection is optional and can be configured later in settings.</p>
+            <p class="info">You can now use ePACK with your Gmail identity. Google Drive connection is optional and can be configured later in settings.</p>
         </div>
         <script>
             // Send success message to parent window

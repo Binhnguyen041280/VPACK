@@ -1,5 +1,5 @@
 """
-Landmark Mapper Utility for V_Track Hand Detection
+Landmark Mapper Utility for ePACK Hand Detection
 Provides coordinate transformation with fixed sizing for landmark rendering
 """
 

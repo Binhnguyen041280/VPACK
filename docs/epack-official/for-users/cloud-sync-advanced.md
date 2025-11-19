@@ -23,7 +23,7 @@
 
 ## Overview
 
-V_Track integrates with Google Drive to automatically download and process video files from cloud storage. The system supports lazy folder tree loading, auto-sync scheduling, and robust error recovery.
+ePACK integrates with Google Drive to automatically download and process video files from cloud storage. The system supports lazy folder tree loading, auto-sync scheduling, and robust error recovery.
 
 ### Key Features
 
@@ -75,8 +75,8 @@ Frontend (Setup Wizard) → Backend OAuth → Google Drive API
 1. Navigate to "OAuth consent screen"
 2. User Type: External
 3. App Information:
-   - App name: V_Track
-   - User support email: support@vtrack.com
+   - App name: ePACK
+   - User support email: support@epack.com
    - Developer contact: dev@vtrack.com
 4. Scopes:
    ```
@@ -94,7 +94,7 @@ Frontend (Setup Wizard) → Backend OAuth → Google Drive API
 1. Navigate to "Credentials"
 2. Create OAuth client ID:
    - Application type: Web application
-   - Name: V_Track Desktop Client
+   - Name: ePACK Desktop Client
    - Authorized redirect URIs:
      ```
      http://localhost:8080/api/cloud/oauth/callback
@@ -126,7 +126,7 @@ Frontend (Setup Wizard) → Backend OAuth → Google Drive API
 
 ## Authentication Methods
 
-V_Track supports two authentication workflows:
+ePACK supports two authentication workflows:
 
 ### Method 1: Gmail-Only Authentication
 
@@ -408,7 +408,7 @@ session.pop('oauth2_state', None)
 
 ### Lazy Folder Tree Loading
 
-V_Track uses lazy loading to handle large Google Drive accounts efficiently.
+ePACK uses lazy loading to handle large Google Drive accounts efficiently.
 
 #### Architecture
 
@@ -604,7 +604,7 @@ const handleFolderExpand = async (folderId: string) => {
 
 ### Auto-Detection from Folder Names
 
-V_Track automatically extracts camera names from selected folders.
+ePACK automatically extracts camera names from selected folders.
 
 **Naming Convention**:
 ```
@@ -1336,7 +1336,7 @@ for job in jobs:
 **Recommended Hierarchy**:
 ```
 My Drive/
-└── V_Track Projects/
+└── ePACK Projects/
     └── Warehouse A/
         └── Packing Area 1/
             └── Zone East/
@@ -1395,4 +1395,4 @@ recording_2025-01-15T10-30-45.mp4
 
 **Last Updated**: 2025-10-06
 **Version**: 1.0.0
-**Author**: V_Track Documentation Team
+**Author**: ePACK Documentation Team

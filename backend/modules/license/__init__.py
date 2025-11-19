@@ -1,5 +1,5 @@
 """
-V_Track Desktop License Management Module
+ePACK Desktop License Management Module
 Entry point for license system
 """
 from .license_manager import LicenseManager

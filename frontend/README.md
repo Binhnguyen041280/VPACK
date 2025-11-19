@@ -1,4 +1,4 @@
-# V.PACK ChatGPT AI Template
+# ePACK ChatGPT AI Template
 
 ![version](https://img.shields.io/badge/version-3.0.0-brightgreen.svg)
 [![GitHub issues open](https://img.shields.io/github/issues/horizon-ui/chatgpt-ai-template.svg?maxAge=2592000)](https://github.com/horizon-ui/chatgpt-ai-template/issues?q=is%3Aopen+is%3Aissue)
@@ -9,13 +9,13 @@
 
 <p>&nbsp;</p>
 
-Get started and build your dream AI web app with V.PACK, the trendiest & innovative Open-Source Free ChatGPT AI Admin Template for NextJS & React!
+Get started and build your dream AI web app with ePACK, the trendiest & innovative Open-Source Free ChatGPT AI Admin Template for NextJS & React!
 
 ---
 
 ### Introduction
 
-V.PACK ChatGPT AI Template is the world's best open source OpenAI ChatGPT AI Template made with React, NextJS and Chakra UI! Start creating outstanding Chat AI SaaS Apps faster.
+ePACK ChatGPT AI Template is the world's best open source OpenAI ChatGPT AI Template made with React, NextJS and Chakra UI! Start creating outstanding Chat AI SaaS Apps faster.
 
 It comes with over 30+ dark/light frontend individual elements, like buttons, inputs, navbars, nav tabs, cards, or alerts, giving you the freedom of choosing and combining.
 
@@ -25,7 +25,7 @@ Each element is well presented in a very complex documentation. You can read mor
 
 ### Quick Start
 
-Install V.PACK ChatGPT AI Template by running either of the following:
+Install ePACK ChatGPT AI Template by running either of the following:
 
 - Install NodeJS LTS from [NodeJs Official Page](https://nodejs.org/en/?ref=horizon-documentation) (NOTE: Product only works with LTS version)
 
@@ -67,14 +67,14 @@ View <a href="https://horizon-ui.com/chatgpt-ai-template/?ref=readme-horizon-ai-
 
 ### Figma Version
 
-V.PACK is available in Figma format as well! [Check it out here](https://www.figma.com/community/file/1253038328954459768)! 🎨
+ePACK is available in Figma format as well! [Check it out here](https://www.figma.com/community/file/1253038328954459768)! 🎨
 
 ### Reporting Issues
 
-We use GitHub Issues as the official bug tracker for the V.PACK. Here are
+We use GitHub Issues as the official bug tracker for the ePACK. Here are
 some advices for our users that want to report an issue:
 
-1. Make sure that you are using the latest version of the V.PACK.
+1. Make sure that you are using the latest version of the ePACK.
    Check the CHANGELOG from your dashboard on our
    [CHANGE LOG File](https://github.com/horizon-ui/chatgpt-ai-template/blob/main/CHANGELOG.md?ref=readme-horizon-ai-template-free).
 2. Providing us reproducible steps for the issue will shorten the time it takes
@@ -86,12 +86,12 @@ some advices for our users that want to report an issue:
 
 ### Community
 
-Connect with the community! Feel free to ask questions, report issues, and meet new people that already use V.PACK!
+Connect with the community! Feel free to ask questions, report issues, and meet new people that already use ePACK!
 
-💬 [Join the #V.PACK Discord Community!](https://discord.gg/f6tEKFBd4m)
+💬 [Join the #ePACK Discord Community!](https://discord.gg/f6tEKFBd4m)
 
 ### Copyright and license
 
-⭐️ [Copyright 2023 V.PACK ](https://www.horizon-ui.com/?ref=readme-horizon-ai-template-free)
+⭐️ [Copyright 2023 ePACK ](https://www.horizon-ui.com/?ref=readme-horizon-ai-template-free)
 
-📄 [V.PACK License](https://horizon-ui.notion.site/End-User-License-Agreement-8fb09441ea8c4c08b60c37996195a6d5)
+📄 [ePACK License](https://horizon-ui.notion.site/End-User-License-Agreement-8fb09441ea8c4c08b60c37996195a6d5)

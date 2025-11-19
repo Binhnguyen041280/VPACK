@@ -175,8 +175,8 @@ HEALTHCHECK CMD curl -f http://localhost:8080/health || exit 1
 CMD ["python", "app.py"]
 
 # Step 3: Build and test (1h)
-docker build -t vtrack-backend:test .
-docker run -p 8080:8080 vtrack-backend:test
+docker build -t epack-backend:test .
+docker run -p 8080:8080 epack-backend:test
 curl http://localhost:8080/health
 ```
 
@@ -229,7 +229,7 @@ version: '3.8'
 services:
   backend:
     build: ./backend
-    container_name: vtrack-backend
+    container_name: epack-backend
     ports:
       - "8080:8080"
     volumes:
@@ -248,7 +248,7 @@ services:
 
   frontend:
     build: ./frontend
-    container_name: vtrack-frontend
+    container_name: epack-frontend
     ports:
       - "3000:3000"
     environment:
@@ -260,7 +260,7 @@ services:
 
 networks:
   default:
-    name: vtrack-network
+    name: epack-network
 ```
 
 **BẠN làm:**
@@ -414,7 +414,7 @@ if __name__ == "__main__":
 
 ## Quick Start (5 minutes)
 
-### Step 1: Download V_Track
+### Step 1: Download ePACK
 Extract `vtrack-v2.1.0.zip` to desired location
 
 ### Step 2: Configure
@@ -423,7 +423,7 @@ cp .env.example .env
 # Edit .env: Set SECRET_KEY (see guide below)
 ```
 
-### Step 3: Start V_Track
+### Step 3: Start ePACK
 ```bash
 docker-compose up -d
 ```

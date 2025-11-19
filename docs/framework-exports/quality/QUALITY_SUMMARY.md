@@ -1,4 +1,4 @@
-# 🎯 V_Track Quality Pillar (Pillar 2) - Export Summary
+# 🎯 ePACK Quality Pillar (Pillar 2) - Export Summary
 
 **Complete Quality Assessment Package - Ready for Framework Integration**
 
@@ -8,7 +8,7 @@
 
 ### Files Generated
 ```
-/Users/annhu/vtrack_app/V_Track/docs/framework-exports/quality/
+/Users/annhu/vtrack_app/ePACK/docs/framework-exports/quality/
 ├── quality-pillar-export.json    (28 KB) ✅ Main data file
 ├── quality-manifest.json         (8 KB)  ✅ Index file
 ├── README.md                     (12 KB) ✅ Documentation
@@ -308,7 +308,7 @@ for action in data['action_plan']['critical_blockers']:
 
 ### For Reporting
 ```
-Quality Status Report - V_Track
+Quality Status Report - ePACK
 ================================
 Overall Score: 6.8/10 ⚠️
 Test Coverage: 3% (Target: 60%) ❌
@@ -387,7 +387,7 @@ Team Required: 3 developers
 ## ✅ Export Complete
 
 **Generated**: 2025-01-30
-**Project**: V_Track v2.1.0
+**Project**: ePACK v2.1.0
 **Pillar**: Quality (20% weight)
 **Quality Score**: 6.8/10
 **Status**: ACCEPTABLE (NOT READY FOR LAUNCH)

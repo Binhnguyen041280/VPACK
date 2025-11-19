@@ -1,6 +1,6 @@
-# V_Track Cloud Functions Documentation
+# ePACK Cloud Functions Documentation
 
-Serverless backend infrastructure for V_Track payment processing, license management, and pricing services.
+Serverless backend infrastructure for ePACK payment processing, license management, and pricing services.
 
 ---
 
@@ -9,14 +9,14 @@ Serverless backend infrastructure for V_Track payment processing, license manage
 1. [Overview](#overview)
 2. [Architecture](#architecture)
 3. [Services](#services)
-4. [Integration with V_Track](#integration-with-v_track)
+4. [Integration with ePACK](#integration-with-v_track)
 5. [Quick Links](#quick-links)
 
 ---
 
 ## Overview
 
-V_Track Cloud Functions is a serverless backend deployed on Google Cloud Platform that handles:
+ePACK Cloud Functions is a serverless backend deployed on Google Cloud Platform that handles:
 
 - **Payment Processing**: PayOS integration for Vietnamese payment gateway
 - **License Management**: Cloud-based license validation and trial system
@@ -47,7 +47,7 @@ V_Track Cloud Functions is a serverless backend deployed on Google Cloud Platfor
 ### Project Structure
 
 ```
-V_Track_CloudFunctions/
+ePACK_CloudFunctions/
 ├── functions/
 │   ├── create_payment/     # Payment creation service
 │   ├── webhook_handler/     # PayOS webhook processor
@@ -70,7 +70,7 @@ V_Track_CloudFunctions/
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     V_Track Desktop App                          │
+│                     ePACK Desktop App                          │
 │                    (Frontend + Backend)                          │
 └───────────────┬──────────────────────────────┬──────────────────┘
                 │                              │
@@ -122,7 +122,7 @@ V_Track_CloudFunctions/
 
 #### Payment Flow
 
-1. **User selects package** in V_Track desktop app
+1. **User selects package** in ePACK desktop app
 2. **App calls** `create-payment` Cloud Function
 3. **Function fetches** current pricing from `pricing-service`
 4. **Function saves** payment metadata to Firestore
@@ -274,7 +274,7 @@ CURRENT_PACKAGES = {
 
 ---
 
-## Integration with V_Track
+## Integration with ePACK
 
 ### Desktop App Integration Points
 
@@ -286,7 +286,7 @@ CURRENT_PACKAGES = {
 @payment_bp.route('/create', methods=['POST'])
 def create_payment():
     # Calls create-payment Cloud Function
-    cloud_function_url = "https://asia-southeast1-v-track-payments.cloudfunctions.net/create-payment"
+    cloud_function_url = "https://asia-southeast1-epack-payments.cloudfunctions.net/create-payment"
     response = requests.post(cloud_function_url, json={
         'customer_email': request.json['customer_email'],
         'package_type': request.json['package_type'],
@@ -344,9 +344,9 @@ def generate_trial_license(self, machine_fingerprint: str):
 **Desktop App** (`.env` or config):
 ```bash
 # Cloud Function URLs
-PAYMENT_FUNCTION_URL=https://asia-southeast1-v-track-payments.cloudfunctions.net/create-payment
-LICENSE_SERVICE_URL=https://asia-southeast1-v-track-payments.cloudfunctions.net/license-service
-PRICING_SERVICE_URL=https://asia-southeast1-v-track-payments.cloudfunctions.net/pricing-service
+PAYMENT_FUNCTION_URL=https://asia-southeast1-epack-payments.cloudfunctions.net/create-payment
+LICENSE_SERVICE_URL=https://asia-southeast1-epack-payments.cloudfunctions.net/license-service
+PRICING_SERVICE_URL=https://asia-southeast1-epack-payments.cloudfunctions.net/pricing-service
 ```
 
 **Cloud Functions** (GCP environment variables):
@@ -363,7 +363,7 @@ SMTP_USER=your-email@gmail.com
 SMTP_PASSWORD=your-app-password
 
 # Google Cloud
-GOOGLE_CLOUD_PROJECT=v-track-payments
+GOOGLE_CLOUD_PROJECT=epack-payments
 ```
 
 ---
@@ -377,10 +377,10 @@ GOOGLE_CLOUD_PROJECT=v-track-payments
 - [Development Guide](./development-guide.md) - Local development and testing
 - [Firestore Schema](./firestore-schema.md) - Database structure
 
-### Related V_Track Documentation
+### Related ePACK Documentation
 
 - [License & Payment User Guide](../../for-users/license-payment.md)
-- [V_Track Architecture Overview](../architecture/overview.md)
+- [ePACK Architecture Overview](../architecture/overview.md)
 - [Backend Payment Blueprint](/backend/blueprints/payment_bp.py)
 - [Payment Cloud Client](/backend/modules/payments/cloud_function_client.py)
 
@@ -408,4 +408,4 @@ GOOGLE_CLOUD_PROJECT=v-track-payments
 
 **Last Updated**: 2025-10-06
 **Version**: 1.0.0
-**Maintained By**: V_Track Development Team
+**Maintained By**: ePACK Development Team

@@ -1,4 +1,4 @@
-"""Batch Scheduler Module for V_Track Video Post-Processing System.
+"""Batch Scheduler Module for ePACK Video Post-Processing System.
 
 This module provides automated batch processing of existing video files from local storage
 and Google Drive. It manages video analysis workflows with dynamic resource optimization

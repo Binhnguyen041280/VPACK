@@ -1,5 +1,5 @@
 """
-Safe Database Connection Manager for V_Track
+Safe Database Connection Manager for ePACK
 Simple, reliable context manager for SQLite connections
 """
 

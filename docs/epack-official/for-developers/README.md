@@ -1,6 +1,6 @@
-# V_Track Developer Documentation
+# ePACK Developer Documentation
 
-Technical documentation for developers working on or integrating with V_Track.
+Technical documentation for developers working on or integrating with ePACK.
 
 ## Getting Started
 
@@ -149,7 +149,7 @@ npm test
 ### Google Cloud Functions
 **[Complete Cloud Functions Documentation](cloud-functions/)**
 
-V_Track uses serverless Cloud Functions for payment and licensing:
+ePACK uses serverless Cloud Functions for payment and licensing:
 
 - **[create-payment](cloud-functions/api-reference.md#create-payment)**: PayOS payment link generation
 - **[webhook-handler](cloud-functions/api-reference.md#webhook-handler)**: Automated license delivery

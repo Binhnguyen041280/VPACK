@@ -1,5 +1,5 @@
 """
-Step 3 Video Source Service Layer for V.PACK Configuration.
+Step 3 Video Source Service Layer for ePACK Configuration.
 
 Handles business logic for video source configuration including 
 local/cloud storage mapping, camera path management, and processing_config sync.

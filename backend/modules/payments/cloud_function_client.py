@@ -1,6 +1,6 @@
 # backend/modules/payments/cloud_function_client.py
 """
-V_Track CloudFunction Client - REFACTORED with Repository Pattern
+ePACK CloudFunction Client - REFACTORED with Repository Pattern
 ELIMINATES: Database patterns, JSON parsing, expiry validation duplicates
 REDUCES: From 450 lines to ~250 lines (-44% reduction)
 Updated: 2025-08-11 - Phase 1 Refactoring Integration
@@ -36,7 +36,7 @@ class VTrackCloudClient:
         self.timeout = int(os.getenv('HTTP_TIMEOUT', '10'))
         self.license_timeout = int(os.getenv('LICENSE_TIMEOUT', '8'))
         self.retry_attempts = int(os.getenv('HTTP_RETRY_ATTEMPTS', '2'))
-        self.user_agent = os.getenv('HTTP_USER_AGENT', 'V_Track_Desktop_2.1.0')
+        self.user_agent = os.getenv('HTTP_USER_AGENT', 'ePACK_Desktop_2.1.0')
         self.unified_redirect_url = "http://localhost:8080/payment/redirect"
         
         # Offline fallback

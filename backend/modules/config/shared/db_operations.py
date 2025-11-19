@@ -1,5 +1,5 @@
 """
-Shared database operations for V.PACK config routes.
+Shared database operations for ePACK config routes.
 
 Provides unified database connection handling, change detection, 
 and data synchronization utilities for the step-based configuration system.

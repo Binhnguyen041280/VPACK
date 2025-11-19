@@ -247,8 +247,8 @@ import secrets
 
 # Configure session for OAuth compatibility
 # Docker-compatible session storage
-if os.getenv('VTRACK_IN_DOCKER') == 'true':
-    session_dir = os.getenv('VTRACK_SESSION_DIR', '/app/var/flask_session')
+if os.getenv('EPACK_IN_DOCKER') == 'true':
+    session_dir = os.getenv('EPACK_SESSION_DIR', '/app/var/flask_session')
 else:
     session_dir = os.path.join(BASE_DIR, 'flask_session')
 
@@ -536,7 +536,7 @@ def health_check():
     try:
         health_data = {
             'status': 'healthy',
-            'service': 'V_Track Desktop Backend',
+            'service': 'ePACK Desktop Backend',
             'version': '2.1.0',
             'timestamp': datetime.now().isoformat(),
             'modules': {
@@ -586,7 +586,7 @@ def health_check():
         logger.error(f"Health check error: {str(e)}")
         return jsonify({
             'status': 'error',
-            'service': 'V_Track Desktop Backend',
+            'service': 'ePACK Desktop Backend',
             'version': '2.1.0',
             'timestamp': datetime.now().isoformat(),
             'error': str(e)
@@ -596,7 +596,7 @@ def health_check():
 def system_info():
     """System information API"""
     return jsonify({
-        'service': 'V_Track Desktop Backend',
+        'service': 'ePACK Desktop Backend',
         'version': '2.1.0',
         'status': 'running',
         'features': [
@@ -900,7 +900,7 @@ if __name__ == "__main__":
         logger.error(f"Port {port} is already in use!")
         sys.exit(1)
 
-    logger.info(f"Starting V_Track Desktop Application on port {port}")
+    logger.info(f"Starting ePACK Desktop Application on port {port}")
 
     # Database already initialized at top of file
     # Initialize license system (non-blocking)
@@ -916,7 +916,7 @@ if __name__ == "__main__":
         print("💰 Pricing integration validated successfully")
     
     # Display startup information
-    print("🚀 V_Track Desktop App Starting...")
+    print("🚀 ePACK Desktop App Starting...")
     print(f"📡 Server: http://0.0.0.0:{port}")
     print("🔧 Core Features:")
     print("   ✅ Computer Vision Processing")

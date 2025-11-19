@@ -1,7 +1,7 @@
-"""File Lister Module for V_Track Video Processing System.
+"""File Lister Module for ePACK Video Processing System.
 
 This module handles video file discovery, scanning, and metadata extraction for the
-V_Track processing pipeline. It supports different scanning strategies and integrates
+ePACK processing pipeline. It supports different scanning strategies and integrates
 with FFprobe for accurate video metadata extraction.
 
 Scanning Strategies:

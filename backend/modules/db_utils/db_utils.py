@@ -10,15 +10,15 @@ def find_project_root(start_path):
     if current_path.startswith("/app") and os.path.exists("/app/modules"):
         return "/app"
 
-    # Try to find V_Track folder (development mode on host)
-    while os.path.basename(current_path) != "V_Track":
+    # Try to find ePACK folder (development mode on host)
+    while os.path.basename(current_path) != "ePACK":
         parent_path = os.path.dirname(current_path)
         if parent_path == current_path:  # Reached filesystem root
             break
         current_path = parent_path
 
-    # If V_Track found, return it
-    if os.path.basename(current_path) == "V_Track":
+    # If ePACK found, return it
+    if os.path.basename(current_path) == "ePACK":
         return current_path
 
     # Fallback: If /app/modules exists (Docker structure)
@@ -33,7 +33,7 @@ def find_project_root(start_path):
     if os.path.exists("./modules"):
         return os.path.dirname(os.path.dirname(os.path.abspath(start_path)))
 
-    raise ValueError("Could not find project root (V_Track directory or /app)")
+    raise ValueError("Could not find project root (ePACK directory or /app)")
 
 # Use centralized path configuration
 from modules.path_utils import get_paths

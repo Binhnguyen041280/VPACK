@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-V_Track Video Timezone Performance Benchmarks
+ePACK Video Timezone Performance Benchmarks
 
 Performance testing and benchmarking for timezone-aware video processing.
 Tests video scanning, timezone detection, and metadata extraction performance
@@ -33,7 +33,7 @@ from pathlib import Path
 import logging
 from dataclasses import dataclass, asdict
 
-# Import V_Track modules
+# Import ePACK modules
 from modules.config.logging_config import get_logger
 from modules.utils.video_timezone_detector import video_timezone_detector, get_timezone_aware_creation_time
 from modules.utils.timezone_manager import timezone_manager
@@ -1113,7 +1113,7 @@ def run_full_performance_benchmarks(test_dir: Optional[str] = None, iterations: 
 if __name__ == '__main__':
     import argparse
     
-    parser = argparse.ArgumentParser(description='V_Track Video Timezone Performance Benchmarks')
+    parser = argparse.ArgumentParser(description='ePACK Video Timezone Performance Benchmarks')
     parser.add_argument('--benchmark-type', choices=['scanning', 'detection', 'memory', 'concurrent'], 
                        help='Specific benchmark type to run')
     parser.add_argument('--test-dir', help='Directory containing test videos')

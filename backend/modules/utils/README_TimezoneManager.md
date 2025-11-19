@@ -1,13 +1,13 @@
 # TimezoneManager Documentation
 
-The **TimezoneManager** is a comprehensive timezone handling system for the V_Track application, designed to replace hardcoded timezone handling with a unified, configurable, and thread-safe solution.
+The **TimezoneManager** is a comprehensive timezone handling system for the ePACK application, designed to replace hardcoded timezone handling with a unified, configurable, and thread-safe solution.
 
 ## Features
 
 - **Unified Timezone Handling**: Single point of control for all timezone operations
 - **User-Configurable Timezones**: Supports user-defined timezones stored in database
 - **Thread-Safe**: Concurrent access safe with caching for performance
-- **Database Integration**: Seamlessly integrates with V_Track's safe_db_connection pattern
+- **Database Integration**: Seamlessly integrates with ePACK's safe_db_connection pattern
 - **Fallback Support**: Graceful handling when database is unavailable
 - **High Performance**: < 1ms for basic conversions with intelligent caching
 - **Cross-Platform**: Uses zoneinfo (Python 3.9+) with pytz fallback
@@ -390,7 +390,7 @@ for thread in threads:
 Run the test suite:
 
 ```bash
-cd /Users/annhu/vtrack_app/V_Track/backend
+cd /Users/annhu/vtrack_app/ePACK/backend
 python test_timezone_simple.py
 ```
 

@@ -20,12 +20,12 @@ def get_deployment_mode():
         str: 'development', 'docker', 'production', or 'installed'
     """
     # 1. Check environment variable (highest priority)
-    env_mode = os.getenv("VTRACK_DEPLOYMENT_MODE")
+    env_mode = os.getenv("EPACK_DEPLOYMENT_MODE")
     if env_mode in ['development', 'docker', 'production', 'installed']:
         return env_mode
 
     # 2. Detect Docker environment
-    if os.path.exists("/.dockerenv") or os.getenv("VTRACK_IN_DOCKER") == "true":
+    if os.path.exists("/.dockerenv") or os.getenv("EPACK_IN_DOCKER") == "true":
         return 'docker'
 
     # 3. Check if running from source (has backend/ subfolder structure)
@@ -71,7 +71,7 @@ def get_paths():
             └── uploads/                 # User uploaded files
 
     Only BASE_DIR differs per mode:
-    - development: /path/to/V_Track/ (project root, so var/ is at root)
+    - development: /path/to/ePACK/ (project root, so var/ is at root)
     - docker: /app/
     - production: /path/to/executable/
     - installed: ~/.local/share/vtrack/ (or platform equivalent)
@@ -88,7 +88,7 @@ def get_paths():
 
     elif mode == 'docker':
         # Docker: Use /app/ or custom base
-        base_dir = os.getenv("VTRACK_BASE_DIR", "/app")
+        base_dir = os.getenv("EPACK_BASE_DIR", "/app")
 
     elif mode == 'production':
         # Production EXE: Directory containing executable

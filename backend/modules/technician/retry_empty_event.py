@@ -1,4 +1,4 @@
-"""Empty Event Retry Module for V_Track Video Processing System.
+"""Empty Event Retry Module for ePACK Video Processing System.
 
 This module handles recovery of tracking codes from events that were marked as empty
 (no MVD detected) during initial processing. It runs in PASS 3 when the system is idle,

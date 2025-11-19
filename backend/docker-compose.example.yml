@@ -1,11 +1,11 @@
 version: '3.8'
 
 services:
-  vtrack-backend:
+  epack-backend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: vtrack-backend
+    container_name: epack-backend
     ports:
       - "8080:8080"
     environment:
@@ -61,15 +61,15 @@ services:
           memory: 2G
 
 # Optional: Add frontend service
-#   vtrack-frontend:
+#   epack-frontend:
 #     build:
 #       context: ../frontend
 #       dockerfile: Dockerfile
-#     container_name: vtrack-frontend
+#     container_name: epack-frontend
 #     ports:
 #       - "3000:3000"
 #     environment:
 #       - REACT_APP_BACKEND_URL=http://localhost:8080
 #     depends_on:
-#       - vtrack-backend
+#       - epack-backend
 #     restart: unless-stopped

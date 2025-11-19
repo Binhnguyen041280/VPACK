@@ -1,5 +1,5 @@
 """
-Service layer for V.PACK configuration.
+Service layer for ePACK configuration.
 
 This package contains business logic services for each configuration step,
 providing data validation, database operations, and business rules enforcement.

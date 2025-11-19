@@ -1,4 +1,4 @@
-"""Universal cleanup service for V_Track application
+"""Universal cleanup service for ePACK application
 
 Manages automatic cleanup of temporary files across multiple directories:
 - System logs (var/logs/application/)
@@ -22,7 +22,7 @@ paths = get_paths()
 
 
 class CleanupService:
-    """Centralized cleanup service for V_Track files"""
+    """Centralized cleanup service for ePACK files"""
 
     def cleanup_system_files(self) -> Dict:
         """

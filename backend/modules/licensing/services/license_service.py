@@ -1,6 +1,6 @@
 # backend/modules/licensing/services/license_service.py
 """
-V_Track Unified License Service - Phase 2 Refactoring
+ePACK Unified License Service - Phase 2 Refactoring
 ELIMINATES: 5 validation flows, 6 database patterns, 4 JSON parsing duplicates
 UNIFIES: All license operations into single service with clean API
 Created: 2025-08-11 - Phase 2 Step 1

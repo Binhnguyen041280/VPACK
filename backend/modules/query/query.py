@@ -34,25 +34,25 @@ def get_default_output_dir():
     Get Docker-compatible default output directory.
 
     Priority:
-    1. Environment variable VTRACK_OUTPUT_DIR
+    1. Environment variable EPACK_OUTPUT_DIR
     2. Docker default (/app/resources/output)
     3. Local development default based on OS
     """
-    if os.getenv('VTRACK_IN_DOCKER') == 'true':
-        return os.getenv('VTRACK_OUTPUT_DIR', '/app/resources/output')
+    if os.getenv('EPACK_IN_DOCKER') == 'true':
+        return os.getenv('EPACK_OUTPUT_DIR', '/app/resources/output')
     else:
         # Local development mode - OS-specific paths
         import platform
         system = platform.system().lower()
         if system == "darwin":  # macOS
             username = os.environ.get('USER', 'user')
-            return os.getenv('VTRACK_OUTPUT_DIR', f"/Users/{username}/Movies/VTrack/Output")
+            return os.getenv('EPACK_OUTPUT_DIR', f"/Users/{username}/Movies/VTrack/Output")
         elif system == "windows":
             username = os.environ.get('USERNAME', 'User')
-            return os.getenv('VTRACK_OUTPUT_DIR', f"C:\\Users\\{username}\\Videos\\VTrack\\Output")
+            return os.getenv('EPACK_OUTPUT_DIR', f"C:\\Users\\{username}\\Videos\\VTrack\\Output")
         else:  # Linux
             username = os.environ.get('USER', 'user')
-            return os.getenv('VTRACK_OUTPUT_DIR', f"/home/{username}/Videos/VTrack/Output")
+            return os.getenv('EPACK_OUTPUT_DIR', f"/home/{username}/Videos/VTrack/Output")
 
 @query_bp.route('/get-csv-headers', methods=['POST'])
 def get_csv_headers():

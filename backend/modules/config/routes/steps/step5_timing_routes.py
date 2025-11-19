@@ -1,5 +1,5 @@
 """
-Step 5 Timing/Storage Configuration Routes for V.PACK.
+Step 5 Timing/Storage Configuration Routes for ePACK.
 
 REST wrapper endpoints for existing timing and storage configuration logic.
 Integrates with existing processing_config table and save_config validation.

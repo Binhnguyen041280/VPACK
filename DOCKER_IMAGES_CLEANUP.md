@@ -6,8 +6,8 @@
 
 | Image | Tag | ID | Size | Status |
 |-------|-----|----|----|--------|
-| `vtrack-backend` | **phase2** | `e39d94a6e574` | 1.94GB | ✅ **IN USE** (docker-compose.yml) |
-| `vtrack-frontend` | **phase3** | `44d2109e31ff` | 211MB | ✅ **IN USE** (docker-compose.yml) |
+| `epack-backend` | **phase2** | `e39d94a6e574` | 1.94GB | ✅ **IN USE** (docker-compose.yml) |
+| `epack-frontend` | **phase3** | `44d2109e31ff` | 211MB | ✅ **IN USE** (docker-compose.yml) |
 
 **Location**: Local Docker Registry
 **Usage**: Referenced in `docker-compose.yml`
@@ -18,10 +18,10 @@
 
 | Image | Tag | ID | Size | Reason |
 |-------|-----|----|----|--------|
-| `vtrack-backend` | v2 | `e39d94a6e574` | 1.94GB | ⚠️ **DUPLICATE** - Same as phase2 |
-| `vtrack-backend` | fixed | `93a24d631bb2` | 1.94GB | ⚠️ **OLD VERSION** |
-| `vtrack-frontend` | production | `139229ccee75` | 208MB | ⚠️ **OLD VERSION** |
-| `vtrack-frontend-deps` | latest | `42dcf5e11830` | 989MB | ⚠️ **BUILD ARTIFACT** |
+| `epack-backend` | v2 | `e39d94a6e574` | 1.94GB | ⚠️ **DUPLICATE** - Same as phase2 |
+| `epack-backend` | fixed | `93a24d631bb2` | 1.94GB | ⚠️ **OLD VERSION** |
+| `epack-frontend` | production | `139229ccee75` | 208MB | ⚠️ **OLD VERSION** |
+| `epack-frontend-deps` | latest | `42dcf5e11830` | 989MB | ⚠️ **BUILD ARTIFACT** |
 
 **Total wasted space**: ~4.13GB
 
@@ -33,16 +33,16 @@
 
 ```bash
 # Remove duplicate backend tag (same image as phase2)
-docker rmi vtrack-backend:v2
+docker rmi epack-backend:v2
 
 # Remove old backend version
-docker rmi vtrack-backend:fixed
+docker rmi epack-backend:fixed
 
 # Remove old frontend version
-docker rmi vtrack-frontend:production
+docker rmi epack-frontend:production
 
 # Remove intermediate build artifact
-docker rmi vtrack-frontend-deps:latest
+docker rmi epack-frontend-deps:latest
 ```
 
 **Space saved**: ~4.13GB
@@ -79,8 +79,8 @@ grep "image:" docker-compose.yml
 docker images | grep vtrack
 
 # Expected output:
-# vtrack-backend    phase2    e39d94a6e574   1.94GB   7 hours ago
-# vtrack-frontend   phase3    44d2109e31ff   211MB    27 minutes ago
+# epack-backend    phase2    e39d94a6e574   1.94GB   7 hours ago
+# epack-frontend   phase3    44d2109e31ff   211MB    27 minutes ago
 ```
 
 ---
@@ -105,16 +105,16 @@ echo ""
 echo "🗑️  Removing old images..."
 
 # Remove duplicate tag (same image as phase2)
-docker rmi vtrack-backend:v2 2>/dev/null && echo "✅ Removed vtrack-backend:v2" || echo "⚠️  vtrack-backend:v2 not found"
+docker rmi epack-backend:v2 2>/dev/null && echo "✅ Removed epack-backend:v2" || echo "⚠️  epack-backend:v2 not found"
 
 # Remove old backend
-docker rmi vtrack-backend:fixed 2>/dev/null && echo "✅ Removed vtrack-backend:fixed" || echo "⚠️  vtrack-backend:fixed not found"
+docker rmi epack-backend:fixed 2>/dev/null && echo "✅ Removed epack-backend:fixed" || echo "⚠️  epack-backend:fixed not found"
 
 # Remove old frontend
-docker rmi vtrack-frontend:production 2>/dev/null && echo "✅ Removed vtrack-frontend:production" || echo "⚠️  vtrack-frontend:production not found"
+docker rmi epack-frontend:production 2>/dev/null && echo "✅ Removed epack-frontend:production" || echo "⚠️  epack-frontend:production not found"
 
 # Remove build artifact
-docker rmi vtrack-frontend-deps:latest 2>/dev/null && echo "✅ Removed vtrack-frontend-deps:latest" || echo "⚠️  vtrack-frontend-deps:latest not found"
+docker rmi epack-frontend-deps:latest 2>/dev/null && echo "✅ Removed epack-frontend-deps:latest" || echo "⚠️  epack-frontend-deps:latest not found"
 
 echo ""
 echo "✅ Cleanup complete!"
@@ -144,10 +144,10 @@ If you accidentally remove production images, rebuild with:
 
 ```bash
 # Rebuild backend
-docker build --platform linux/arm64 -t vtrack-backend:phase2 ./backend
+docker build --platform linux/arm64 -t epack-backend:phase2 ./backend
 
 # Rebuild frontend
-docker build --platform linux/arm64 -t vtrack-frontend:phase3 ./frontend
+docker build --platform linux/arm64 -t epack-frontend:phase3 ./frontend
 ```
 
 ---
@@ -162,28 +162,28 @@ docker build --platform linux/arm64 -t vtrack-frontend:phase3 ./frontend
 ### View Image Layers
 ```bash
 # Backend layers
-docker history vtrack-backend:phase2
+docker history epack-backend:phase2
 
 # Frontend layers
-docker history vtrack-frontend:phase3
+docker history epack-frontend:phase3
 ```
 
 ### Export Images (Backup)
 ```bash
 # Export backend
-docker save vtrack-backend:phase2 | gzip > vtrack-backend-phase2.tar.gz
+docker save epack-backend:phase2 | gzip > epack-backend-phase2.tar.gz
 
 # Export frontend
-docker save vtrack-frontend:phase3 | gzip > vtrack-frontend-phase3.tar.gz
+docker save epack-frontend:phase3 | gzip > epack-frontend-phase3.tar.gz
 ```
 
 ### Import Images (Restore)
 ```bash
 # Import backend
-docker load < vtrack-backend-phase2.tar.gz
+docker load < epack-backend-phase2.tar.gz
 
 # Import frontend
-docker load < vtrack-frontend-phase3.tar.gz
+docker load < epack-frontend-phase3.tar.gz
 ```
 
 ---
@@ -191,14 +191,14 @@ docker load < vtrack-frontend-phase3.tar.gz
 ## Summary
 
 ✅ **Keep**:
-- `vtrack-backend:phase2` (1.94GB) - Production backend
-- `vtrack-frontend:phase3` (211MB) - Production frontend
+- `epack-backend:phase2` (1.94GB) - Production backend
+- `epack-frontend:phase3` (211MB) - Production frontend
 
 ❌ **Remove**:
-- `vtrack-backend:v2` (duplicate tag)
-- `vtrack-backend:fixed` (old version)
-- `vtrack-frontend:production` (old version)
-- `vtrack-frontend-deps:latest` (build artifact)
+- `epack-backend:v2` (duplicate tag)
+- `epack-backend:fixed` (old version)
+- `epack-frontend:production` (old version)
+- `epack-frontend-deps:latest` (build artifact)
 
 💾 **Total space to save**: ~4.13GB
 

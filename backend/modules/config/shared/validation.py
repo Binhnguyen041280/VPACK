@@ -1,5 +1,5 @@
 """
-Shared validation utilities for V.PACK config routes.
+Shared validation utilities for ePACK config routes.
 
 Provides consistent validation functions for different data types
 used across the step-based configuration system.

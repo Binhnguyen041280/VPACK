@@ -1,4 +1,4 @@
-# 🚀 V_Track Desktop App - Quick Reference
+# 🚀 ePACK Desktop App - Quick Reference
 
 **Last Updated**: 2025-10-15
 **Purpose**: Central reference for API endpoints, CloudFunction integration, and common naming patterns
@@ -9,9 +9,9 @@
 
 ### Environment Variables (.env)
 ```bash
-CLOUD_PAYMENT_URL=https://asia-southeast1-v-track-payments.cloudfunctions.net/create-payment
-CLOUD_WEBHOOK_URL=https://asia-southeast1-v-track-payments.cloudfunctions.net/webhook-handler
-CLOUD_LICENSE_URL=https://asia-southeast1-v-track-payments.cloudfunctions.net/license_service
+CLOUD_PAYMENT_URL=https://asia-southeast1-epack-payments.cloudfunctions.net/create-payment
+CLOUD_WEBHOOK_URL=https://asia-southeast1-epack-payments.cloudfunctions.net/webhook-handler
+CLOUD_LICENSE_URL=https://asia-southeast1-epack-payments.cloudfunctions.net/license_service
 ```
 
 ### ⚠️ CRITICAL: Function Name Inconsistency
@@ -192,7 +192,7 @@ if not url:
 ### 4. Hardcoded URLs
 ```python
 # ❌ WRONG - Brittle
-url = "https://asia-southeast1-v-track-payments.cloudfunctions.net/license-service"
+url = "https://asia-southeast1-epack-payments.cloudfunctions.net/license-service"
 
 # ✅ CORRECT - Flexible
 url = os.getenv('CLOUD_LICENSE_URL')
@@ -205,7 +205,7 @@ url = os.getenv('CLOUD_LICENSE_URL')
 ### Test CloudFunction Connectivity
 ```bash
 # From terminal
-curl "https://asia-southeast1-v-track-payments.cloudfunctions.net/license_service?action=health"
+curl "https://asia-southeast1-epack-payments.cloudfunctions.net/license_service?action=health"
 
 # From Python
 cloud_client = get_cloud_client()
@@ -227,7 +227,7 @@ if not connection_test.get('success'):
 
 ### List Deployed Functions
 ```bash
-gcloud functions list --project=v-track-payments --region=asia-southeast1
+gcloud functions list --project=epack-payments --region=asia-southeast1
 ```
 
 ---
@@ -247,7 +247,7 @@ gcloud functions list --project=v-track-payments --region=asia-southeast1
 
 ### CloudFunction Returns 404
 → Check function name in URL (underscore vs hyphen)
-→ Run: `gcloud functions list --project=v-track-payments`
+→ Run: `gcloud functions list --project=epack-payments`
 
 ### "Unknown action" Error
 → Check action name spelling (must match CloudFunction exactly)
@@ -322,7 +322,7 @@ bbox_full = (
 ---
 
 **See Also**:
-- CloudFunction deployment guide: `/V_Track_CloudFunctions/QUICK_REFERENCE.md`
-- Full naming conventions: `/V_Track/docs/NAMING_CONVENTIONS.md`
+- CloudFunction deployment guide: `/ePACK_CloudFunctions/QUICK_REFERENCE.md`
+- Full naming conventions: `/ePACK/docs/NAMING_CONVENTIONS.md`
 - Payment routes: `/backend/modules/payments/payment_routes.py`
 - CloudFunction client: `/backend/modules/payments/cloud_function_client.py`

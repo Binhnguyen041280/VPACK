@@ -55,7 +55,7 @@ const WelcomeMessage = () => {
         fontWeight="400"
       >
         <Text mb="12px" fontSize="md" fontWeight="600">
-          Welcome to V.PACK! 🚀
+          Welcome to ePACK! 🚀
         </Text>
         <Text mb="10px" fontSize="sm">
           The smart video monitoring solution that lets you:

@@ -1,5 +1,5 @@
 # ============================================================================
-# V_Track Backend - 3-Stage Multi-Stage Dockerfile
+# ePACK Backend - 3-Stage Multi-Stage Dockerfile
 # Python 3.10 | Debian Bookworm | ARM64/AMD64 Compatible
 # Optimized for Computer Vision (MediaPipe, OpenCV-Contrib)
 # ============================================================================
@@ -106,20 +106,20 @@ RUN mkdir -p \
 
 # Add user site-packages to PATH and PYTHONPATH
 # MPLCONFIGDIR to avoid matplotlib warnings with system user
-# VTRACK_IN_DOCKER to enable Docker-aware path resolution
+# EPACK_IN_DOCKER to enable Docker-aware path resolution
 ENV PATH="/home/appuser/.local/bin:$PATH" \
     PYTHONPATH="/home/appuser/.local/lib/python3.10/site-packages" \
     MPLCONFIGDIR="/tmp/matplotlib" \
-    VTRACK_IN_DOCKER="true" \
-    VTRACK_INPUT_DIR="/app/resources/input" \
-    VTRACK_OUTPUT_DIR="/app/resources/output" \
-    VTRACK_SESSION_DIR="/app/var/flask_session"
+    EPACK_IN_DOCKER="true" \
+    EPACK_INPUT_DIR="/app/resources/input" \
+    EPACK_OUTPUT_DIR="/app/resources/output" \
+    EPACK_SESSION_DIR="/app/var/flask_session"
 
 # Build metadata labels
 ARG BUILD_DATE
 LABEL service="BACKEND" \
       build.date="${BUILD_DATE}" \
-      description="V_Track Backend Service"
+      description="ePACK Backend Service"
 
 # Switch to non-root user
 USER appuser

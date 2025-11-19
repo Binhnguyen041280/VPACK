@@ -1,4 +1,4 @@
-# V_Track - Intelligent Video Processing & Tracking System
+# ePACK - Intelligent Video Processing & Tracking System
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-3.0.0-green.svg)](https://flask.palletsprojects.com/)
@@ -7,7 +7,7 @@
 
 ## 📋 Overview
 
-V_Track is an advanced desktop application for automated video processing, event detection, and tracking code analysis. It processes video files from multiple sources (local storage, cloud storage) and automatically detects packing events using AI-powered computer vision techniques.
+ePACK is an advanced desktop application for automated video processing, event detection, and tracking code analysis. It processes video files from multiple sources (local storage, cloud storage) and automatically detects packing events using AI-powered computer vision techniques.
 
 ### Key Features
 
@@ -326,7 +326,7 @@ See [docs/architecture/overview.md](docs/architecture/overview.md) for complete 
 
 ## 🌐 Timezone Management
 
-V_Track uses IANA timezone database for accurate timestamp handling:
+ePACK uses IANA timezone database for accurate timestamp handling:
 
 - **System Timezone**: Configured during setup (Step 1)
 - **UTC Storage**: All timestamps stored in UTC (milliseconds)
@@ -358,7 +358,7 @@ GET /health
 Response:
 {
   "status": "healthy",
-  "service": "V_Track Desktop Backend",
+  "service": "ePACK Desktop Backend",
   "version": "2.1.0",
   "modules": {
     "computer_vision": "enabled",
@@ -400,7 +400,7 @@ This is a commercial desktop application. For feature requests or bug reports, c
 
 ## 📞 Support
 
-- **Email**: support@vtrack.com
+- **Email**: support@epack.com
 - **Documentation**: See `/docs` folder
 - **Health Check**: `http://localhost:8080/health`
 

@@ -1,6 +1,6 @@
-# V_Track Docker Compose Deployment Guide
+# ePACK Docker Compose Deployment Guide
 
-Complete guide for deploying V_Track application using Docker Compose with pre-built images or development mode.
+Complete guide for deploying ePACK application using Docker Compose with pre-built images or development mode.
 
 ---
 
@@ -43,8 +43,8 @@ Ensure these images exist locally:
 docker images | grep vtrack
 
 # Expected output:
-# vtrack-backend     phase2    <image-id>   <size>
-# vtrack-frontend    phase3    <image-id>   <size>
+# epack-backend     phase2    <image-id>   <size>
+# epack-frontend    phase3    <image-id>   <size>
 ```
 
 If images don't exist, build them first:
@@ -52,11 +52,11 @@ If images don't exist, build them first:
 ```bash
 # Build backend
 cd backend
-docker build -t vtrack-backend:phase2 --platform linux/arm64 .
+docker build -t epack-backend:phase2 --platform linux/arm64 .
 
 # Build frontend
 cd ../frontend
-docker build -t vtrack-frontend:phase3 --platform linux/arm64 .
+docker build -t epack-frontend:phase3 --platform linux/arm64 .
 ```
 
 ---
@@ -125,8 +125,8 @@ docker-compose ps
 
 # Expected output:
 # NAME                 STATUS         PORTS
-# vtrack-backend       Up (healthy)   0.0.0.0:8080->8080/tcp
-# vtrack-frontend      Up (healthy)   0.0.0.0:3000->3000/tcp
+# epack-backend       Up (healthy)   0.0.0.0:8080->8080/tcp
+# epack-frontend      Up (healthy)   0.0.0.0:3000->3000/tcp
 
 # Test backend health
 curl http://localhost:8080/health
@@ -208,8 +208,8 @@ DEPLOYMENT_MODE=production
 DOCKER_PLATFORM=linux/arm64
 
 # Pre-built images
-BACKEND_IMAGE=vtrack-backend:phase2
-FRONTEND_IMAGE=vtrack-frontend:phase3
+BACKEND_IMAGE=epack-backend:phase2
+FRONTEND_IMAGE=epack-frontend:phase3
 ```
 
 #### Required Variables
@@ -267,13 +267,13 @@ Docker Compose creates persistent named volumes for data storage:
 
 | Volume Name | Container Path | Purpose |
 |-------------|----------------|---------|
-| vtrack-db | /app/database | SQLite databases, backups |
-| vtrack-logs | /app/logs | Application logs |
-| vtrack-sessions | /app/var/flask_session | Flask session storage |
-| vtrack-cache | /app/var/cache | Temporary cache files |
-| vtrack-uploads | /app/var/uploads | File uploads |
-| vtrack-input | /app/resources/input | Video input resources |
-| vtrack-output | /app/resources/output | Video output/recordings |
+| epack-db | /app/database | SQLite databases, backups |
+| epack-logs | /app/logs | Application logs |
+| epack-sessions | /app/var/flask_session | Flask session storage |
+| epack-cache | /app/var/cache | Temporary cache files |
+| epack-uploads | /app/var/uploads | File uploads |
+| epack-input | /app/resources/input | Video input resources |
+| epack-output | /app/resources/output | Video output/recordings |
 
 ### Volume Commands
 
@@ -282,22 +282,22 @@ Docker Compose creates persistent named volumes for data storage:
 docker volume ls | grep vtrack
 
 # Inspect volume
-docker volume inspect vtrack-db
+docker volume inspect epack-db
 
 # View volume contents
-docker run --rm -v vtrack-db:/data alpine ls -lah /data
+docker run --rm -v epack-db:/data alpine ls -lah /data
 
 # Backup volume
 docker run --rm \
-  -v vtrack-db:/data \
+  -v epack-db:/data \
   -v $(pwd)/backup:/backup \
-  alpine tar czf /backup/vtrack-db-$(date +%Y%m%d).tar.gz -C /data .
+  alpine tar czf /backup/epack-db-$(date +%Y%m%d).tar.gz -C /data .
 
 # Restore volume
 docker run --rm \
-  -v vtrack-db:/data \
+  -v epack-db:/data \
   -v $(pwd)/backup:/backup \
-  alpine tar xzf /backup/vtrack-db-20251112.tar.gz -C /data
+  alpine tar xzf /backup/epack-db-20251112.tar.gz -C /data
 
 # Remove all volumes (WARNING: Data loss!)
 docker-compose down -v
@@ -315,7 +315,7 @@ BACKUP_DIR="./backups/$(date +%Y%m%d)"
 mkdir -p "$BACKUP_DIR"
 
 # Backup all volumes
-for vol in vtrack-db vtrack-logs vtrack-sessions vtrack-uploads vtrack-input vtrack-output; do
+for vol in epack-db epack-logs epack-sessions epack-uploads epack-input epack-output; do
   echo "Backing up $vol..."
   docker run --rm \
     -v $vol:/data \
@@ -337,7 +337,7 @@ echo "Backup completed: $BACKUP_DIR"
 │  Host Machine (Mac)                     │
 │                                         │
 │  ┌──────────────────────────────────┐  │
-│  │  vtrack-network (bridge)         │  │
+│  │  epack-network (bridge)         │  │
 │  │                                  │  │
 │  │  ┌──────────┐    ┌────────────┐ │  │
 │  │  │ backend  │    │  frontend  │ │  │
@@ -377,7 +377,7 @@ NEXT_PUBLIC_API_URL=http://YOUR_SERVER_IP:8080
 
 ```bash
 # Check network
-docker network inspect vtrack-network
+docker network inspect epack-network
 
 # Test connectivity from frontend to backend
 docker-compose exec frontend wget -O- http://backend:8080/health
@@ -420,11 +420,11 @@ healthcheck:
 docker-compose ps
 
 # Detailed health info
-docker inspect vtrack-backend --format='{{.State.Health.Status}}'
-docker inspect vtrack-frontend --format='{{.State.Health.Status}}'
+docker inspect epack-backend --format='{{.State.Health.Status}}'
+docker inspect epack-frontend --format='{{.State.Health.Status}}'
 
 # View health check logs
-docker inspect vtrack-backend --format='{{json .State.Health}}' | jq
+docker inspect epack-backend --format='{{json .State.Health}}' | jq
 ```
 
 ---
@@ -480,11 +480,11 @@ curl http://localhost:8080/health
 ```bash
 # Fix volume permissions
 docker-compose down
-docker volume rm vtrack-db vtrack-logs
+docker volume rm epack-db epack-logs
 docker-compose up -d
 
 # Or manually fix permissions
-docker run --rm -v vtrack-db:/data alpine chmod -R 777 /data
+docker run --rm -v epack-db:/data alpine chmod -R 777 /data
 ```
 
 #### 5. Images Not Found
@@ -494,8 +494,8 @@ docker run --rm -v vtrack-db:/data alpine chmod -R 777 /data
 docker images | grep vtrack
 
 # If missing, build them
-docker build -t vtrack-backend:phase2 --platform linux/arm64 ./backend
-docker build -t vtrack-frontend:phase3 --platform linux/arm64 ./frontend
+docker build -t epack-backend:phase2 --platform linux/arm64 ./backend
+docker build -t epack-frontend:phase3 --platform linux/arm64 ./frontend
 ```
 
 #### 6. Healthy Check Fails
@@ -536,8 +536,8 @@ docker-compose logs -f backend
 docker-compose pull
 
 # Or rebuild local images
-docker build -t vtrack-backend:phase2 --platform linux/arm64 ./backend
-docker build -t vtrack-frontend:phase3 --platform linux/arm64 ./frontend
+docker build -t epack-backend:phase2 --platform linux/arm64 ./backend
+docker build -t epack-frontend:phase3 --platform linux/arm64 ./frontend
 
 # Restart with new images
 docker-compose down
@@ -557,7 +557,7 @@ docker-compose down -v
 docker system prune -a
 
 # Remove specific volumes
-docker volume rm vtrack-cache vtrack-sessions
+docker volume rm epack-cache epack-sessions
 ```
 
 ### Monitor Resources
@@ -641,7 +641,7 @@ docker-compose exec backend curl http://localhost:8080/metrics
 
 ### Logs Location
 
-- **Backend logs**: `vtrack-logs` volume → `/app/logs/vtrack.log`
+- **Backend logs**: `epack-logs` volume → `/app/logs/vtrack.log`
 - **Frontend logs**: `docker-compose logs frontend`
 - **Container logs**: `docker-compose logs -f`
 
@@ -680,4 +680,4 @@ This Docker Compose setup provides:
 For additional help, refer to:
 - Docker documentation: https://docs.docker.com/
 - Docker Compose documentation: https://docs.docker.com/compose/
-- V_Track repository: [Your Repository URL]
+- ePACK repository: [Your Repository URL]
