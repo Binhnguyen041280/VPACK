@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "build:firebase": "cp next.config.firebase.js next.config.js.bak && cp next.config.firebase.js next.config.js && next build && mv next.config.js.bak next.config.js",
+    "deploy:firebase": "npm run build:firebase && firebase deploy --only hosting"
   },
   "dependencies": {
     "@babel/traverse": "^7.24.6",
