@@ -683,6 +683,334 @@ class VTrackCloudClient:
                 'error': str(e)
             }
 
+    # ==================== ACTIVATION TRACKING METHODS ====================
+
+    def check_activation(self, license_key: str, machine_fingerprint: str) -> Dict[str, Any]:
+        """
+        Check if license can be activated on this machine.
+        Calls Cloud Function as source of truth.
+
+        Args:
+            license_key: License key to check
+            machine_fingerprint: Unique machine identifier
+
+        Returns:
+            {
+                'success': bool,
+                'can_activate': bool,
+                'reason': str,
+                'license_data': dict,
+                'error': str (if failed)
+            }
+        """
+        try:
+            logger.info(f"🔍 Checking activation for: {license_key[:12]}... on {machine_fingerprint[:16]}...")
+
+            # Check internet connectivity
+            has_internet = self._check_internet_connectivity()
+            if not has_internet:
+                logger.warning("⚠️ No internet connectivity - activation check unavailable")
+                return {
+                    'success': False,
+                    'can_activate': False,
+                    'error': 'No internet connection - please check your internet connection'
+                }
+
+            # Prepare request data
+            request_data = {
+                'action': 'check_activation',
+                'license_key': license_key,
+                'machine_fingerprint': machine_fingerprint
+            }
+
+            # Try activation check with retry logic
+            activation_errors = []
+            for attempt in range(self.retry_attempts):
+                try:
+                    logger.debug(f"🌐 Activation check attempt {attempt + 1}/{self.retry_attempts}")
+
+                    response = requests.post(
+                        self.endpoints['license_service'],
+                        json=request_data,
+                        timeout=self.license_timeout,
+                        headers=self.default_headers
+                    )
+
+                    if response.status_code == 200:
+                        result = response.json()
+                        logger.info(f"✅ Activation check completed: {result.get('reason')}")
+                        return {
+                            'success': True,
+                            **result
+                        }
+                    else:
+                        error_msg = f"Activation check failed: HTTP {response.status_code}"
+                        activation_errors.append(error_msg)
+                        if 400 <= response.status_code < 500:
+                            try:
+                                error_data = response.json()
+                                return {
+                                    'success': False,
+                                    'can_activate': False,
+                                    'error': error_data.get('error', error_msg),
+                                    'status_code': response.status_code
+                                }
+                            except:
+                                pass
+                            break  # Don't retry client errors
+
+                except requests.exceptions.Timeout:
+                    activation_errors.append(f"Activation check timeout (attempt {attempt + 1})")
+                except requests.exceptions.ConnectionError as e:
+                    activation_errors.append(f"Connection error (attempt {attempt + 1}): {str(e)[:50]}")
+                except Exception as e:
+                    activation_errors.append(f"Unexpected error (attempt {attempt + 1}): {str(e)[:50]}")
+
+                # Short delay between retries
+                if attempt < self.retry_attempts - 1:
+                    import time
+                    time.sleep(1)
+
+            # All attempts failed
+            logger.warning(f"⚠️ Activation check failed after {self.retry_attempts} attempts")
+            return {
+                'success': False,
+                'can_activate': False,
+                'error': f'Connection timeout - please check your internet connection'
+            }
+
+        except Exception as e:
+            logger.error(f"Activation check error: {str(e)}")
+            return {
+                'success': False,
+                'can_activate': False,
+                'error': str(e)
+            }
+
+    def record_activation(self, license_key: str, machine_fingerprint: str, device_info: Dict = None) -> Dict[str, Any]:
+        """
+        Record activation on Cloud.
+        Calls Cloud Function as source of truth.
+
+        Args:
+            license_key: License key to activate
+            machine_fingerprint: Unique machine identifier
+            device_info: Optional device information
+
+        Returns:
+            {
+                'success': bool,
+                'activation_id': str,
+                'error': str (if failed)
+            }
+        """
+        try:
+            logger.info(f"🔄 Recording activation for: {license_key[:12]}... on {machine_fingerprint[:16]}...")
+
+            # Check internet connectivity
+            has_internet = self._check_internet_connectivity()
+            if not has_internet:
+                logger.warning("⚠️ No internet connectivity - activation recording unavailable")
+                return {
+                    'success': False,
+                    'error': 'No internet connection - please check your internet connection'
+                }
+
+            # Prepare device info if not provided
+            if device_info is None:
+                device_info = self._get_device_info()
+
+            # Prepare request data
+            request_data = {
+                'action': 'record_activation',
+                'license_key': license_key,
+                'machine_fingerprint': machine_fingerprint,
+                'device_info': device_info
+            }
+
+            # Try recording with retry logic
+            record_errors = []
+            for attempt in range(self.retry_attempts):
+                try:
+                    logger.debug(f"🌐 Record activation attempt {attempt + 1}/{self.retry_attempts}")
+
+                    response = requests.post(
+                        self.endpoints['license_service'],
+                        json=request_data,
+                        timeout=self.license_timeout,
+                        headers=self.default_headers
+                    )
+
+                    if response.status_code == 200:
+                        result = response.json()
+                        logger.info(f"✅ Activation recorded: {result.get('activation_id', 'unknown')}")
+                        return {
+                            'success': True,
+                            **result
+                        }
+                    elif response.status_code == 403:
+                        # Activation denied
+                        try:
+                            error_data = response.json()
+                            return {
+                                'success': False,
+                                'error': error_data.get('error', 'Activation denied'),
+                                'details': error_data.get('details')
+                            }
+                        except:
+                            return {
+                                'success': False,
+                                'error': 'Activation denied by server'
+                            }
+                    else:
+                        error_msg = f"Record activation failed: HTTP {response.status_code}"
+                        record_errors.append(error_msg)
+                        if 400 <= response.status_code < 500:
+                            break  # Don't retry client errors
+
+                except requests.exceptions.Timeout:
+                    record_errors.append(f"Record activation timeout (attempt {attempt + 1})")
+                except requests.exceptions.ConnectionError as e:
+                    record_errors.append(f"Connection error (attempt {attempt + 1}): {str(e)[:50]}")
+                except Exception as e:
+                    record_errors.append(f"Unexpected error (attempt {attempt + 1}): {str(e)[:50]}")
+
+                # Short delay between retries
+                if attempt < self.retry_attempts - 1:
+                    import time
+                    time.sleep(1)
+
+            # All attempts failed
+            logger.warning(f"⚠️ Record activation failed after {self.retry_attempts} attempts")
+            return {
+                'success': False,
+                'error': f'Connection timeout - please check your internet connection'
+            }
+
+        except Exception as e:
+            logger.error(f"Record activation error: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def deactivate(self, license_key: str, machine_fingerprint: str) -> Dict[str, Any]:
+        """
+        Deactivate license on this machine.
+        Calls Cloud Function to remove activation.
+
+        Args:
+            license_key: License key to deactivate
+            machine_fingerprint: Unique machine identifier
+
+        Returns:
+            {
+                'success': bool,
+                'error': str (if failed)
+            }
+        """
+        try:
+            logger.info(f"🔄 Deactivating license: {license_key[:12]}... on {machine_fingerprint[:16]}...")
+
+            # Check internet connectivity
+            has_internet = self._check_internet_connectivity()
+            if not has_internet:
+                logger.warning("⚠️ No internet connectivity - deactivation unavailable")
+                return {
+                    'success': False,
+                    'error': 'No internet connection - please check your internet connection'
+                }
+
+            # Prepare request data
+            request_data = {
+                'action': 'deactivate',
+                'license_key': license_key,
+                'machine_fingerprint': machine_fingerprint
+            }
+
+            # Try deactivation with retry logic
+            deactivate_errors = []
+            for attempt in range(self.retry_attempts):
+                try:
+                    logger.debug(f"🌐 Deactivation attempt {attempt + 1}/{self.retry_attempts}")
+
+                    response = requests.post(
+                        self.endpoints['license_service'],
+                        json=request_data,
+                        timeout=self.license_timeout,
+                        headers=self.default_headers
+                    )
+
+                    if response.status_code == 200:
+                        result = response.json()
+                        logger.info(f"✅ License deactivated successfully")
+                        return {
+                            'success': True,
+                            **result
+                        }
+                    else:
+                        error_msg = f"Deactivation failed: HTTP {response.status_code}"
+                        deactivate_errors.append(error_msg)
+                        if 400 <= response.status_code < 500:
+                            try:
+                                error_data = response.json()
+                                return {
+                                    'success': False,
+                                    'error': error_data.get('error', error_msg)
+                                }
+                            except:
+                                pass
+                            break  # Don't retry client errors
+
+                except requests.exceptions.Timeout:
+                    deactivate_errors.append(f"Deactivation timeout (attempt {attempt + 1})")
+                except requests.exceptions.ConnectionError as e:
+                    deactivate_errors.append(f"Connection error (attempt {attempt + 1}): {str(e)[:50]}")
+                except Exception as e:
+                    deactivate_errors.append(f"Unexpected error (attempt {attempt + 1}): {str(e)[:50]}")
+
+                # Short delay between retries
+                if attempt < self.retry_attempts - 1:
+                    import time
+                    time.sleep(1)
+
+            # All attempts failed
+            logger.warning(f"⚠️ Deactivation failed after {self.retry_attempts} attempts")
+            return {
+                'success': False,
+                'error': f'Connection timeout - please check your internet connection'
+            }
+
+        except Exception as e:
+            logger.error(f"Deactivation error: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def _get_device_info(self) -> Dict[str, Any]:
+        """Get device information for activation record."""
+        import platform
+        import socket
+        import uuid
+
+        try:
+            return {
+                'os': f"{platform.system()} {platform.release()}",
+                'hostname': socket.gethostname(),
+                'mac_address': ':'.join(['{:02x}'.format((uuid.getnode() >> ele) & 0xff)
+                                        for ele in range(0, 48, 8)][::-1]),
+                'app_version': self.user_agent,
+                'python_version': platform.python_version()
+            }
+        except Exception as e:
+            logger.warning(f"Failed to get device info: {e}")
+            return {
+                'os': 'unknown',
+                'hostname': 'unknown',
+                'app_version': self.user_agent
+            }
+
 # Singleton management - UNCHANGED
 _cloud_client: Optional[VTrackCloudClient] = None
 

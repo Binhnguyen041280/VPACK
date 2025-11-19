@@ -939,18 +939,20 @@ def get_license_status():
                 # FIXED: Actually validate license via cloud instead of just testing connectivity
                 validation_source = 'database'  # Default fallback
                 is_online = False
-                
+                cloud_license_data = None  # Store cloud data when available
+
                 try:
                     cloud_client = get_cloud_client()
-                    
+
                     # Actually validate the license via cloud
                     license_key = license_data.get('license_key', '')
                     if license_key:
                         validation_result = cloud_client.validate_license(license_key)
-                        
+
                         if validation_result.get('success') and validation_result.get('source') == 'cloud':
                             validation_source = 'cloud'
                             is_online = True
+                            cloud_license_data = validation_result.get('data', {})  # ✅ Store cloud data
                             logger.info(f"✅ License validated via cloud: {license_key[:12]}...")
                         else:
                             logger.info(f"📋 License validated via database fallback: {license_key[:12]}...")
@@ -958,37 +960,61 @@ def get_license_status():
                         # No license key to validate, just test connection
                         connectivity_test = cloud_client.test_connection()
                         is_online = connectivity_test.get('success', False)
-                        
+
                 except Exception as e:
                     logger.warning(f"⚠️ Cloud validation failed, using database: {str(e)}")
                     validation_source = 'database'
                     is_online = False
-                
-                response_data = {
-                    'success': True,
-                    'license': {
+
+                # ✅ SECURITY FIX: Use Cloud data as source of truth when available
+                if cloud_license_data:
+                    # Cloud data is authoritative - prevents local DB tampering
+                    response_license_data = {
+                        'license_key': cloud_license_data.get('license_key', license_data.get('license_key', '')),
+                        'customer_email': cloud_license_data.get('customer_email', license_data.get('customer_email', '')),
+                        'package_name': cloud_license_data.get('package_name', license_data.get('product_type', 'desktop')),
+                        'package_type': cloud_license_data.get('package_name', license_data.get('product_type', 'desktop')),
+                        'expires_at': cloud_license_data.get('expires_at'),  # ← FROM CLOUD (Firestore)
+                        'status': cloud_license_data.get('status', 'active'),
+                        'features': cloud_license_data.get('features', features_list),
+                        'activated_at': license_data.get('activated_at'),  # Keep local activation time
+                        'is_active': cloud_license_data.get('status') == 'active',
+                        'is_trial': cloud_license_data.get('package_name', '').startswith('trial')
+                    }
+                    logger.info(f"✅ Using Cloud data as source of truth for expires_at: {cloud_license_data.get('expires_at')}")
+                else:
+                    # Fallback to local database when cloud unavailable
+                    response_license_data = {
                         'license_key': license_data.get('license_key', ''),
                         'customer_email': license_data.get('customer_email', ''),
                         'package_name': license_data.get('product_type', 'desktop'),
                         'package_type': license_data.get('product_type', 'desktop'),
-                        'expires_at': license_data.get('expires_at'),
+                        'expires_at': license_data.get('expires_at'),  # ← FROM LOCAL DB (fallback only)
                         'status': license_data.get('status', 'active'),
                         'features': features_list,
                         'activated_at': license_data.get('activated_at'),
                         'is_active': True,
                         'is_trial': license_data.get('product_type', '').startswith('trial')
-                    },
+                    }
+                    logger.warning(f"⚠️ Using local DB fallback for expires_at: {license_data.get('expires_at')}")
+
+                response_data = {
+                    'success': True,
+                    'license': response_license_data,
                     'system_status': {
                         'online': is_online,
-                        'source': validation_source,  # FIXED: Use actual validation source
+                        'source': validation_source,
                         'timestamp': datetime.now().isoformat()
                     }
                 }
 
                 # NEW: Add trial_status for trial licenses
-                if license_data.get('product_type', '').startswith('trial'):
+                # ✅ Use cloud_license_data if available, otherwise fallback to license_data
+                product_type = cloud_license_data.get('package_name') if cloud_license_data else license_data.get('product_type', '')
+                if product_type.startswith('trial'):
                     try:
-                        expires_at = license_data.get('expires_at')
+                        # ✅ Prefer cloud expires_at over local DB
+                        expires_at = cloud_license_data.get('expires_at') if cloud_license_data else license_data.get('expires_at')
                         if expires_at:
                             expiry_date = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
                             days_left = (expiry_date - datetime.now()).days
@@ -999,7 +1025,7 @@ def get_license_status():
                                 'days_left': max(0, days_left),
                                 'expires_at': expires_at
                             }
-                            logger.info(f"✅ Trial status added: {days_left} days left")
+                            logger.info(f"✅ Trial status added: {days_left} days left (source: {validation_source})")
                     except Exception as e:
                         logger.warning(f"Failed to calculate trial days: {e}")
                         response_data['trial_status'] = {

@@ -12,6 +12,27 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 from enum import Enum
 
+# Import timezone utilities
+try:
+    from ...utils.timezone_utils import now_utc, to_utc, parse_iso_utc, to_iso_utc
+except ImportError:
+    try:
+        from modules.utils.timezone_utils import now_utc, to_utc, parse_iso_utc, to_iso_utc
+    except ImportError:
+        # Fallback to basic UTC functions
+        import pytz
+        UTC = pytz.UTC
+        def now_utc():
+            return datetime.now(UTC)
+        def to_utc(dt, source_tz=None):
+            if dt.tzinfo is None:
+                return UTC.localize(dt)
+            return dt.astimezone(UTC)
+        def parse_iso_utc(s):
+            return datetime.fromisoformat(s.replace('Z', '+00:00')) if s else None
+        def to_iso_utc(dt):
+            return dt.strftime('%Y-%m-%dT%H:%M:%SZ') if dt else None
+
 # Import repository pattern from Phase 1
 try:
     from ..repositories.license_repository import get_license_repository
@@ -338,8 +359,8 @@ class LicenseService:
                 return False
             
             current_fingerprint = self._get_machine_fingerprint()
-            activation_time = datetime.now().isoformat()
-            
+            activation_time = to_iso_utc(now_utc())
+
             # Prepare device info
             device_info = {
                 "activated_via": "license_service",
@@ -407,7 +428,7 @@ class LicenseService:
                 'checks_passed': [],
                 'checks_failed': [],
                 'warnings': [],
-                'timestamp': datetime.now().isoformat(),
+                'timestamp': to_iso_utc(now_utc()),
                 'strict_mode': strict_mode,
                 'force_online': force_online
             }
@@ -547,7 +568,7 @@ class LicenseService:
                 'status': LicenseStatus.ERROR.value,
                 'error': f'Validation process failed: {str(e)}',
                 'validation_source': ValidationSource.ERROR.value,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': to_iso_utc(now_utc())
             }
     
     def _is_obviously_invalid_license(self, license_key: str) -> bool:
@@ -600,7 +621,7 @@ class LicenseService:
                 'message': message,
                 'license': license_data,
                 'expiry_details': expiry_result,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': to_iso_utc(now_utc())
             }
             
         except Exception as e:
@@ -673,7 +694,7 @@ class LicenseService:
                         'activated_at': activation_check['activated_at']
                     },
                     'validation_source': validation_result['validation_source'],
-                    'timestamp': datetime.now().isoformat()
+                    'timestamp': to_iso_utc(now_utc())
                 }
             
             elif activation_check['activation_status'] == 'activated_elsewhere':
@@ -725,10 +746,10 @@ class LicenseService:
                         'status': 'activated',
                         'features': license_data.get('features', []),
                         'machine_fingerprint': activation_check['current_machine'],
-                        'activated_at': datetime.now().isoformat()
+                        'activated_at': to_iso_utc(now_utc())
                     },
                     'validation_source': validation_result['validation_source'],
-                    'timestamp': datetime.now().isoformat(),
+                    'timestamp': to_iso_utc(now_utc()),
                     'warnings': validation_result.get('warnings', [])
                 }
             
@@ -738,14 +759,247 @@ class LicenseService:
                     'error': f"Unknown activation status: {activation_check['activation_status']}",
                     'activation_status': 'unknown_status'
                 }
-                
+
         except Exception as e:
             logger.error(f"❌ License activation failed: {str(e)}")
             return {
                 'success': False,
                 'error': str(e),
                 'activation_status': 'exception_error',
-                'timestamp': datetime.now().isoformat()
+                'timestamp': to_iso_utc(now_utc())
+            }
+
+    def activate_license_cloud(self, license_key: str) -> Dict[str, Any]:
+        """
+        Activate license using Cloud Functions as SOURCE OF TRUTH.
+        This is the new activation flow that prevents bypass by deleting local database.
+
+        Flow:
+        1. Get machine fingerprint
+        2. Call Cloud Function to check activation
+        3. If can activate, call Cloud Function to record
+        4. Cache license data locally
+        5. Return result
+        """
+        try:
+            logger.info(f"🔑 Starting cloud-based activation: {license_key[:12]}...")
+
+            # Step 1: Get machine fingerprint
+            machine_fingerprint = self._get_machine_fingerprint()
+
+            # Step 2: Get cloud client
+            cloud_client = self._get_cloud_client()
+            if not cloud_client:
+                return {
+                    'success': False,
+                    'error': 'Cannot connect to activation server',
+                    'requires_internet': True,
+                    'error_code': 'NO_CLOUD_CLIENT'
+                }
+
+            # Step 3: Check activation with Cloud (SOURCE OF TRUTH)
+            check_result = cloud_client.check_activation(license_key, machine_fingerprint)
+
+            if not check_result.get('success'):
+                # Network error - cannot proceed
+                return {
+                    'success': False,
+                    'error': check_result.get('error', 'Cannot connect to activation server'),
+                    'requires_internet': True,
+                    'error_code': 'CLOUD_CHECK_FAILED'
+                }
+
+            if not check_result.get('can_activate'):
+                # Cannot activate - return reason with Vietnamese error messages
+                reason = check_result.get('reason', 'unknown')
+
+                error_messages = {
+                    'already_activated_on_another_device': 'License đã được kích hoạt trên thiết bị khác',
+                    'license_expired': 'License đã hết hạn',
+                    'license_inactive': 'License không hợp lệ',
+                    'license_not_found': 'Không tìm thấy license'
+                }
+
+                error_msg = error_messages.get(reason, f'Không thể kích hoạt: {reason}')
+
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'error_code': reason.upper(),
+                    'activation_status': 'denied',
+                    'reason': reason
+                }
+
+            # Step 4: Record activation on Cloud (skip if re-activation on same machine)
+            if check_result.get('reason') != 'same_machine_reactivation':
+                record_result = cloud_client.record_activation(
+                    license_key,
+                    machine_fingerprint
+                )
+
+                if not record_result.get('success'):
+                    return {
+                        'success': False,
+                        'error': record_result.get('error', 'Failed to record activation'),
+                        'error_code': 'RECORD_FAILED'
+                    }
+
+            # Step 5: Cache license data locally (for offline access)
+            license_data = check_result.get('license_data', {})
+            self._cache_license_locally(license_key, license_data, machine_fingerprint)
+
+            # Step 6: Return success
+            is_reactivation = check_result.get('reason') == 'same_machine_reactivation'
+
+            return {
+                'success': True,
+                'valid': True,
+                'message': 'License activated successfully',
+                'activation_status': 'reactivated' if is_reactivation else 'activated',
+                'is_reactivation': is_reactivation,
+                'data': {
+                    'license_key': license_key,
+                    'customer_email': license_data.get('customer_email', ''),
+                    'product_type': license_data.get('product_type', ''),
+                    'package_type': license_data.get('package_type', ''),
+                    'expires_at': license_data.get('valid_until', ''),
+                    'features': license_data.get('features', []),
+                    'status': 'active'
+                },
+                'validation_source': 'cloud',
+                'timestamp': to_iso_utc(now_utc())
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Cloud-based activation failed: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e),
+                'error_code': 'EXCEPTION',
+                'activation_status': 'exception_error',
+                'timestamp': to_iso_utc(now_utc())
+            }
+
+    def _cache_license_locally(self, license_key: str, license_data: Dict, machine_fingerprint: str):
+        """
+        Cache license data locally for offline access.
+        NOTE: This is ONLY for caching, NOT for validation.
+        """
+        try:
+            repository = self._get_repository()
+            if not repository:
+                logger.warning("⚠️ Repository unavailable - cannot cache locally")
+                return
+
+            # Try to update or create cache
+            try:
+                repository.update_license_cache(
+                    license_key=license_key,
+                    customer_email=license_data.get('customer_email', ''),
+                    product_type=license_data.get('product_type', license_data.get('package_type', '')),
+                    status='active',
+                    expires_at=license_data.get('valid_until', license_data.get('expires_at')),
+                    machine_fingerprint=machine_fingerprint,
+                    features=license_data.get('features', [])
+                )
+                logger.info(f"✅ License cached locally: {license_key[:12]}...")
+            except AttributeError:
+                # Repository doesn't have update_license_cache method yet
+                logger.warning("⚠️ Repository doesn't support update_license_cache - caching skipped")
+
+        except Exception as e:
+            # Logging error but don't fail activation
+            logger.warning(f"⚠️ Failed to cache license locally: {e}")
+
+    def validate_license_cloud(self, license_key: str = None) -> Dict[str, Any]:
+        """
+        Validate license using Cloud as primary source.
+        Falls back to cache only when offline.
+        """
+        try:
+            # Get license key from cache if not provided
+            if license_key is None:
+                repository = self._get_repository()
+                if repository:
+                    cached_license = repository.get_active_license()
+                    if cached_license:
+                        license_key = cached_license.get('license_key')
+
+                if not license_key:
+                    return {
+                        'valid': False,
+                        'error': 'No active license found'
+                    }
+
+            machine_fingerprint = self._get_machine_fingerprint()
+
+            # Try Cloud validation first
+            cloud_client = self._get_cloud_client()
+            if cloud_client:
+                check_result = cloud_client.check_activation(license_key, machine_fingerprint)
+
+                if check_result.get('success'):
+                    # Cloud is available
+                    can_activate = check_result.get('can_activate', False)
+                    reason = check_result.get('reason', '')
+
+                    if reason in ['same_machine_reactivation', 'new_activation']:
+                        # Valid and activated on this machine
+                        return {
+                            'valid': True,
+                            'license_data': check_result.get('license_data'),
+                            'validation_source': 'cloud',
+                            'reason': reason
+                        }
+                    else:
+                        error_messages = {
+                            'already_activated_on_another_device': 'License đã được kích hoạt trên thiết bị khác',
+                            'license_expired': 'License đã hết hạn',
+                            'license_inactive': 'License không còn hoạt động',
+                            'license_not_found': 'Không tìm thấy license'
+                        }
+                        return {
+                            'valid': False,
+                            'error': error_messages.get(reason, f'Lỗi: {reason}'),
+                            'validation_source': 'cloud',
+                            'reason': reason
+                        }
+
+            # Cloud unavailable - use local cache with warning
+            repository = self._get_repository()
+            if repository:
+                cached_license = repository.get_license_by_key(license_key)
+
+                if cached_license and cached_license.get('status') == 'active':
+                    # Check if not expired
+                    expiry_result = self._validate_expiry(cached_license)
+
+                    if expiry_result.get('expired'):
+                        return {
+                            'valid': False,
+                            'error': 'License expired',
+                            'validation_source': 'cache'
+                        }
+
+                    return {
+                        'valid': True,
+                        'license_data': cached_license,
+                        'validation_source': 'cache',
+                        'warning': 'Offline mode - using cached license data'
+                    }
+
+            return {
+                'valid': False,
+                'error': 'Cannot validate license - no internet connection',
+                'validation_source': 'none'
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Cloud validation failed: {str(e)}")
+            return {
+                'valid': False,
+                'error': str(e),
+                'validation_source': 'error'
             }
 
 # ==================== SERVICE INSTANCE MANAGEMENT ====================

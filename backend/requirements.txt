@@ -48,6 +48,7 @@ psutil==7.0.0
 requests==2.32.3
 readerwriterlock==1.0.9
 PyYAML==6.0.2
+pytz>=2023.3
 
 # ============================================================================
 # Installation Notes:

@@ -11,13 +11,31 @@ logger = get_logger(__name__)
 
 class SimpleAvatarDownloader:
     def __init__(self):
-        # Path to frontend public avatars folder
-        self.frontend_avatars_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            '..', 'frontend', 'public', 'img', 'avatars'
-        )
+        # Check if running in Docker
+        in_docker = os.getenv('VTRACK_IN_DOCKER') == 'true'
+
+        if in_docker:
+            # In Docker: use backend-local storage (avatars not synced to frontend)
+            # Frontend will use default avatar or external URL
+            self.frontend_avatars_dir = '/app/var/cache/avatars'
+            self.in_docker = True
+            logger.info("🐳 Avatar downloader running in Docker mode - using local cache")
+        else:
+            # Local development: write to frontend public folder
+            self.frontend_avatars_dir = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                '..', 'frontend', 'public', 'img', 'avatars'
+            )
+            self.in_docker = False
+
         # Ensure directory exists
-        os.makedirs(self.frontend_avatars_dir, exist_ok=True)
+        try:
+            os.makedirs(self.frontend_avatars_dir, exist_ok=True)
+        except Exception as e:
+            logger.warning(f"⚠️ Cannot create avatar directory: {e}")
+            # Fallback to temp directory
+            self.frontend_avatars_dir = '/tmp/avatars'
+            os.makedirs(self.frontend_avatars_dir, exist_ok=True)
 
     def get_user_avatar_filename(self, user_email):
         """Generate filename for user avatar"""
@@ -32,6 +50,15 @@ class SimpleAvatarDownloader:
 
     def download_avatar(self, user_email, avatar_url, max_retries=3):
         """Download avatar to frontend public folder with retry logic"""
+        # In Docker mode: return the external URL directly
+        # Frontend can't access backend's local files
+        if self.in_docker:
+            logger.debug(f"🐳 Docker mode: returning external avatar URL for {user_email}")
+            # Return the Google avatar URL directly (or default if no URL)
+            if avatar_url and avatar_url.startswith('http'):
+                return avatar_url
+            return "/img/avatars/avatar4.png"
+
         filename = self.get_user_avatar_filename(user_email)
         local_path = os.path.join(self.frontend_avatars_dir, filename)
 

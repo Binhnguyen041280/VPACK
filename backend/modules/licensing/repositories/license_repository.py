@@ -566,10 +566,134 @@ class LicenseRepository(BaseRepository):
             
             logger.info(f"📋 Found {len(licenses_data)} licenses expiring within {days_threshold} days")
             return licenses_data
-            
+
         except Exception as e:
             logger.error(f"❌ Failed to get expiring licenses: {str(e)}")
             return []
+
+    # ==================== CLOUD CACHING METHODS ====================
+
+    def update_license_cache(
+        self,
+        license_key: str,
+        customer_email: str,
+        product_type: str,
+        status: str,
+        expires_at: Any,
+        machine_fingerprint: str,
+        features: list
+    ) -> bool:
+        """
+        Update local cache with license data from Cloud.
+        This is for caching ONLY, not for validation.
+
+        Args:
+            license_key: License key
+            customer_email: Customer email
+            product_type: Product type
+            status: License status
+            expires_at: Expiry timestamp (can be various formats)
+            machine_fingerprint: Machine fingerprint
+            features: List of features
+
+        Returns:
+            bool: True if cached successfully
+        """
+        try:
+            # Convert expires_at to string format if needed
+            if expires_at:
+                if hasattr(expires_at, 'timestamp'):
+                    # Firestore timestamp
+                    expires_at_str = datetime.fromtimestamp(expires_at.timestamp()).isoformat()
+                elif hasattr(expires_at, 'isoformat'):
+                    # datetime object
+                    expires_at_str = expires_at.isoformat()
+                elif isinstance(expires_at, str):
+                    expires_at_str = expires_at
+                else:
+                    expires_at_str = str(expires_at)
+            else:
+                expires_at_str = None
+
+            # Prepare features JSON
+            features_json = json.dumps(features) if features else json.dumps(['full_access'])
+
+            # Check if license exists
+            existing = self.get_license_by_key(license_key)
+            now = self._format_datetime(datetime.now())
+
+            if existing:
+                # Update existing license
+                query = """
+                    UPDATE licenses SET
+                        customer_email = ?,
+                        product_type = ?,
+                        status = ?,
+                        expires_at = ?,
+                        features = ?,
+                        updated_at = ?,
+                        cloud_synced_at = ?
+                    WHERE license_key = ?
+                """
+                params = (
+                    customer_email,
+                    product_type,
+                    status,
+                    expires_at_str,
+                    features_json,
+                    now,
+                    now,
+                    license_key
+                )
+
+                success = self._execute_insert_update(query, params)
+
+                if success:
+                    logger.info(f"✅ License cache updated: {license_key[:12]}...")
+                    return True
+                else:
+                    logger.warning(f"⚠️ Failed to update license cache: {license_key[:12]}...")
+                    return False
+
+            else:
+                # Insert new license
+                query = """
+                    INSERT INTO licenses (
+                        license_key, customer_email, product_type, status,
+                        expires_at, features, created_at, updated_at, cloud_synced_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """
+                params = (
+                    license_key,
+                    customer_email,
+                    product_type,
+                    status,
+                    expires_at_str,
+                    features_json,
+                    now,
+                    now,
+                    now
+                )
+
+                license_id = self._execute_insert_update(query, params)
+
+                if license_id and isinstance(license_id, int) and license_id > 0:
+                    logger.info(f"✅ License cached: {license_key[:12]}... (ID: {license_id})")
+                    return True
+                else:
+                    logger.warning(f"⚠️ Failed to cache license: {license_key[:12]}...")
+                    return False
+
+        except Exception as e:
+            logger.error(f"❌ Error updating license cache: {e}")
+            return False
+
+    def get_cached_license(self, license_key: str) -> Optional[Dict[str, Any]]:
+        """
+        Get cached license data.
+        Returns None if not cached or cache is stale.
+        """
+        return self.get_license_by_key(license_key)
 
 # Singleton instance for backward compatibility
 _license_repository: Optional[LicenseRepository] = None
