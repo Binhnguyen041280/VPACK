@@ -31,7 +31,6 @@ Thread Safety:
 """
 
 from flask import Blueprint, request, jsonify
-from werkzeug.utils import secure_filename
 import os
 import json
 import threading
@@ -43,6 +42,7 @@ from modules.db_utils.safe_connection import safe_db_connection
 from modules.config.logging_config import get_logger
 from modules.utils.simple_timezone import get_system_timezone_from_db
 from modules.path_utils import get_paths, get_logs_dir
+from modules.license.license_manager import LicenseManager
 from .file_lister import run_file_scan, get_db_path
 from .batch_scheduler import BatchScheduler
 from .db_sync import frame_sampler_event, event_detector_event
@@ -103,91 +103,51 @@ def init_default_program():
 
 init_default_program()
 
-# Custom video upload configuration
-UPLOAD_FOLDER = '/app/var/uploads/custom'
-ALLOWED_EXTENSIONS = {'mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv', 'webm'}
-MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024  # 5GB
-
-def allowed_file(filename):
-    """Check if file extension is allowed for video upload."""
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-@program_bp.route('/program/upload-custom-video', methods=['POST'])
-def upload_custom_video():
-    """Upload a custom video file for processing.
-
-    Accepts multipart/form-data file upload and saves it to the container's
-    upload directory. Returns the container path for processing.
+def _check_default_mode_license() -> tuple[bool, Optional[Dict[str, Any]]]:
+    """
+    Check if current license allows Default Mode (auto-scan 24/7).
 
     Returns:
-        JSON response with:
-        - success: Boolean indicating upload success
-        - container_path: Path to uploaded file in container
-        - filename: Original filename
-        - size: File size in bytes
-        - error: Error message if failed
+        tuple: (is_allowed, error_response_dict)
+               - is_allowed: True if Pro license, False if Starter/Trial
+               - error_response_dict: Error response to return if not allowed, None if allowed
     """
     try:
-        logger.info("📤 Received custom video upload request")
+        license_manager = LicenseManager()
+        license_status = license_manager.get_license_status()
 
-        # Check if file is in request
-        if 'file' not in request.files:
-            logger.error("No file part in request")
-            return jsonify({
+        # If no license or invalid → Block Default Mode
+        if license_status.get('status') != 'valid':
+            return False, {
                 'success': False,
-                'error': 'No file provided'
-            }), 400
+                'error': 'Default Mode requires active license',
+                'message': 'Please activate a license (Starter 29k or Pro 249k) to use Default Mode',
+                'current_plan': 'No License',
+                'upgrade_url': '/plan'
+            }
 
-        file = request.files['file']
+        license_data = license_status.get('license', {})
+        product_type = license_data.get('product_type', '')
 
-        # Check if user selected a file
-        if file.filename == '':
-            logger.error("Empty filename")
-            return jsonify({
+        # If Starter license → Block Default Mode
+        if 'starter' in product_type.lower():
+            return False, {
                 'success': False,
-                'error': 'No file selected'
-            }), 400
+                'error': 'Default Mode requires PRO license',
+                'message': 'Default Mode (auto-scan 24/7) is only available for PRO license (249k/month). Your current plan: Starter (29k/month) - Custom Mode only.',
+                'current_plan': 'Starter (29k/month)',
+                'required_plan': 'Pro (249k/month)',
+                'upgrade_url': '/plan'
+            }
 
-        # Validate file type
-        if not allowed_file(file.filename):
-            logger.error(f"Invalid file type: {file.filename}")
-            return jsonify({
-                'success': False,
-                'error': f'Invalid file type. Allowed types: {", ".join(ALLOWED_EXTENSIONS)}'
-            }), 400
-
-        # Create upload directory if it doesn't exist
-        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-        # Secure filename and generate unique name
-        filename = secure_filename(file.filename)
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        unique_filename = f"{timestamp}_{filename}"
-        file_path = os.path.join(UPLOAD_FOLDER, unique_filename)
-
-        # Save file
-        logger.info(f"💾 Saving uploaded file to: {file_path}")
-        file.save(file_path)
-
-        # Get file size
-        file_size = os.path.getsize(file_path)
-
-        logger.info(f"✅ File uploaded successfully: {unique_filename} ({file_size} bytes)")
-
-        return jsonify({
-            'success': True,
-            'container_path': file_path,
-            'filename': unique_filename,
-            'original_filename': file.filename,
-            'size': file_size
-        }), 200
+        # If Pro or other paid license → Allow
+        logger.info(f"Default Mode allowed for license: {product_type}")
+        return True, None
 
     except Exception as e:
-        logger.error(f"❌ Error uploading custom video: {e}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        logger.error(f"Error checking Default Mode license: {e}")
+        # On error, allow (fail-open for better UX)
+        return True, None
 
 @program_bp.route('/program', methods=['POST'])
 def program():
@@ -350,15 +310,6 @@ def program():
                         time.sleep(2)
                     logger.info(f"[Custom] Processing completed: {result[0]}")
 
-                    # Cleanup uploaded file if it's in the upload directory
-                    if abs_path.startswith(UPLOAD_FOLDER):
-                        try:
-                            if os.path.exists(abs_path):
-                                os.remove(abs_path)
-                                logger.info(f"🗑️  Cleaned up uploaded file: {abs_path}")
-                        except Exception as e:
-                            logger.warning(f"Failed to cleanup uploaded file {abs_path}: {e}")
-
                     # Show "Completed" status briefly before transitioning to default
                     running_state["current_running"] = "Completed"
                     running_state["custom_path"] = None
@@ -389,9 +340,17 @@ def program():
                 logger.error(f"[Custom] Error: {str(e)}")
                 scheduler.resume()
                 return jsonify({"error": f"Custom processing failed: {str(e)}"}), 500
-        else:
+        # DEFAULT MODE PROCESSING: Continuous auto-scan every 2 minutes
+        elif card == "Default":
+            # CHECK LICENSE FOR DEFAULT MODE (Pro license required, Starter only allows Custom)
+            is_allowed, error_response = _check_default_mode_license()
+            if not is_allowed:
+                logger.warning(f"Default Mode blocked: {error_response.get('message')}")
+                return jsonify(error_response), 403
+
             running_state["days"] = None
             running_state["custom_path"] = None
+            logger.info("Default Mode license check passed, proceeding with auto-scan")
 
         # Only update running_state for non-Custom programs
         # Custom program handles its own state transitions (Completed -> Default)

@@ -5,6 +5,7 @@ import json
 import os
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.sources.video_source_manager import VideoSourceManager
+from modules.license.license_manager import LicenseManager
 from ..utils import detect_camera_folders, has_video_files, extract_cameras_from_cloud_folders
 
 camera_routes_bp = Blueprint('camera_routes', __name__)
@@ -97,23 +98,49 @@ def update_source_cameras():
             return jsonify({"error": "No JSON data provided"}), 400
         source_id = data.get('source_id')
         selected_cameras = data.get('selected_cameras', [])
-        
+
+        # CHECK CAMERA LIMIT FOR PRO LICENSE (10 cameras max)
+        camera_count = len(selected_cameras)
+        try:
+            license_manager = LicenseManager()
+            license_status = license_manager.get_license_status()
+
+            if license_status.get('status') == 'valid':
+                license_data = license_status.get('license', {})
+                product_type = license_data.get('product_type', '').lower()
+
+                # Pro license has 10 camera limit (technical constraint per machine)
+                # Starter license has unlimited cameras (but no Default Mode, so impractical for many cameras)
+                if 'pro' in product_type and camera_count > 10:
+                    return jsonify({
+                        "success": False,
+                        "error": "Camera limit exceeded for Pro license",
+                        "message": f"Pro license (249k/month) supports maximum 10 cameras per machine. You selected {camera_count} cameras. Please reduce selection or contact support for multi-machine deployment.",
+                        "current_plan": "Pro (249k/month)",
+                        "max_cameras": 10,
+                        "selected_count": camera_count
+                    }), 400
+
+        except Exception as e:
+            print(f"License check warning (allowing camera update): {e}")
+            # On error, allow update (fail-open for better UX)
+
         # Update processing_config with selected cameras
         with safe_db_connection() as conn:
             cursor = conn.cursor()
-            
+
             cursor.execute("""
-                UPDATE processing_config 
-                SET selected_cameras = ? 
+                UPDATE processing_config
+                SET selected_cameras = ?
                 WHERE id = 1
             """, (json.dumps(selected_cameras),))
-        
+
         return jsonify({
             "message": "Camera selection updated successfully",
             "selected_cameras": selected_cameras,
             "count": len(selected_cameras)
         }), 200
-        
+
     except Exception as e:
         return jsonify({"error": f"Failed to update camera selection: {str(e)}"}), 500
 
