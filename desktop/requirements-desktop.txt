@@ -1,0 +1,12 @@
+# Desktop-specific dependencies
+# These are additional to backend/requirements.txt
+
+# For system tray icon
+pystray>=0.19.5
+Pillow>=10.0.0
+
+# For HTTP health checks
+requests>=2.31.0
+
+# Build tools
+pyinstaller>=6.3.0
