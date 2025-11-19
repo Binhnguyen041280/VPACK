@@ -42,13 +42,34 @@ def get_app_dir():
     """Get application installation directory"""
     if getattr(sys, 'frozen', False):
         # Running as compiled executable
-        return Path(sys.executable).parent
+        exe_dir = Path(sys.executable).parent
+
+        # Check if running inside macOS .app bundle
+        if sys.platform == "darwin" and exe_dir.name == "MacOS":
+            # Return the .app bundle directory
+            return exe_dir.parent.parent
+        else:
+            return exe_dir
     else:
         # Running as script
         return Path(__file__).parent.parent
 
+def get_resources_dir():
+    """Get resources directory (different for macOS .app)"""
+    app_dir = get_app_dir()
+
+    if sys.platform == "darwin" and getattr(sys, 'frozen', False):
+        # macOS .app bundle: resources are in Contents/Resources
+        resources = app_dir / "Contents" / "Resources"
+        if resources.exists():
+            return resources
+
+    # Windows/Linux or development: resources are in app_dir
+    return app_dir
+
 # Directory structure
 APP_DIR = get_app_dir()
+RESOURCES_DIR = get_resources_dir()
 DATA_DIR = get_app_data_dir()
 
 # Data directories
@@ -58,15 +79,19 @@ OUTPUT_DIR = DATA_DIR / "output"
 SESSION_DIR = DATA_DIR / "sessions"
 INPUT_DIR = DATA_DIR / "input"
 
-# Executables (relative to APP_DIR)
+# Executables (relative to RESOURCES_DIR for macOS, APP_DIR for others)
 if sys.platform == "win32":
     BACKEND_EXE = APP_DIR / "backend" / "vpack-backend.exe"
     NODE_EXE = APP_DIR / "frontend" / "node.exe"
-else:
+    FRONTEND_SERVER = APP_DIR / "frontend" / "standalone" / "server.js"
+elif sys.platform == "darwin":
+    BACKEND_EXE = RESOURCES_DIR / "backend" / "vpack-backend"
+    NODE_EXE = RESOURCES_DIR / "frontend" / "node"
+    FRONTEND_SERVER = RESOURCES_DIR / "frontend" / "standalone" / "server.js"
+else:  # Linux
     BACKEND_EXE = APP_DIR / "backend" / "vpack-backend"
     NODE_EXE = APP_DIR / "frontend" / "node"
-
-FRONTEND_SERVER = APP_DIR / "frontend" / "standalone" / "server.js"
+    FRONTEND_SERVER = APP_DIR / "frontend" / "standalone" / "server.js"
 
 # Environment variables for desktop mode
 DESKTOP_ENV = {
@@ -86,5 +111,8 @@ LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 LOG_FILE = LOGS_DIR / "vpack-desktop.log"
 
 # System tray
-TRAY_ICON = APP_DIR / "resources" / "icon.ico"
+if sys.platform == "darwin":
+    TRAY_ICON = RESOURCES_DIR / "icon.icns"
+else:
+    TRAY_ICON = APP_DIR / "resources" / "icon.ico"
 TRAY_TOOLTIP = f"{APP_NAME} - Running on port {FRONTEND_PORT}"

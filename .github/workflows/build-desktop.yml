@@ -310,13 +310,37 @@ jobs:
           # Make all binaries executable
           find dist/VPACK.app -type f -name "*.so" -exec chmod +x {} \;
           find dist/VPACK.app -type f -name "*.dylib" -exec chmod +x {} \;
-          find dist/VPACK.app -type f -perm +111 -exec chmod +x {} \;
 
-          # Ad-hoc code sign (deep sign all nested code)
-          codesign --force --deep --sign - dist/VPACK.app
+          # Sign all nested binaries individually (better than --deep)
+          echo "Signing nested binaries..."
+
+          # Sign all .so files
+          find dist/VPACK.app -type f -name "*.so" -exec codesign --force --sign - {} \;
+
+          # Sign all .dylib files
+          find dist/VPACK.app -type f -name "*.dylib" -exec codesign --force --sign - {} \;
+
+          # Sign Python and Node executables
+          find dist/VPACK.app -type f \( -name "python*" -o -name "node" \) -exec codesign --force --sign - {} \;
+
+          # Sign the backend executable
+          if [ -f "dist/VPACK.app/Contents/Resources/backend/vpack-backend" ]; then
+            codesign --force --sign - dist/VPACK.app/Contents/Resources/backend/vpack-backend
+          fi
+
+          # Sign the main app last
+          codesign --force --sign - dist/VPACK.app/Contents/MacOS/VPACK
+
+          # Sign the entire bundle
+          codesign --force --sign - dist/VPACK.app
 
           # Verify signing
-          codesign --verify --verbose dist/VPACK.app || true
+          echo "Verifying signatures..."
+          codesign --verify --verbose=2 dist/VPACK.app || echo "Verification warning (expected for ad-hoc)"
+
+          # List what was signed
+          echo "Signed binaries:"
+          find dist/VPACK.app -type f \( -name "*.so" -o -name "*.dylib" -o -perm +111 \) | head -20
         working-directory: desktop
 
       - name: Create DMG
