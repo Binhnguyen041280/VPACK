@@ -141,15 +141,34 @@ datas += collect_data_files('mediapipe')
 
 Thêm vào PATH hoặc copy DLLs vào output directory.
 
-### macOS Gatekeeper block
+### macOS Gatekeeper block ("App bị hỏng")
 
+Nếu gặp lỗi "VPACK.app bị hỏng và không thể mở được":
+
+**Cách 1: Dùng script fix**
 ```bash
-# Xcode signing
-codesign --force --deep --sign - dist/VPACK.app
-
-# hoặc ad-hoc
-xattr -cr dist/VPACK.app
+chmod +x fix-macos-gatekeeper.sh
+./fix-macos-gatekeeper.sh /Applications/VPACK.app
 ```
+
+**Cách 2: Manual fix**
+```bash
+# Xóa quarantine attribute
+xattr -cr /Applications/VPACK.app
+
+# Ad-hoc code sign
+codesign --force --deep --sign - /Applications/VPACK.app
+```
+
+**Cách 3: System Settings**
+1. Mở **System Settings** → **Privacy & Security**
+2. Scroll xuống, tìm message về VPACK
+3. Click **Open Anyway**
+
+**Cách 4: Right-click Open**
+1. Right-click (hoặc Ctrl+click) vào VPACK.app
+2. Chọn **Open** từ menu
+3. Click **Open** trong dialog
 
 ## So sánh với các app tương tự
 

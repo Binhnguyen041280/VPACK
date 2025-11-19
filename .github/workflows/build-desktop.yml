@@ -302,6 +302,23 @@ jobs:
           fi
         working-directory: desktop
 
+      - name: Code sign and remove quarantine
+        run: |
+          # Remove extended attributes (quarantine)
+          xattr -cr dist/VPACK.app
+
+          # Make all binaries executable
+          find dist/VPACK.app -type f -name "*.so" -exec chmod +x {} \;
+          find dist/VPACK.app -type f -name "*.dylib" -exec chmod +x {} \;
+          find dist/VPACK.app -type f -perm +111 -exec chmod +x {} \;
+
+          # Ad-hoc code sign (deep sign all nested code)
+          codesign --force --deep --sign - dist/VPACK.app
+
+          # Verify signing
+          codesign --verify --verbose dist/VPACK.app || true
+        working-directory: desktop
+
       - name: Create DMG
         run: |
           # Try create-dmg first, fallback to hdiutil
