@@ -38,7 +38,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <LicenseProvider>
                 <AppWrappers>
           {/* <ChakraProvider theme={theme}> */}
-          {pathname?.includes('register') || pathname?.includes('sign-in') ? (
+          {pathname?.includes('register') || pathname?.includes('sign-in') || pathname?.includes('landing') ? (
             children
           ) : (
             <SidebarContext.Provider value={{ 
