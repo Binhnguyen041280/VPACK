@@ -1,0 +1,360 @@
+name: Build Desktop Apps
+
+on:
+  push:
+    branches:
+      - 'claude/Packaging-*'
+      - 'main'
+    paths:
+      - 'desktop/**'
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/build-desktop.yml'
+  pull_request:
+    branches:
+      - 'main'
+    paths:
+      - 'desktop/**'
+  workflow_dispatch:
+    inputs:
+      build_windows:
+        description: 'Build Windows'
+        required: false
+        default: true
+        type: boolean
+      build_macos:
+        description: 'Build macOS'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  PYTHON_VERSION: '3.10'
+  NODE_VERSION: '18'
+
+jobs:
+  # Build frontend first (shared between platforms)
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+        working-directory: frontend
+
+      - name: Build Next.js
+        run: npm run build
+        working-directory: frontend
+
+      - name: Prepare standalone package
+        run: |
+          mkdir -p frontend-dist/standalone
+          cp -r .next/standalone/* frontend-dist/standalone/
+          mkdir -p frontend-dist/standalone/.next/static
+          cp -r .next/static/* frontend-dist/standalone/.next/static/
+          if [ -d "public" ]; then
+            cp -r public frontend-dist/standalone/
+          fi
+        working-directory: frontend
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-standalone
+          path: frontend/frontend-dist/
+          retention-days: 7
+
+  # Build Windows executable
+  build-windows:
+    name: Build Windows
+    needs: build-frontend
+    runs-on: windows-latest
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_windows }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: |
+            backend/requirements.txt
+            desktop/requirements-desktop.txt
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-standalone
+          path: frontend-dist/
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install -r desktop/requirements-desktop.txt
+          pip install pyinstaller>=6.3.0
+
+      - name: Build backend with PyInstaller
+        run: |
+          python -m PyInstaller --clean --distpath build/backend_dist --workpath build/backend_build vpack-backend.spec
+        working-directory: desktop
+
+      - name: Build launcher with PyInstaller
+        run: |
+          python -m PyInstaller --clean --distpath build/launcher_dist --workpath build/launcher_build vpack-launcher.spec
+        working-directory: desktop
+
+      - name: Assemble distribution
+        shell: pwsh
+        run: |
+          # Create output directory
+          New-Item -ItemType Directory -Force -Path dist/VPACK
+
+          # Copy launcher
+          if (Test-Path "build/launcher_dist/VPACK.exe") {
+            Copy-Item "build/launcher_dist/VPACK.exe" "dist/VPACK/"
+          } else {
+            Copy-Item "build/launcher_dist/VPACK/*" "dist/VPACK/" -Recurse
+          }
+
+          # Copy backend
+          Copy-Item "build/backend_dist/vpack-backend" "dist/VPACK/backend" -Recurse
+
+          # Copy frontend
+          New-Item -ItemType Directory -Force -Path dist/VPACK/frontend
+          Copy-Item "../frontend-dist/standalone" "dist/VPACK/frontend/" -Recurse
+
+          # Download Node.js
+          $nodeVersion = "18.19.0"
+          $nodeUrl = "https://nodejs.org/dist/v$nodeVersion/node-v$nodeVersion-win-x64.zip"
+          Invoke-WebRequest -Uri $nodeUrl -OutFile "node.zip"
+          Expand-Archive -Path "node.zip" -DestinationPath "node_temp"
+          Copy-Item "node_temp/node-v$nodeVersion-win-x64/node.exe" "dist/VPACK/frontend/"
+
+          # Create data directories
+          New-Item -ItemType Directory -Force -Path dist/VPACK/data/database
+          New-Item -ItemType Directory -Force -Path dist/VPACK/data/logs
+          New-Item -ItemType Directory -Force -Path dist/VPACK/data/output
+
+          # Copy resources if exists
+          if (Test-Path "resources") {
+            Copy-Item "resources" "dist/VPACK/" -Recurse
+          }
+        working-directory: desktop
+
+      - name: Create ZIP archive
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/VPACK/* -DestinationPath dist/VPACK-${{ github.sha }}-Windows.zip
+        working-directory: desktop
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VPACK-Windows
+          path: desktop/dist/VPACK-*-Windows.zip
+          retention-days: 30
+
+      - name: Upload Windows folder (for debugging)
+        uses: actions/upload-artifact@v4
+        with:
+          name: VPACK-Windows-Folder
+          path: desktop/dist/VPACK/
+          retention-days: 7
+
+  # Build macOS app
+  build-macos:
+    name: Build macOS
+    needs: build-frontend
+    runs-on: macos-latest
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_macos }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: |
+            backend/requirements.txt
+            desktop/requirements-desktop.txt
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-standalone
+          path: frontend-dist/
+
+      - name: Install system dependencies
+        run: |
+          brew install create-dmg || true
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install -r desktop/requirements-desktop.txt
+          pip install pyinstaller>=6.3.0
+
+      - name: Build backend with PyInstaller
+        run: |
+          python -m PyInstaller --clean --distpath build/backend_dist --workpath build/backend_build vpack-backend.spec
+        working-directory: desktop
+
+      - name: Build launcher with PyInstaller
+        run: |
+          python -m PyInstaller --clean --distpath build/launcher_dist --workpath build/launcher_build vpack-launcher.spec
+        working-directory: desktop
+
+      - name: Assemble app bundle
+        run: |
+          # Create app bundle structure
+          mkdir -p dist/VPACK.app/Contents/MacOS
+          mkdir -p dist/VPACK.app/Contents/Resources
+
+          # Create Info.plist
+          cat > dist/VPACK.app/Contents/Info.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleName</key>
+              <string>VPACK</string>
+              <key>CFBundleDisplayName</key>
+              <string>VPACK</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.vpack.desktop</string>
+              <key>CFBundleVersion</key>
+              <string>1.0.0</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0.0</string>
+              <key>CFBundleExecutable</key>
+              <string>VPACK</string>
+              <key>CFBundleIconFile</key>
+              <string>icon</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>10.15</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+              <key>LSUIElement</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+          # Copy launcher
+          if [ -f "build/launcher_dist/VPACK" ]; then
+            cp build/launcher_dist/VPACK dist/VPACK.app/Contents/MacOS/
+          elif [ -d "build/launcher_dist/VPACK.app" ]; then
+            cp build/launcher_dist/VPACK.app/Contents/MacOS/VPACK dist/VPACK.app/Contents/MacOS/
+          fi
+          chmod +x dist/VPACK.app/Contents/MacOS/VPACK
+
+          # Copy backend
+          cp -r build/backend_dist/vpack-backend dist/VPACK.app/Contents/Resources/backend
+
+          # Copy frontend
+          mkdir -p dist/VPACK.app/Contents/Resources/frontend
+          cp -r ../frontend-dist/standalone dist/VPACK.app/Contents/Resources/frontend/
+
+          # Download Node.js for macOS
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "arm64" ]; then
+            NODE_ARCH="arm64"
+          else
+            NODE_ARCH="x64"
+          fi
+          NODE_VERSION="18.19.0"
+          curl -L "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-darwin-${NODE_ARCH}.tar.gz" -o node.tar.gz
+          tar -xzf node.tar.gz
+          cp node-v${NODE_VERSION}-darwin-${NODE_ARCH}/bin/node dist/VPACK.app/Contents/Resources/frontend/
+          chmod +x dist/VPACK.app/Contents/Resources/frontend/node
+
+          # Copy resources if exists
+          if [ -d "resources" ]; then
+            cp -r resources/* dist/VPACK.app/Contents/Resources/ || true
+          fi
+        working-directory: desktop
+
+      - name: Create DMG
+        run: |
+          # Try create-dmg first, fallback to hdiutil
+          if command -v create-dmg &> /dev/null; then
+            create-dmg \
+              --volname "VPACK" \
+              --window-pos 200 120 \
+              --window-size 600 400 \
+              --icon-size 100 \
+              --icon "VPACK.app" 150 190 \
+              --hide-extension "VPACK.app" \
+              --app-drop-link 450 190 \
+              "dist/VPACK-${{ github.sha }}-macOS.dmg" \
+              "dist/VPACK.app" || \
+            hdiutil create -volname "VPACK" -srcfolder dist/VPACK.app -ov -format UDZO "dist/VPACK-${{ github.sha }}-macOS.dmg"
+          else
+            hdiutil create -volname "VPACK" -srcfolder dist/VPACK.app -ov -format UDZO "dist/VPACK-${{ github.sha }}-macOS.dmg"
+          fi
+        working-directory: desktop
+
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: VPACK-macOS-DMG
+          path: desktop/dist/VPACK-*-macOS.dmg
+          retention-days: 30
+
+      - name: Upload macOS app (for debugging)
+        uses: actions/upload-artifact@v4
+        with:
+          name: VPACK-macOS-App
+          path: desktop/dist/VPACK.app/
+          retention-days: 7
+
+  # Create release (only on tags)
+  release:
+    name: Create Release
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/VPACK-Windows/*.zip
+            artifacts/VPACK-macOS-DMG/*.dmg
+          draft: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
