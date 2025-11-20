@@ -1067,8 +1067,8 @@ def get_license_status():
                             'license': {
                                 'license_key': trial_license_data.get('license_key', ''),
                                 'customer_email': trial_license_data.get('customer_email', 'trial@local.dev'),
-                                'package_name': trial_license_data.get('product_type', 'trial_7d'),
-                                'package_type': trial_license_data.get('product_type', 'trial_7d'),
+                                'package_name': trial_license_data.get('product_type', 'trial_14d'),
+                                'package_type': trial_license_data.get('product_type', 'trial_14d'),
                                 'expires_at': trial_license_data.get('expires_at'),
                                 'status': 'active',
                                 'features': trial_license_data.get('features', ['trial_access']),

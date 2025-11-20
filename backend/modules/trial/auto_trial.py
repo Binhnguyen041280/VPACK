@@ -72,7 +72,7 @@ class AutoTrialService:
                     return {
                         'type': 'trial',
                         'status': 'active',
-                        'days_left': 7,
+                        'days_left': 14,
                         'license_data': trial_result['license_data'],
                         'source': 'cloudfunction_generated'
                     }
@@ -235,7 +235,7 @@ class AutoTrialService:
                 logger.info(f"✅ CloudFunction trial generated successfully")
                 return {
                     'success': True,
-                    'license_data': result.get('data', {}),
+                    'license_data': result.get('data', {}).get('license_data', {}),
                     'trial_license_key': result.get('data', {}).get('trial_license_key'),
                     'expires_at': result.get('data', {}).get('expires_at')
                 }
@@ -271,7 +271,7 @@ class AutoTrialService:
             if not customer_email:
                 customer_email = AutoTrialService._get_current_user_email()
 
-            product_type = license_data.get('product_type', 'trial_7d')
+            product_type = license_data.get('product_type', 'trial_14d')
             expires_at = license_data.get('expires_at')
             features = license_data.get('features', ['trial_access'])
 
@@ -285,9 +285,9 @@ class AutoTrialService:
                     expiry_date = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
                     expires_days = (expiry_date - datetime.now()).days
                 except:
-                    expires_days = 7  # Default fallback
+                    expires_days = 14  # Default fallback
             else:
-                expires_days = 7
+                expires_days = 14
 
             # Create local license record
             license_id = License.create(

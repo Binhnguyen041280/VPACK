@@ -325,7 +325,9 @@ const MyPlan: React.FC = () => {
             <VStack align="start" spacing={1}>
               <Text fontWeight="bold" color={textColor}>
                 {currentLicense ?
-                  `${(currentLicense.package_type || 'Unknown').replace('_', ' ').toUpperCase()} Plan` :
+                  (packages[currentLicense.package_type]?.name || 
+                   (currentLicense.package_type === 'trial_7d' ? '14 Days Free Trial' : 
+                    (currentLicense.package_type || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + ' Plan')) :
                   'No Active License'
                 }
               </Text>
