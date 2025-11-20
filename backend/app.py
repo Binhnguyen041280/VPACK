@@ -130,7 +130,7 @@ except ImportError as e:
 # Set Cloud Function URLs
 os.environ.setdefault('CLOUD_PAYMENT_URL', 'https://asia-southeast1-v-track-payments.cloudfunctions.net/create-payment')
 os.environ.setdefault('CLOUD_WEBHOOK_URL', 'https://asia-southeast1-v-track-payments.cloudfunctions.net/webhook-handler')
-os.environ.setdefault('CLOUD_LICENSE_URL', 'https://asia-southeast1-v-track-payments.cloudfunctions.net/license-service')
+os.environ.setdefault('CLOUD_LICENSE_URL', 'https://asia-southeast1-v-track-payments.cloudfunctions.net/license_service')
 
 # Import payment integration
 PAYMENT_INTEGRATION_AVAILABLE = False
