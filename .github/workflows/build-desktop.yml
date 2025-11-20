@@ -159,6 +159,61 @@ jobs:
           }
         working-directory: desktop
 
+      - name: Validate Windows build structure
+        shell: pwsh
+        run: |
+          Write-Host "=========================================="
+          Write-Host "VALIDATING VPACK WINDOWS BUILD"
+          Write-Host "=========================================="
+
+          # Check main executable
+          Write-Host "✓ Checking main executable..."
+          if (-not (Test-Path "dist/VPACK/VPACK.exe")) {
+            Write-Error "❌ Main executable missing"
+            exit 1
+          }
+          Write-Host "  ✅ Main executable OK"
+
+          # Check backend
+          Write-Host "✓ Checking backend..."
+          if (-not (Test-Path "dist/VPACK/backend")) {
+            Write-Error "❌ Backend directory missing"
+            exit 1
+          }
+          if (-not (Test-Path "dist/VPACK/backend/vpack-backend.exe")) {
+            Write-Error "❌ Backend executable missing"
+            exit 1
+          }
+          Write-Host "  ✅ Backend OK"
+
+          # Check frontend
+          Write-Host "✓ Checking frontend..."
+          if (-not (Test-Path "dist/VPACK/frontend/standalone")) {
+            Write-Error "❌ Frontend standalone missing"
+            exit 1
+          }
+          if (-not (Test-Path "dist/VPACK/frontend/standalone/server.js")) {
+            Write-Error "❌ Frontend server.js missing"
+            exit 1
+          }
+          if (-not (Test-Path "dist/VPACK/frontend/node.exe")) {
+            Write-Error "❌ Node.exe missing"
+            exit 1
+          }
+          Write-Host "  ✅ Frontend OK"
+
+          # Summary
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host "BUILD VALIDATION PASSED ✅"
+          Write-Host "=========================================="
+          Write-Host ""
+          Write-Host "Main components:"
+          Get-ChildItem -Path "dist/VPACK/VPACK.exe" | Format-Table Name, Length
+          Get-ChildItem -Path "dist/VPACK/backend/vpack-backend.exe" | Format-Table Name, Length
+          Get-ChildItem -Path "dist/VPACK/frontend/node.exe" | Format-Table Name, Length
+        working-directory: desktop
+
       - name: Create ZIP archive
         shell: pwsh
         run: |
@@ -300,6 +355,63 @@ jobs:
           if [ -d "resources" ]; then
             cp -r resources/* dist/VPACK.app/Contents/Resources/ || true
           fi
+        working-directory: desktop
+
+      - name: Validate macOS app bundle structure
+        run: |
+          echo "=========================================="
+          echo "VALIDATING VPACK.app BUNDLE"
+          echo "=========================================="
+
+          # Check main structure
+          echo "✓ Checking bundle structure..."
+          test -d "dist/VPACK.app/Contents" || { echo "❌ Contents directory missing"; exit 1; }
+          test -d "dist/VPACK.app/Contents/MacOS" || { echo "❌ MacOS directory missing"; exit 1; }
+          test -d "dist/VPACK.app/Contents/Resources" || { echo "❌ Resources directory missing"; exit 1; }
+          test -f "dist/VPACK.app/Contents/Info.plist" || { echo "❌ Info.plist missing"; exit 1; }
+          echo "  ✅ Bundle structure OK"
+
+          # Check main executable
+          echo "✓ Checking main executable..."
+          test -f "dist/VPACK.app/Contents/MacOS/VPACK" || { echo "❌ Main executable missing"; exit 1; }
+          test -x "dist/VPACK.app/Contents/MacOS/VPACK" || { echo "❌ Main executable not executable"; exit 1; }
+          file dist/VPACK.app/Contents/MacOS/VPACK
+          echo "  ✅ Main executable OK"
+
+          # Check backend
+          echo "✓ Checking backend..."
+          test -d "dist/VPACK.app/Contents/Resources/backend" || { echo "❌ Backend directory missing"; exit 1; }
+          test -f "dist/VPACK.app/Contents/Resources/backend/vpack-backend" || { echo "❌ Backend executable missing"; exit 1; }
+          test -x "dist/VPACK.app/Contents/Resources/backend/vpack-backend" || { echo "❌ Backend not executable"; exit 1; }
+          echo "  ✅ Backend OK"
+
+          # Check frontend
+          echo "✓ Checking frontend..."
+          test -d "dist/VPACK.app/Contents/Resources/frontend/standalone" || { echo "❌ Frontend standalone missing"; exit 1; }
+          test -f "dist/VPACK.app/Contents/Resources/frontend/standalone/server.js" || { echo "❌ Frontend server.js missing"; exit 1; }
+          test -f "dist/VPACK.app/Contents/Resources/frontend/node" || { echo "❌ Node executable missing"; exit 1; }
+          test -x "dist/VPACK.app/Contents/Resources/frontend/node" || { echo "❌ Node not executable"; exit 1; }
+          echo "  ✅ Frontend OK"
+
+          # Check Info.plist
+          echo "✓ Validating Info.plist..."
+          plutil -lint dist/VPACK.app/Contents/Info.plist || { echo "❌ Info.plist invalid"; exit 1; }
+          echo "  ✅ Info.plist valid"
+
+          # Summary
+          echo ""
+          echo "=========================================="
+          echo "BUNDLE VALIDATION PASSED ✅"
+          echo "=========================================="
+          echo ""
+          echo "Bundle size:"
+          du -sh dist/VPACK.app
+          echo ""
+          echo "Main components:"
+          ls -lh dist/VPACK.app/Contents/MacOS/VPACK
+          ls -lh dist/VPACK.app/Contents/Resources/backend/vpack-backend
+          ls -lh dist/VPACK.app/Contents/Resources/frontend/node
+          ls -lh dist/VPACK.app/Contents/Resources/frontend/standalone/server.js
         working-directory: desktop
 
       - name: Code sign and remove quarantine
