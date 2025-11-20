@@ -1,0 +1,142 @@
+# Camera Simulator Configuration
+# ================================
+# This file defines how cameras should simulate video recording behavior
+
+simulator:
+  # How long to run the simulation (hours). Set to 0 for infinite.
+  run_duration_hours: 24
+
+  # How often to display status (seconds)
+  status_interval_seconds: 60
+
+  # Cleanup old files after simulation
+  cleanup_old_files: true
+
+  # Number of files to retain per camera
+  retention_count: 100
+
+
+# Camera Configurations
+# Each camera represents a video source with specific recording patterns
+cameras:
+
+  # ============================================================
+  # EXAMPLE 1: Continuous Recording (Security Camera Style)
+  # ============================================================
+  - name: "PackingLine1"
+    source_video: "source_videos/packing_line.mp4"
+    output_folder: "output/PackingLine1"
+    pattern: "continuous"
+    config:
+      # Video duration range [min, max] in minutes
+      video_duration_range: [15, 15]  # Fixed 15-minute videos
+
+      # Schedule: when camera is active
+      # Options: "24x7", "working_hours", "custom"
+      schedule: "working_hours"
+
+      # Working hours config (only used if schedule = "working_hours")
+      working_hours_start: 8   # 8:00 AM
+      working_hours_end: 18    # 6:00 PM
+      working_days: [0, 1, 2, 3, 4]  # Mon-Fri (0=Monday, 6=Sunday)
+
+      # Real-time mode: wait for actual time to pass
+      # If false, generates videos as fast as possible (for testing)
+      use_real_time: false
+
+
+  # ============================================================
+  # EXAMPLE 2: Motion-Triggered Recording
+  # ============================================================
+  - name: "ShippingDock"
+    source_video: "source_videos/shipping.mp4"
+    output_folder: "output/ShippingDock"
+    pattern: "motion_triggered"
+    config:
+      # When motion detected: record for X minutes
+      video_duration_range: [5, 20]  # 5-20 minutes per recording
+
+      # When no motion: idle for X minutes
+      idle_duration_range: [10, 30]  # 10-30 minutes idle
+
+      schedule: "24x7"  # Always on
+      use_real_time: false
+
+
+  # ============================================================
+  # EXAMPLE 3: Event-Triggered Recording (Sparse)
+  # ============================================================
+  - name: "QualityCheck"
+    source_video: "source_videos/quality_check.mp4"
+    output_folder: "output/QualityCheck"
+    pattern: "event_triggered"
+    config:
+      # Short recordings when event occurs
+      video_duration_range: [3, 10]  # 3-10 minutes per event
+
+      # Long idle periods between events
+      idle_duration_range: [20, 60]  # 20-60 minutes between events
+
+      schedule: "working_hours"
+      working_hours_start: 9
+      working_hours_end: 17
+      working_days: [0, 1, 2, 3, 4]  # Mon-Fri
+      use_real_time: false
+
+
+  # ============================================================
+  # EXAMPLE 4: Random On/Off (Unreliable Camera)
+  # ============================================================
+  - name: "BackupCamera"
+    source_video: "source_videos/backup.mp4"
+    output_folder: "output/BackupCamera"
+    pattern: "random_on_off"
+    config:
+      # When online: record continuously with these durations
+      video_duration_range: [10, 20]  # 10-20 minute videos
+
+      # How long camera stays online (hours)
+      online_duration_range: [2, 8]  # 2-8 hours online
+
+      # How long camera stays offline (hours)
+      offline_duration_range: [1, 4]  # 1-4 hours offline
+
+      schedule: "24x7"
+      use_real_time: false
+
+
+# ============================================================
+# ADDITIONAL EXAMPLES (commented out)
+# ============================================================
+
+# Multiple cameras with same source (different ROI locations)
+# - name: "PackingLine2"
+#   source_video: "source_videos/packing_line.mp4"  # Same video as PackingLine1
+#   output_folder: "output/PackingLine2"
+#   pattern: "continuous"
+#   config:
+#     video_duration_range: [15, 15]
+#     schedule: "working_hours"
+#     use_real_time: false
+
+# Custom schedule example
+# - name: "NightShift"
+#   source_video: "source_videos/night.mp4"
+#   output_folder: "output/NightShift"
+#   pattern: "continuous"
+#   config:
+#     video_duration_range: [20, 20]
+#     schedule: "custom"
+#     custom_hours: [[20, 24], [0, 6]]  # 8PM-6AM
+#     use_real_time: false
+
+# High-frequency event recording
+# - name: "HighFrequency"
+#   source_video: "source_videos/highfreq.mp4"
+#   output_folder: "output/HighFrequency"
+#   pattern: "motion_triggered"
+#   config:
+#     video_duration_range: [2, 5]  # Short clips
+#     idle_duration_range: [1, 5]   # Short idle
+#     schedule: "24x7"
+#     use_real_time: false

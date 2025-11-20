@@ -1,0 +1,31 @@
+# Quick Test Config - Tạo video nhanh để test
+# ============================================
+# Config đơn giản để test simulator
+
+simulator:
+  run_duration_hours: 0.5  # Chỉ chạy 30 phút
+  status_interval_seconds: 10  # Status mỗi 10s
+  cleanup_old_files: false
+  retention_count: 50
+
+cameras:
+  # Camera 1: Continuous pattern
+  - name: "TestCam1"
+    source_video: "source_videos/test.mp4"
+    output_folder: "output/TestCam1"
+    pattern: "continuous"
+    config:
+      video_duration_range: [2, 3]  # Video ngắn: 2-3 phút
+      schedule: "24x7"
+      use_real_time: false  # Fast mode
+
+  # Camera 2: Motion triggered
+  - name: "TestCam2"
+    source_video: "source_videos/test.mp4"
+    output_folder: "output/TestCam2"
+    pattern: "motion_triggered"
+    config:
+      video_duration_range: [1, 2]   # Video: 1-2 phút
+      idle_duration_range: [1, 3]    # Idle: 1-3 phút
+      schedule: "24x7"
+      use_real_time: false

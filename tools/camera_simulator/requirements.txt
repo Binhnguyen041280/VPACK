@@ -1,0 +1,2 @@
+# Camera Simulator Requirements
+pyyaml>=6.0
