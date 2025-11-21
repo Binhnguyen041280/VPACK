@@ -1127,6 +1127,21 @@ def update_database():
                 ORDER BY vs.name, ldf.camera_name
             """)
 
+            # ==================== AI ARBITRATION SYSTEM MIGRATION ====================
+
+            # Run AI Arbitration System migration
+            try:
+                from modules.arbitration.database_migration import migrate_arbitration_tables
+                logger.info("🔧 Running AI Arbitration System migration...")
+                if migrate_arbitration_tables(conn):
+                    logger.info("✅ AI Arbitration System tables created successfully")
+                else:
+                    logger.warning("⚠️ AI Arbitration System migration had issues")
+            except ImportError as e:
+                logger.warning(f"⚠️ AI Arbitration module not found, skipping: {e}")
+            except Exception as e:
+                logger.error(f"❌ Error running arbitration migration: {e}")
+
             # ==================== CREATE TRIGGERS ====================
 
             # Update platform mappings timestamp trigger

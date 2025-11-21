@@ -108,6 +108,15 @@ from modules.sources.cloud_lazy_folder_routes import lazy_folder_bp
 from modules.sources.sync_endpoints import sync_bp
 from modules.sources.pydrive_downloader import pydrive_downloader
 
+# ==================== IMPORT AI ARBITRATION MODULE ====================
+try:
+    from api.arbitration_routes import arbitration_bp
+    ARBITRATION_SYSTEM_AVAILABLE = True
+    logger.info("✅ AI Arbitration system loaded")
+except ImportError as e:
+    ARBITRATION_SYSTEM_AVAILABLE = False
+    logger.warning(f"⚠️ AI Arbitration system not available: {e}")
+
 # ==================== IMPORT LICENSE MODULES ====================
 try:
     from modules.license.license_checker import LicenseChecker
@@ -328,7 +337,7 @@ if PAYMENT_INTEGRATION_AVAILABLE:
         cloud_client = get_cloud_client()
         app.register_blueprint(payment_bp)
         logger.info("✅ Payment blueprint registered")
-        
+
         # Test connectivity
         connection_test = cloud_client.test_connection()
         if connection_test.get('success'):
@@ -337,6 +346,14 @@ if PAYMENT_INTEGRATION_AVAILABLE:
             logger.warning(f"⚠️ Cloud connectivity issues: {connection_test.get('error')}")
     except Exception as e:
         logger.error(f"❌ Payment integration failed: {e}")
+
+# AI Arbitration System integration
+if ARBITRATION_SYSTEM_AVAILABLE:
+    try:
+        app.register_blueprint(arbitration_bp)
+        logger.info("✅ AI Arbitration blueprint registered at /api/arbitration")
+    except Exception as e:
+        logger.error(f"❌ AI Arbitration integration failed: {e}")
         PAYMENT_INTEGRATION_AVAILABLE = False
 
 # ==================== API BACKEND ONLY ====================
