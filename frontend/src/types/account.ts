@@ -1,15 +1,27 @@
 // Account and Payment related TypeScript interfaces
+// Updated for Phase 4: Simplified 2-plan model (Starter vs Pro)
+
+// License features structure - matches backend SSOT
+export interface LicenseFeatures {
+  default_mode: boolean;    // Pro only: true, Starter: false
+  custom_mode: boolean;     // Both plans: true
+  max_cameras: number;      // Starter: 5, Pro: 10
+}
 
 export interface PricingPackage {
+  package_id?: string;
   code: string;
   name: string;
   price: number;
   original_price?: number;
+  currency?: string;
   duration_days: number;
-  features: string[];
+  features: string[] | LicenseFeatures;  // Can be array (display) or object (computed)
   description?: string;
   recommended?: boolean;
   badge?: string;
+  is_active?: boolean;
+  is_recommended?: boolean;
 }
 
 export interface PricingResponse {
@@ -21,10 +33,16 @@ export interface PricingResponse {
 }
 
 export interface LicenseInfo {
+  license_key?: string;
   package_type: string;
-  expires_at?: string;
+  package_name?: string;
+  badge?: string;
+  price?: number;
+  features: string[] | LicenseFeatures;  // Can be array (display) or object (computed)
+  expires_at?: string;      // ISO string format - SSOT field name
+  created_at?: string;
+  status?: 'active' | 'expired' | 'suspended';
   is_active: boolean;
-  features: string[];
   machine_fingerprint?: string;
   activation_date?: string;
   is_trial?: boolean;
@@ -104,4 +122,35 @@ export interface PaymentFlowState {
     email: string;
   };
   isProcessing: boolean;
+}
+
+// Helper type guard to check if features is LicenseFeatures object
+export function isLicenseFeatures(features: string[] | LicenseFeatures | undefined): features is LicenseFeatures {
+  return features !== undefined &&
+         typeof features === 'object' &&
+         !Array.isArray(features) &&
+         'max_cameras' in features;
+}
+
+// Helper to get max_cameras from license
+export function getMaxCameras(license: LicenseInfo | null | undefined): number {
+  if (!license) return 5; // Default to Starter limit
+  if (isLicenseFeatures(license.features)) {
+    return license.features.max_cameras;
+  }
+  // Fallback: check package_type
+  if (license.package_type?.toLowerCase().includes('pro')) {
+    return 10;
+  }
+  return 5; // Starter default
+}
+
+// Helper to check if default_mode is available
+export function hasDefaultMode(license: LicenseInfo | null | undefined): boolean {
+  if (!license) return false;
+  if (isLicenseFeatures(license.features)) {
+    return license.features.default_mode;
+  }
+  // Fallback: check package_type
+  return license.package_type?.toLowerCase().includes('pro') ?? false;
 }

@@ -282,6 +282,11 @@ class BaseRepository(ABC):
             Table name if detected, None otherwise
         """
         try:
+            # Validate query is not None
+            if query is None:
+                logger.warning("⚠️ Query is None - cannot extract table name")
+                return None
+            
             query_upper = query.upper().strip()
             
             # Handle SELECT queries

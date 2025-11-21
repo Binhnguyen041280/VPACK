@@ -14,6 +14,8 @@ from modules.pricing.cloud_pricing_client import get_cloud_pricing_client
 
 def is_obviously_invalid_license(license_key: str) -> bool:
     """Reject obviously invalid license keys"""
+    if not license_key:
+        return True
     invalid_patterns = ['INVALID-', 'invalid', 'test', 'fake', 'demo']
     return any(license_key.upper().startswith(pattern.upper()) for pattern in invalid_patterns)
 
@@ -979,7 +981,7 @@ def get_license_status():
                         'features': cloud_license_data.get('features', features_list),
                         'activated_at': license_data.get('activated_at'),  # Keep local activation time
                         'is_active': cloud_license_data.get('status') == 'active',
-                        'is_trial': cloud_license_data.get('package_name', '').startswith('trial')
+                        'is_trial': (cloud_license_data.get('package_name') or '').startswith('trial')
                     }
                     logger.info(f"✅ Using Cloud data as source of truth for expires_at: {cloud_license_data.get('expires_at')}")
                 else:
@@ -994,7 +996,7 @@ def get_license_status():
                         'features': features_list,
                         'activated_at': license_data.get('activated_at'),
                         'is_active': True,
-                        'is_trial': license_data.get('product_type', '').startswith('trial')
+                        'is_trial': (license_data.get('product_type') or '').startswith('trial')
                     }
                     logger.warning(f"⚠️ Using local DB fallback for expires_at: {license_data.get('expires_at')}")
 
@@ -1011,7 +1013,8 @@ def get_license_status():
                 # NEW: Add trial_status for trial licenses
                 # ✅ Use cloud_license_data if available, otherwise fallback to license_data
                 product_type = cloud_license_data.get('package_name') if cloud_license_data else license_data.get('product_type', '')
-                if product_type.startswith('trial'):
+                # ✅ FIXED: Add defensive null check before calling .startswith()
+                if product_type and product_type.startswith('trial'):
                     try:
                         # ✅ Prefer cloud expires_at over local DB
                         expires_at = cloud_license_data.get('expires_at') if cloud_license_data else license_data.get('expires_at')

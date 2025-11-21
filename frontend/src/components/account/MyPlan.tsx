@@ -45,7 +45,7 @@ const MyPlan: React.FC = () => {
   const router = useRouter();
   const toast = useToast();
   const license = useLicense();
-  
+
   // Core state
   const [packages, setPackages] = useState<Record<string, PricingPackage>>({});
   const [currentLicense, setCurrentLicense] = useState<LicenseInfo | null>(null);
@@ -53,37 +53,37 @@ const MyPlan: React.FC = () => {
 
   // NEW: Trial status state
   const [trialStatus, setTrialStatus] = useState<any>(null);
-  
+
   // UI state
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Payment flow state
   const [paymentFlow, setPaymentFlow] = useState<PaymentFlowState>({
     currentStep: 'packages',
     isProcessing: false
   });
-  
+
   // Notification state
   const [notification, setNotification] = useState<NotificationState | null>(null);
-  
+
   // Theme colors
   const bgColor = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
   const textColor = useColorModeValue('gray.800', 'white');
   const secondaryText = useColorModeValue('gray.600', 'gray.400');
-  
+
   // Show notification helper
   const showNotification = (message: string, type: NotificationState['type'] = 'info') => {
     setNotification({ message, type, timestamp: Date.now() });
-    
+
     toast({
       title: message,
       status: type,
       duration: 5000,
       isClosable: true,
     });
-    
+
     setTimeout(() => setNotification(null), 5000);
   };
 
@@ -104,7 +104,7 @@ const MyPlan: React.FC = () => {
 
     // Priority 2: Active trial (from license or trial_status)
     if ((currentLicense?.is_trial && currentLicense?.is_active) ||
-        (trialStatus?.is_trial && trialStatus?.days_left > 0)) {
+      (trialStatus?.is_trial && trialStatus?.days_left > 0)) {
 
       const daysLeft = trialStatus?.days_left ||
         (currentLicense?.expires_at ?
@@ -119,7 +119,7 @@ const MyPlan: React.FC = () => {
 
     // Priority 3: Expired trial
     if (trialStatus?.status === 'expired' ||
-        (currentLicense?.is_trial && !currentLicense?.is_active)) {
+      (currentLicense?.is_trial && !currentLicense?.is_active)) {
       return {
         text: "🔑 Trial Expired",
         color: "red"
@@ -162,7 +162,7 @@ const MyPlan: React.FC = () => {
     const loadInitialData = async () => {
       setIsLoading(true);
       setError(null);
-      
+
       try {
         // Load in parallel
         const [packagesRes, licenseRes, userRes] = await Promise.allSettled([
@@ -170,14 +170,14 @@ const MyPlan: React.FC = () => {
           PaymentService.getLicenseStatus(),
           AccountService.getUserProfile()
         ]);
-        
+
         // Handle packages
         if (packagesRes.status === 'fulfilled' && packagesRes.value.success) {
           setPackages(packagesRes.value.packages);
         } else {
           console.warn('Failed to load packages:', packagesRes);
         }
-        
+
         // Handle license
         if (licenseRes.status === 'fulfilled' && licenseRes.value.success) {
           setCurrentLicense(licenseRes.value.license || null);
@@ -191,14 +191,14 @@ const MyPlan: React.FC = () => {
         } else {
           console.warn('Failed to load license:', licenseRes);
         }
-        
+
         // Handle user profile
         if (userRes.status === 'fulfilled') {
           setUserProfile(userRes.value);
         } else {
           console.warn('Failed to load user profile:', userRes);
         }
-        
+
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to load data';
         setError(errorMessage);
@@ -207,7 +207,7 @@ const MyPlan: React.FC = () => {
         setIsLoading(false);
       }
     };
-    
+
     loadInitialData();
   }, []);
 
@@ -215,7 +215,7 @@ const MyPlan: React.FC = () => {
   const handlePackageSelect = (packageCode: string) => {
     const selectedPackage = packages[packageCode];
     if (!selectedPackage) return;
-    
+
     setPaymentFlow({
       currentStep: 'payment',
       selectedPackage: packageCode,
@@ -231,7 +231,7 @@ const MyPlan: React.FC = () => {
       paymentData,
       isProcessing: false
     });
-    
+
     showNotification('Payment successful! Please activate your license.', 'success');
   };
 
@@ -266,18 +266,18 @@ const MyPlan: React.FC = () => {
   };
 
   // Calculate days remaining
-  const daysRemaining = currentLicense?.expires_at 
+  const daysRemaining = currentLicense?.expires_at
     ? AccountService.getDaysRemaining(currentLicense.expires_at)
     : 0;
-    
+
   const statusColor = AccountService.getStatusColor(daysRemaining);
 
   if (isLoading) {
     return (
-      <Box 
-        display="flex" 
-        alignItems="center" 
-        justifyContent="center" 
+      <Box
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
         minH="400px"
       >
         <VStack spacing={4}>
@@ -290,7 +290,7 @@ const MyPlan: React.FC = () => {
 
   return (
     <VStack spacing={6} align="stretch" w="full">
-      
+
       {/* Error Alert */}
       {error && (
         <Alert status="error">
@@ -299,7 +299,7 @@ const MyPlan: React.FC = () => {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      
+
       {/* Success notification for license activation */}
       {paymentFlow.currentStep === 'packages' && currentLicense && daysRemaining > 300 && (
         <Alert status="success">
@@ -315,8 +315,8 @@ const MyPlan: React.FC = () => {
       <Card p={4} bg={bgColor} borderColor={borderColor}>
         <Flex justify="space-between" align="center" wrap="wrap">
           <HStack spacing={4}>
-            <IconBox 
-              icon="🔑" 
+            <IconBox
+              icon="🔑"
               bg={`${statusColor}.500`}
               color="white"
               w="40px"
@@ -325,21 +325,21 @@ const MyPlan: React.FC = () => {
             <VStack align="start" spacing={1}>
               <Text fontWeight="bold" color={textColor}>
                 {currentLicense ?
-                  (packages[currentLicense.package_type]?.name || 
-                   (currentLicense.package_type === 'trial_7d' ? '14 Days Free Trial' : 
-                    (currentLicense.package_type || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + ' Plan')) :
+                  (packages[currentLicense.package_type]?.name ||
+                    (currentLicense.package_type === 'trial_7d' ? '14 Days Free Trial' :
+                      (currentLicense.package_type || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + ' Plan')) :
                   'No Active License'
                 }
               </Text>
               <Text fontSize="sm" color={secondaryText}>
-                {currentLicense?.expires_at ? 
-                  `${daysRemaining} days left` : 
+                {currentLicense?.expires_at ?
+                  `${daysRemaining} days left` :
                   'Start with a plan below'
                 }
               </Text>
             </VStack>
           </HStack>
-          
+
           <HStack spacing={2}>
             {userProfile && userProfile.email ? (
               <Text fontSize="sm" color={secondaryText}>
@@ -377,7 +377,7 @@ const MyPlan: React.FC = () => {
         onClose={handleModalClose}
         onActivationComplete={handleActivationComplete}
       />
-      
+
     </VStack>
   );
 };

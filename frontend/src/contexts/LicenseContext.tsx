@@ -14,7 +14,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { PaymentService } from '@/services/paymentService';
 
-// License status interface
+// License status interface - extended with feature guards
 export interface LicenseStatus {
   hasValidLicense: boolean;
   isTrialActive: boolean;
@@ -23,6 +23,12 @@ export interface LicenseStatus {
   isLoading: boolean;
   licenseType: string | null;
   error: string | null;
+  // Feature guards (Phase 4)
+  features: {
+    default_mode: boolean;  // Pro only
+    custom_mode: boolean;   // Both plans
+    max_cameras: number;    // Starter: 5, Pro: 10
+  };
 }
 
 // Context interface
@@ -51,7 +57,13 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
     isExpired: false,
     isLoading: true,
     licenseType: null,
-    error: null
+    error: null,
+    // Default feature limits (Starter equivalent)
+    features: {
+      default_mode: false,
+      custom_mode: true,
+      max_cameras: 5
+    }
   });
 
   /**
@@ -85,6 +97,29 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
         const isTrialActive = !!(licenseData.is_trial && hasValidLicense);
         const isExpired = daysRemaining !== null && daysRemaining <= 0;
 
+        // Extract features from license data or determine from package type
+        const packageType = licenseData.package_type?.toLowerCase() || '';
+        const isPro = packageType.includes('pro');
+
+        // Features can come from backend or be derived from package type
+        let features = {
+          default_mode: isPro,      // Pro only
+          custom_mode: true,        // Both plans
+          max_cameras: isPro ? 10 : 5  // Starter: 5, Pro: 10
+        };
+
+        // If backend provides features object, use it
+        if (licenseData.features && typeof licenseData.features === 'object' && !Array.isArray(licenseData.features)) {
+          const backendFeatures = licenseData.features as any;
+          if ('max_cameras' in backendFeatures) {
+            features = {
+              default_mode: backendFeatures.default_mode ?? isPro,
+              custom_mode: backendFeatures.custom_mode ?? true,
+              max_cameras: backendFeatures.max_cameras ?? (isPro ? 10 : 5)
+            };
+          }
+        }
+
         setLicense({
           hasValidLicense,
           isTrialActive,
@@ -92,7 +127,8 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
           isExpired,
           isLoading: false,
           licenseType: licenseData.package_type || null,
-          error: null
+          error: null,
+          features
         });
 
         console.log(`✅ License loaded successfully on attempt ${attempt}/${MAX_RETRIES}`);
@@ -107,7 +143,7 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
           }, RETRY_DELAY);
         } else {
           // Max retries reached - no license found
-          console.log(`❌ No license found after ${MAX_RETRIES} attempts (~${(MAX_RETRIES * RETRY_DELAY)/1000}s wait)`);
+          console.log(`No license found after ${MAX_RETRIES} attempts (~${(MAX_RETRIES * RETRY_DELAY)/1000}s wait)`);
           setLicense({
             hasValidLicense: false,
             isTrialActive: false,
@@ -115,7 +151,13 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
             isExpired: false,
             isLoading: false,
             licenseType: null,
-            error: null
+            error: null,
+            // Default feature limits (no license = Starter equivalent)
+            features: {
+              default_mode: false,
+              custom_mode: true,
+              max_cameras: 5
+            }
           });
         }
       }
@@ -132,7 +174,13 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
         setLicense(prev => ({
           ...prev,
           isLoading: false,
-          error: error instanceof Error ? error.message : 'Failed to load license'
+          error: error instanceof Error ? error.message : 'Failed to load license',
+          // Ensure features exist on error state
+          features: prev.features || {
+            default_mode: false,
+            custom_mode: true,
+            max_cameras: 5
+          }
         }));
       }
     }

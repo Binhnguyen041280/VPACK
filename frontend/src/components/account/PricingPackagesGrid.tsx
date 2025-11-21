@@ -13,15 +13,16 @@ import {
   ListIcon,
   useColorModeValue,
   Box,
-  Flex
+  Flex,
+  Icon
 } from '@chakra-ui/react';
-import { MdCheck } from 'react-icons/md';
+import { MdCheck, MdClose, MdVideocam } from 'react-icons/md';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
 
 import Card from '@/components/card/Card';
 import IconBox from '@/components/icons/IconBox';
 import { PaymentService } from '@/services/paymentService';
-import { PricingPackage, LicenseInfo } from '@/types/account';
+import { PricingPackage, LicenseInfo, isLicenseFeatures } from '@/types/account';
 
 interface PricingPackagesGridProps {
   packages: Record<string, PricingPackage>;
@@ -131,7 +132,10 @@ const PricingPackagesGrid: React.FC<PricingPackagesGridProps> = ({
           w="full"
         >
           {orderedPackages.map((pkg) => {
-            const badge = PaymentService.getBadgeForPackage(pkg.code);
+            // Determine if this is a Pro/recommended package
+            const isPro = pkg.code?.toLowerCase().includes('pro') || pkg.is_recommended;
+            // Use package badge or generate one for Pro
+            const badge = pkg.badge || PaymentService.getBadgeForPackage(pkg.code) || (isPro ? 'RECOMMENDED' : null);
             const isCurrentPlan = currentLicense?.package_type === pkg.code;
             const canPurchase = canPurchasePackage(pkg.code);
 
@@ -227,18 +231,52 @@ const PricingPackagesGrid: React.FC<PricingPackagesGridProps> = ({
                     </Text>
                   </VStack>
 
-                  {/* Features Section */}
+                  {/* Features Section - Simplified 2-plan model */}
                   <VStack align="stretch" spacing={3} flex={1} justify="start" py={4}>
-                    {pkg.features && pkg.features.length > 0 && (
-                      <List spacing={3} w="full">
-                        {pkg.features.map((feature, idx) => (
-                          <ListItem key={idx} fontSize="sm" display="flex" alignItems="center">
-                            <ListIcon as={MdCheck} color="brand.500" w={5} h={5} />
-                            <Text as="span" ml={2}>{feature}</Text>
+                    {/* Simplified features: Mode + Camera count */}
+                    {(() => {
+                      // Determine features based on package code or features object
+                      const isPro = pkg.code?.toLowerCase().includes('pro') || pkg.is_recommended;
+                      const hasDefaultMode = isLicenseFeatures(pkg.features)
+                        ? pkg.features.default_mode
+                        : isPro;
+                      const maxCameras = isLicenseFeatures(pkg.features)
+                        ? pkg.features.max_cameras
+                        : (isPro ? 10 : 5);
+
+                      return (
+                        <List spacing={3} w="full">
+                          {/* Mode Feature */}
+                          <ListItem fontSize="sm" display="flex" alignItems="center">
+                            <ListIcon
+                              as={hasDefaultMode ? MdCheck : MdClose}
+                              color={hasDefaultMode ? "green.500" : "gray.400"}
+                              w={5}
+                              h={5}
+                            />
+                            <Text as="span" ml={2} color={hasDefaultMode ? textColor : secondaryText}>
+                              {hasDefaultMode ? "All Mode (Default + Custom)" : "Custom Mode only"}
+                            </Text>
                           </ListItem>
-                        ))}
-                      </List>
-                    )}
+
+                          {/* Camera Limit Feature */}
+                          <ListItem fontSize="sm" display="flex" alignItems="center">
+                            <ListIcon as={MdVideocam} color="brand.500" w={5} h={5} />
+                            <Text as="span" ml={2}>
+                              Max {maxCameras} cameras
+                            </Text>
+                          </ListItem>
+
+                          {/* Display remaining string features if any */}
+                          {Array.isArray(pkg.features) && pkg.features.map((feature, idx) => (
+                            <ListItem key={idx} fontSize="sm" display="flex" alignItems="center">
+                              <ListIcon as={MdCheck} color="brand.500" w={5} h={5} />
+                              <Text as="span" ml={2}>{feature}</Text>
+                            </ListItem>
+                          ))}
+                        </List>
+                      );
+                    })()}
 
                     {pkg.description && (
                       <Text fontSize="xs" color={secondaryText} textAlign="center" mt={2} fontStyle="italic">
