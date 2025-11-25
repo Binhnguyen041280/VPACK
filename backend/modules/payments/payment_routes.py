@@ -972,17 +972,19 @@ def get_license_status():
                 # ✅ SECURITY FIX: Use Cloud data as source of truth when available
                 if cloud_license_data:
                     # Cloud data is authoritative - prevents local DB tampering
+                    package_type = cloud_license_data.get('package_type', license_data.get('product_type', 'desktop'))
+                    
                     response_license_data = {
                         'license_key': cloud_license_data.get('license_key', license_data.get('license_key', '')),
                         'customer_email': cloud_license_data.get('customer_email', license_data.get('customer_email', '')),
-                        'package_name': cloud_license_data.get('package_name', license_data.get('product_type', 'desktop')),
-                        'package_type': cloud_license_data.get('package_name', license_data.get('product_type', 'desktop')),
+                        'package_name': package_type,  # ✅ Use package_type as package_name for now
+                        'package_type': package_type,  # ✅ FIX: Get from cloud package_type field
                         'expires_at': cloud_license_data.get('expires_at'),  # ← FROM CLOUD (Firestore)
                         'status': cloud_license_data.get('status', 'active'),
                         'features': cloud_license_data.get('features', features_list),
                         'activated_at': license_data.get('activated_at'),  # Keep local activation time
                         'is_active': cloud_license_data.get('status') == 'active',
-                        'is_trial': (cloud_license_data.get('package_name') or '').startswith('trial')
+                        'is_trial': package_type.startswith('trial_')  # ✅ FIX: Use package_type from Firestore SSOT
                     }
                     logger.info(f"✅ Using Cloud data as source of truth for expires_at: {cloud_license_data.get('expires_at')}")
                 else:
@@ -997,7 +999,7 @@ def get_license_status():
                         'features': features_list,
                         'activated_at': license_data.get('activated_at'),
                         'is_active': True,
-                        'is_trial': (license_data.get('product_type') or '').startswith('trial')
+                        'is_trial': license_data.get('product_type', '').startswith('trial_')  # ✅ FIX: Use package_type from Firestore SSOT
                     }
                     logger.warning(f"⚠️ Using local DB fallback for expires_at: {license_data.get('expires_at')}")
 
@@ -1013,9 +1015,9 @@ def get_license_status():
 
                 # NEW: Add trial_status for trial licenses
                 # ✅ Use cloud_license_data if available, otherwise fallback to license_data
-                product_type = cloud_license_data.get('package_name') if cloud_license_data else license_data.get('product_type', '')
-                # ✅ FIXED: Add defensive null check before calling .startswith()
-                if product_type and product_type.startswith('trial'):
+                product_type = cloud_license_data.get('package_type') if cloud_license_data else license_data.get('product_type', '')
+                # ✅ FIXED: Use package_type from Firestore SSOT instead of package_name
+                if product_type and product_type.startswith('trial_'):
                     try:
                         # ✅ Prefer cloud expires_at over local DB
                         expires_at = cloud_license_data.get('expires_at') if cloud_license_data else license_data.get('expires_at')
