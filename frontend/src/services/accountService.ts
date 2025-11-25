@@ -1,6 +1,7 @@
 import { UserProfile, PaymentTransaction } from '@/types/account';
+import API_CONFIG from '@/config/api';
 
-const API_BASE = 'http://localhost:8080/api';
+const API_BASE = API_CONFIG.BASE_URL;
 
 export class AccountService {
   /**

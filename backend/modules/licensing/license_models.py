@@ -130,14 +130,14 @@ class License:
     
     @staticmethod
     def create(license_key: str, customer_email: str, payment_transaction_id: Optional[int] = None,
-               product_type: str = 'desktop', features: Optional[List[str]] = None, 
-               expires_days: int = 365) -> Optional[int]:
-        """Create license - REFACTORED: Simple repository delegation"""
+               product_type: str = 'desktop', features: Optional[List[str]] = None,
+               expires_days: int = 365, expires_at: Optional[str] = None) -> Optional[int]:
+        """Create license - REFACTORED: Simple repository delegation with SSOT support"""
         try:
             if get_license_repository:
                 repo = get_license_repository()
-                return repo.create_license(license_key, customer_email, payment_transaction_id, 
-                                         product_type, features, expires_days)
+                return repo.create_license(license_key, customer_email, payment_transaction_id,
+                                         product_type, features, expires_days, expires_at)
             else:
                 logger.error("❌ Repository not available")
                 return None

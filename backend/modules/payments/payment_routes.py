@@ -14,6 +14,8 @@ from modules.pricing.cloud_pricing_client import get_cloud_pricing_client
 
 def is_obviously_invalid_license(license_key: str) -> bool:
     """Reject obviously invalid license keys"""
+    if not license_key:
+        return True
     invalid_patterns = ['INVALID-', 'invalid', 'test', 'fake', 'demo']
     return any(license_key.upper().startswith(pattern.upper()) for pattern in invalid_patterns)
 
@@ -21,6 +23,10 @@ def extract_package_from_license_key(license_key: str) -> dict:
     """
     Extract package information from license key format: VTRACK-P1M-...
     Returns package type and duration based on license key pattern
+
+    DEPRECATED: This function uses hard-coded package mappings that are out of sync with Firestore SSOT.
+    Prefer using CloudFunction validation response (license_data) directly for activation flow.
+    Kept for offline fallback and legacy compatibility only.
     """
     try:
         # Default values
@@ -37,35 +43,30 @@ def extract_package_from_license_key(license_key: str) -> dict:
         if len(parts) < 3:
             return default_package
         
-        # Extract package code (e.g., P1M, P1Y, B1M, B1Y, T24H)
+        # Extract package code (e.g., S1M, P1M, T14D, T10M)
         package_code = parts[1] if len(parts) > 1 else ''
-        
-        # ✅ UPDATED: Enhanced package mapping with trial support
+
+        # ✅ SSOT FIX: Updated package mapping to match Firestore SSOT (short_code → package_type)
         package_mapping = {
-            'P1M': {
-                'product_type': 'personal_1m',
+            'S1M': {  # Starter Monthly (was: P1M → personal_1m)
+                'product_type': 'starter_1m',
                 'expires_days': 30,
-                'package_name': 'Personal Monthly'
+                'package_name': 'Starter Monthly'
             },
-            'P1Y': {
-                'product_type': 'personal_1y', 
-                'expires_days': 365,
-                'package_name': 'Personal Annual'
-            },
-            'B1M': {
-                'product_type': 'business_1m',
+            'P1M': {  # Pro Monthly (was: B1M → business_1m)
+                'product_type': 'pro_1m',
                 'expires_days': 30,
-                'package_name': 'Business Monthly'
+                'package_name': 'Pro Monthly'
             },
-            'B1Y': {
-                'product_type': 'business_1y',
-                'expires_days': 365,
-                'package_name': 'Business Annual'
+            'T14D': {  # 14 Days Free Trial
+                'product_type': 'trial_14d',
+                'expires_days': 14,
+                'package_name': '14 Days Free Trial'
             },
-            'T24H': {  # ✅ NEW: Trial 24h package
-                'product_type': 'trial_24h',
-                'expires_days': 1,
-                'package_name': '24 Hours Trial Extension'
+            'T10M': {  # 10 Minutes Test
+                'product_type': 'test_10m',
+                'expires_days': 0,
+                'package_name': '10 Minutes Test'
             }
         }
         
@@ -485,18 +486,20 @@ def activate_license():
                 logger.error(f"Error checking license activation history: {e}")
                 # Continue with error - don't block
         else:
-            # Extract package info from license key format: VTRACK-P1M-...
-            package_info = extract_package_from_license_key(license_key)
-            
-            # Create new license record with correct package data
+            # ✅ SSOT FIX: Use CloudFunction validation data directly (no hard-coded mapping!)
+            # Previously used extract_package_from_license_key() which had outdated mappings
+            # Now using license_data from CloudFunction which is SSOT from Firestore
+
+            # Create new license record with CloudFunction SSOT data
             logger.info(f"📝 Creating new license record for key: {license_key[:12]}...")
             license_id = License.create(
                 license_key=license_key,
                 customer_email=license_data.get('customer_email') or 'trial@vtrack.com',
                 payment_transaction_id=None,  # No local payment transaction
-                product_type=package_info.get('product_type', license_data.get('product_type', 'desktop')),
+                product_type=license_data.get('package_type', 'desktop'),  # ✅ FIX: Firestore uses 'package_type' not 'product_type'
                 features=license_data.get('features', ['full_access']),
-                expires_days=package_info.get('expires_days', 365)
+                expires_days=0,  # Ignored when expires_at is provided
+                expires_at=license_data.get('expires_at')  # ✅ SSOT timestamp from CloudFunction
             )
             
             if license_id:
@@ -979,7 +982,7 @@ def get_license_status():
                         'features': cloud_license_data.get('features', features_list),
                         'activated_at': license_data.get('activated_at'),  # Keep local activation time
                         'is_active': cloud_license_data.get('status') == 'active',
-                        'is_trial': cloud_license_data.get('package_name', '').startswith('trial')
+                        'is_trial': (cloud_license_data.get('package_name') or '').startswith('trial')
                     }
                     logger.info(f"✅ Using Cloud data as source of truth for expires_at: {cloud_license_data.get('expires_at')}")
                 else:
@@ -994,7 +997,7 @@ def get_license_status():
                         'features': features_list,
                         'activated_at': license_data.get('activated_at'),
                         'is_active': True,
-                        'is_trial': license_data.get('product_type', '').startswith('trial')
+                        'is_trial': (license_data.get('product_type') or '').startswith('trial')
                     }
                     logger.warning(f"⚠️ Using local DB fallback for expires_at: {license_data.get('expires_at')}")
 
@@ -1011,7 +1014,8 @@ def get_license_status():
                 # NEW: Add trial_status for trial licenses
                 # ✅ Use cloud_license_data if available, otherwise fallback to license_data
                 product_type = cloud_license_data.get('package_name') if cloud_license_data else license_data.get('product_type', '')
-                if product_type.startswith('trial'):
+                # ✅ FIXED: Add defensive null check before calling .startswith()
+                if product_type and product_type.startswith('trial'):
                     try:
                         # ✅ Prefer cloud expires_at over local DB
                         expires_at = cloud_license_data.get('expires_at') if cloud_license_data else license_data.get('expires_at')
@@ -1067,8 +1071,8 @@ def get_license_status():
                             'license': {
                                 'license_key': trial_license_data.get('license_key', ''),
                                 'customer_email': trial_license_data.get('customer_email', 'trial@local.dev'),
-                                'package_name': trial_license_data.get('product_type', 'trial_7d'),
-                                'package_type': trial_license_data.get('product_type', 'trial_7d'),
+                                'package_name': trial_license_data.get('product_type', 'trial_14d'),
+                                'package_type': trial_license_data.get('product_type', 'trial_14d'),
                                 'expires_at': trial_license_data.get('expires_at'),
                                 'status': 'active',
                                 'features': trial_license_data.get('features', ['trial_access']),

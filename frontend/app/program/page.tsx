@@ -20,8 +20,9 @@ import {
   Radio,
   RadioGroup,
   Stack,
+  Tooltip,
 } from '@chakra-ui/react';
-import { MdPlayArrow, MdStop, MdFolder, MdSettings, MdCheck, MdRefresh } from 'react-icons/md';
+import { MdPlayArrow, MdStop, MdFolder, MdSettings, MdCheck, MdRefresh, MdLock } from 'react-icons/md';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
 import { useRoute } from '@/contexts/RouteContext';
 import Card from '@/components/card/Card';
@@ -33,6 +34,14 @@ interface ProgramStatus {
   current_running: string | null;
   custom_path?: string | null;
   days?: number | null;
+}
+
+interface LicenseStatus {
+  status: 'valid' | 'invalid' | 'no_license';
+  license?: {
+    product_type?: string;
+    [key: string]: any;
+  };
 }
 
 interface ProgramCard {
@@ -93,15 +102,14 @@ export default function Program() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [customPath, setCustomPath] = useState('');
-  const [customVideoFile, setCustomVideoFile] = useState<File | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [isUploading, setIsUploading] = useState(false);
   const [days, setDays] = useState<number | string>(7);
   const [selectedProgram, setSelectedProgram] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<string | null>(null);
   const [loadingCameras, setLoadingCameras] = useState(false);
+  const [licenseStatus, setLicenseStatus] = useState<LicenseStatus | null>(null);
+  const [isDefaultDisabled, setIsDefaultDisabled] = useState(false);
 
   // Progress monitoring hook
   const {
@@ -122,6 +130,46 @@ export default function Program() {
       });
     }
   });
+
+  // Function to fetch license status from backend
+  const fetchLicenseStatus = async () => {
+    try {
+      const response = await fetch('http://localhost:8080/api/license-status', {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        console.warn('License status check failed, allowing all features');
+        setIsDefaultDisabled(false);
+        return;
+      }
+
+      const data: LicenseStatus = await response.json();
+      setLicenseStatus(data);
+
+      // Check if Default Mode should be disabled (Starter license)
+      if (data.status === 'valid' && data.license?.product_type) {
+        const productType = data.license.product_type.toLowerCase();
+        const isStarter = productType.includes('starter');
+        setIsDefaultDisabled(isStarter);
+
+        if (isStarter) {
+          console.log('Starter license detected - Default Mode disabled');
+        }
+      } else {
+        // No license or invalid - allow all features (fail-open)
+        setIsDefaultDisabled(false);
+      }
+    } catch (error) {
+      console.error('Error fetching license status:', error);
+      // On error, allow all features (fail-open for better UX)
+      setIsDefaultDisabled(false);
+    }
+  };
 
   // Function to fetch cameras from backend
   const fetchCameras = async () => {
@@ -174,58 +222,10 @@ export default function Program() {
     }
   };
 
-  // Function to upload custom video file
-  const uploadCustomVideo = async (file: File): Promise<string> => {
-    try {
-      setIsUploading(true);
-      setUploadProgress(0);
-
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch('http://localhost:8080/api/program/upload-custom-video', {
-        method: 'POST',
-        credentials: 'include',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Upload failed');
-      }
-
-      const data = await response.json();
-      setUploadProgress(100);
-
-      if (!data.success) {
-        throw new Error(data.error || 'Upload failed');
-      }
-
-      return data.container_path;
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
   // Function to start program via backend API
   const startProgram = async (programId: string) => {
     try {
       setActionLoading(true);
-
-      let uploadedPath: string | undefined = undefined;
-
-      // If custom program, upload file first
-      if (programId === 'custom' && customVideoFile) {
-        toast({
-          title: 'Uploading video...',
-          description: 'Please wait while the video file is being uploaded',
-          status: 'info',
-          duration: 3000,
-        });
-
-        uploadedPath = await uploadCustomVideo(customVideoFile);
-        console.log('✅ Video uploaded to container:', uploadedPath);
-      }
 
       // Immediately update UI to running state - hide program selection
       setIsRunning(true);
@@ -238,7 +238,7 @@ export default function Program() {
         programType: programId as 'first' | 'default' | 'custom',
         action: 'run',
         days: programId === 'first' ? (typeof days === 'string' ? parseInt(days) || 7 : days) : undefined,
-        customPath: programId === 'custom' ? (uploadedPath || customPath) : undefined,
+        customPath: programId === 'custom' ? customPath : undefined,
         cameraName: programId === 'custom' ? selectedCamera || undefined : undefined
       });
 
@@ -307,6 +307,8 @@ export default function Program() {
     setCurrentRoute('/program');
     // Initialize with mock data
     fetchProgramStatus();
+    // Fetch license status to determine Default Mode availability
+    fetchLicenseStatus();
   }, [setCurrentRoute]);
 
   // Fetch cameras when custom program is selected
@@ -470,114 +472,121 @@ export default function Program() {
             </Text>
 
             <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
-              {programCards.map((program) => (
-                <Card
-                  key={program.id}
-                  bg={cardBg}
-                  p={6}
-                  cursor={program.disabled ? 'not-allowed' : 'pointer'}
-                  opacity={program.disabled ? 0.5 : 1}
-                  border="2px solid"
-                  borderColor={selectedProgram === program.id ? currentColors.brand500 : borderColor}
-                  _hover={!program.disabled ? {
-                    borderColor: currentColors.brand500,
-                    transform: 'translateY(-2px)',
-                    shadow: 'lg',
-                  } : {}}
-                  transition="all 0.2s"
-                  onClick={() => {
-                    if (!program.disabled) {
-                      setSelectedProgram(program.id);
-                    }
-                  }}
-                >
-                  <VStack spacing={4} align="center" textAlign="center">
-                    <Icon
-                      as={program.icon}
-                      boxSize={8}
-                      color={selectedProgram === program.id ? currentColors.brand500 : textColor}
-                    />
+              {programCards.map((program) => {
+                // Check if this is Default program and should be disabled
+                const isLockedByLicense = program.id === 'default' && isDefaultDisabled;
+                const isDisabled = program.disabled || isLockedByLicense;
 
-                    <VStack spacing={1}>
-                      <Text fontSize="lg" fontWeight="600" color={textColor}>
-                        {program.englishName}
-                      </Text>
-                      <Text fontSize="sm" color={textColor} opacity={0.7}>
-                        {program.title}
-                      </Text>
-                      <Text fontSize="xs" color={textColor} opacity={0.5} textAlign="center">
-                        {program.description}
-                      </Text>
+                const cardContent = (
+                  <Card
+                    key={program.id}
+                    bg={cardBg}
+                    p={6}
+                    cursor={isDisabled ? 'not-allowed' : 'pointer'}
+                    opacity={isDisabled ? 0.5 : 1}
+                    border="2px solid"
+                    borderColor={selectedProgram === program.id ? currentColors.brand500 : borderColor}
+                    _hover={!isDisabled ? {
+                      borderColor: currentColors.brand500,
+                      transform: 'translateY(-2px)',
+                      shadow: 'lg',
+                    } : {}}
+                    transition="all 0.2s"
+                    onClick={() => {
+                      if (!isDisabled) {
+                        setSelectedProgram(program.id);
+                      } else if (isLockedByLicense) {
+                        // Show message for locked Default Mode
+                        toast({
+                          title: 'Pro License Required',
+                          description: 'Default Mode (auto-scan 24/7) requires Pro license (249k/month). Your current plan: Starter (29k/month) - Custom Mode only.',
+                          status: 'warning',
+                          duration: 5000,
+                          isClosable: true,
+                        });
+                      }
+                    }}
+                  >
+                    <VStack spacing={4} align="center" textAlign="center" position="relative">
+                      {isLockedByLicense && (
+                        <Box position="absolute" top="-2" right="-2">
+                          <Icon as={MdLock} boxSize={5} color="orange.500" />
+                        </Box>
+                      )}
+
+                      <Icon
+                        as={program.icon}
+                        boxSize={8}
+                        color={selectedProgram === program.id ? currentColors.brand500 : textColor}
+                      />
+
+                      <VStack spacing={1}>
+                        <HStack spacing={2}>
+                          <Text fontSize="lg" fontWeight="600" color={textColor}>
+                            {program.englishName}
+                          </Text>
+                          {isLockedByLicense && (
+                            <Badge colorScheme="orange" fontSize="xs">PRO</Badge>
+                          )}
+                        </HStack>
+                        <Text fontSize="sm" color={textColor} opacity={0.7}>
+                          {program.title}
+                        </Text>
+                        <Text fontSize="xs" color={textColor} opacity={0.5} textAlign="center">
+                          {program.description}
+                        </Text>
+                        {isLockedByLicense && (
+                          <Text fontSize="xs" color="orange.500" fontWeight="600" mt={2}>
+                            Upgrade to Pro (249k/month)
+                          </Text>
+                        )}
+                      </VStack>
+
+                      {selectedProgram === program.id && (
+                        <Icon as={MdCheck} color={currentColors.brand500} boxSize={5} />
+                      )}
                     </VStack>
+                  </Card>
+                );
 
-                    {selectedProgram === program.id && (
-                      <Icon as={MdCheck} color={currentColors.brand500} boxSize={5} />
-                    )}
-                  </VStack>
-                </Card>
-              ))}
+                // Wrap in tooltip if locked by license
+                if (isLockedByLicense) {
+                  return (
+                    <Tooltip
+                      key={program.id}
+                      label="Default Mode (auto-scan 24/7) requires Pro license. Starter license includes Custom Mode only. Upgrade to Pro for full automation."
+                      placement="top"
+                      hasArrow
+                      bg="orange.500"
+                      color="white"
+                    >
+                      {cardContent}
+                    </Tooltip>
+                  );
+                }
+
+                return cardContent;
+              })}
             </SimpleGrid>
           </Box>
         )}
 
-        {/* Custom Video Upload */}
+        {/* Custom Path Input */}
         {selectedProgram === 'custom' && (
           <Card bg={cardBg} p={6}>
             <VStack spacing={6} align="stretch">
               <FormControl>
                 <FormLabel color={textColor} fontSize="sm" fontWeight="600">
-                  Select Video File
+                  Custom Path
                 </FormLabel>
                 <Input
-                  type="file"
-                  accept="video/*,.mp4,.avi,.mov,.mkv,.flv,.wmv,.webm"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      setCustomVideoFile(file);
-                      setCustomPath(file.name);
-                    }
-                  }}
+                  placeholder="Enter custom file or directory path..."
+                  value={customPath}
+                  onChange={(e) => setCustomPath(e.target.value)}
                   color={textColor}
                   borderColor={borderColor}
                   _focus={{ borderColor: currentColors.brand500 }}
-                  sx={{
-                    '::file-selector-button': {
-                      height: '100%',
-                      marginRight: '12px',
-                      padding: '8px 16px',
-                      border: 'none',
-                      borderRadius: 'md',
-                      bg: currentColors.brand500,
-                      color: 'white',
-                      cursor: 'pointer',
-                      _hover: {
-                        bg: currentColors.brand500
-                      }
-                    }
-                  }}
                 />
-                {customVideoFile && (
-                  <Text fontSize="xs" color={textColor} opacity={0.7} mt={2}>
-                    Selected: {customVideoFile.name} ({(customVideoFile.size / (1024 * 1024)).toFixed(2)} MB)
-                  </Text>
-                )}
-                {isUploading && (
-                  <Box mt={3}>
-                    <Flex justify="space-between" mb={2}>
-                      <Text fontSize="xs" color={textColor}>Uploading...</Text>
-                      <Text fontSize="xs" color={textColor}>{uploadProgress}%</Text>
-                    </Flex>
-                    <Box w="100%" h="4px" bg={borderColor} borderRadius="full" overflow="hidden">
-                      <Box
-                        h="100%"
-                        bg={currentColors.brand500}
-                        transition="width 0.3s"
-                        w={`${uploadProgress}%`}
-                      />
-                    </Box>
-                  </Box>
-                )}
               </FormControl>
 
               {/* Camera Selection */}
@@ -675,7 +684,6 @@ export default function Program() {
                 onClick={() => {
                   setSelectedProgram(null);
                   setCustomPath('');
-                  setCustomVideoFile(null);
                   setDays(7);
                   setSelectedCamera(null);
                 }}
@@ -688,9 +696,9 @@ export default function Program() {
                 color="white"
                 leftIcon={<Icon as={MdPlayArrow} />}
                 onClick={() => startProgram(selectedProgram)}
-                isLoading={actionLoading || isUploading}
-                loadingText={isUploading ? "Uploading..." : "Starting..."}
-                disabled={selectedProgram === 'custom' && (!customVideoFile || !selectedCamera)}
+                isLoading={actionLoading}
+                loadingText="Starting..."
+                disabled={selectedProgram === 'custom' && (!customPath.trim() || !selectedCamera)}
                 _hover={{
                   bg: currentColors.gradient,
                 }}

@@ -1,13 +1,14 @@
-import { 
-  PricingResponse, 
-  CreatePaymentRequest, 
+import {
+  PricingResponse,
+  CreatePaymentRequest,
   CreatePaymentResponse,
   LicenseActivationRequest,
   LicenseActivationResponse,
   LicenseStatusResponse
 } from '@/types/account';
+import API_CONFIG from '@/config/api';
 
-const API_BASE = 'http://localhost:8080/api';
+const API_BASE = API_CONFIG.BASE_URL;
 
 export class PaymentService {
   /**
@@ -151,15 +152,25 @@ export class PaymentService {
 
   /**
    * Get badge for package type
+   * Simplified 2-plan model: Starter vs Pro
    */
   static getBadgeForPackage(packageCode: string): string | null {
+    const code = packageCode?.toLowerCase() || '';
+
+    // Pro packages get RECOMMENDED badge
+    if (code.includes('pro')) {
+      return 'RECOMMENDED';
+    }
+
+    // Legacy badges for backward compatibility
     switch (packageCode) {
       case 'personal_1y':
-        return '🔥 POPULAR';
+        return 'POPULAR';
       case 'business_1y':
-        return '💎 BEST VALUE';
+        return 'BEST VALUE';
       case 'trial_24h':
-        return '⏰ TRIAL';
+      case 'trial_7d':
+        return 'TRIAL';
       default:
         return null;
     }

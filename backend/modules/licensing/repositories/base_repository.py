@@ -232,13 +232,18 @@ class BaseRepository(ABC):
             lastrowid for INSERT, rowcount > 0 for UPDATE/DELETE
         """
         try:
+            # Validate query is not None before string operations
+            if query is None:
+                logger.error("❌ Query is None - cannot execute")
+                raise DatabaseError("Query parameter cannot be None")
+
             if not self._test_connection():
                 raise DatabaseError("Database connection not available")
-            
+
             with safe_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(query, params)
-                
+
                 # Determine operation type
                 operation = query.strip().upper()
                 
@@ -277,6 +282,11 @@ class BaseRepository(ABC):
             Table name if detected, None otherwise
         """
         try:
+            # Validate query is not None
+            if query is None:
+                logger.warning("⚠️ Query is None - cannot extract table name")
+                return None
+            
             query_upper = query.upper().strip()
             
             # Handle SELECT queries

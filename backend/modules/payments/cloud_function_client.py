@@ -616,7 +616,7 @@ class VTrackCloudClient:
                 'customer_email': user_email,  # Add real user email
                 'app_version': self.user_agent,
                 'timestamp': datetime.now().isoformat(),
-                'trial_duration_days': 7
+                'trial_duration_days': 14  # Match Cloud Function: 14-day trial
             }
 
             # Try trial license generation with retry logic
@@ -643,7 +643,7 @@ class VTrackCloudClient:
                                     'license_key': result.get('trial_license_key'),  # Alias for compatibility
                                     'license_data': result.get('license_data', {}),
                                     'expires_at': result.get('expires_at'),
-                                    'trial_duration_days': result.get('trial_duration_days', 7),
+                                    'trial_duration_days': result.get('trial_duration_days', 14),
                                     'message': result.get('message', '')
                                 }
                             }

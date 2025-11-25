@@ -9,8 +9,10 @@ import logging
 import threading
 from contextlib import contextmanager
 from typing import Generator
+import os
 
-from modules.db_utils import get_db_connection
+# Don't import get_db_connection - we'll create connection directly inline
+# to avoid circular imports
 
 logger = logging.getLogger(__name__)
 
@@ -36,13 +38,22 @@ def safe_db_connection(timeout: int = 60, retry_attempts: int = 3, retry_delay: 
     
     while attempt < retry_attempts:
         try:
-            # Get connection with timeout
-            connection = get_db_connection()
-            connection.execute(f"PRAGMA busy_timeout = {timeout * 1000}")  # Convert to milliseconds
-            
-            # Test connection with a simple query
-            connection.execute("SELECT 1").fetchone()
-            
+            # Get DB path from path_utils (avoid circular import from database.py)
+            from modules.path_utils import get_paths
+            paths = get_paths()
+            db_path = paths["DB_PATH"]
+
+            # Create database directory if needed
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
+            # Direct connection creation (like database.py:get_db_connection)
+            connection = sqlite3.connect(db_path, timeout=float(timeout))
+            connection.execute(f"PRAGMA busy_timeout = {timeout * 1000}")
+            connection.execute("PRAGMA journal_mode = WAL")
+            connection.execute("PRAGMA synchronous = NORMAL")
+
+            # No test query - empty database is OK!
+
             yield connection
             
             # If we reach here, operation was successful

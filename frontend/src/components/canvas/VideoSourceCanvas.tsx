@@ -27,6 +27,8 @@ import GoogleDriveFolderTree from './GoogleDriveFolderTree';
 import { useState, useEffect, useRef } from 'react';
 import React from 'react';
 import { stepConfigService } from '@/services/stepConfigService';
+import { useLicense } from '@/contexts/LicenseContext';
+import { getMaxCameras } from '@/types/account';
 
 // Height breakpoints for adaptive behavior
 type HeightMode = 'compact' | 'normal' | 'spacious';
@@ -76,6 +78,24 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
   const secondaryText = useColorModeValue('gray.600', 'gray.400');
   const cardBg = useColorModeValue('gray.50', 'navy.700');
   const selectionBoxBg = useColorModeValue('gray.50', 'navy.700');
+
+  // License context for camera limit enforcement
+  let licenseContext: { license: { features?: { max_cameras?: number } } } | undefined;
+  try {
+    licenseContext = useLicense();
+  } catch {
+    // Context not available - will use default limits
+    licenseContext = undefined;
+  }
+
+  // Get max cameras allowed based on license features (default: 5 for Starter)
+  const maxCamerasAllowed = React.useMemo(() => {
+    // Use features.max_cameras from license context if available
+    if (licenseContext?.license?.features?.max_cameras) {
+      return licenseContext.license.features.max_cameras;
+    }
+    return 5; // Starter default
+  }, [licenseContext?.license?.features?.max_cameras]);
 
   // State for selected source type and input path
   const [selectedSourceType, setSelectedSourceType] = useState<'local_storage' | 'cloud_storage'>('local_storage');
@@ -419,20 +439,25 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
     }
   };
 
-  // Handle camera checkbox selection
+  // Handle camera checkbox selection with license limit enforcement
   const handleCameraToggle = (cameraName: string) => {
     let newSelection: string[];
-    
+
     if (selectedCameras.includes(cameraName)) {
-      // Deselect camera
+      // Deselect camera - always allowed
       newSelection = selectedCameras.filter(c => c !== cameraName);
     } else {
-      // Select camera
+      // Select camera - check limit first
+      if (selectedCameras.length >= maxCamerasAllowed) {
+        console.log(`Camera limit reached (${maxCamerasAllowed}). Cannot add more cameras.`);
+        // Don't add the camera - limit reached
+        return;
+      }
       newSelection = [...selectedCameras, cameraName];
     }
-    
+
     setSelectedCameras(newSelection);
-    
+
     // Update step data for UI
     if (onStepChange) {
       onStepChange('video_source', {
@@ -442,12 +467,15 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
         selectedCameras: newSelection
       });
     }
-    
+
     // Auto-save to backend (debounced)
     saveVideoSourceConfig('local_storage', inputPath, detectedFolders, newSelection);
-    
-    console.log(`📷 Camera selection updated: ${newSelection.join(', ')}`);
+
+    console.log(`Camera selection updated: ${newSelection.join(', ')} (${newSelection.length}/${maxCamerasAllowed})`);
   };
+
+  // Check if camera limit is reached
+  const isCameraLimitReached = selectedCameras.length >= maxCamerasAllowed;
 
   // Save video source configuration to backend with debounce (UPSERT pattern)
   const saveVideoSourceConfig = React.useCallback(
@@ -941,39 +969,54 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                         borderColor={borderColor}
                       >
                         <Wrap spacing="12px">
-                          {detectedFolders.map((folder) => (
-                            <WrapItem key={folder.name}>
-                              <Checkbox
-                                colorScheme="brand"
-                                isChecked={selectedCameras.includes(folder.name)}
-                                onChange={() => handleCameraToggle(folder.name)}
-                                size="md"
-                              >
-                                <VStack align="start" spacing="2px" ml="8px">
-                                  <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor}>
-                                    📹 {folder.name}
-                                  </Text>
-                                  <Text fontSize="10px" color={secondaryText} noOfLines={1}>
-                                    {folder.path}
-                                  </Text>
-                                </VStack>
-                              </Checkbox>
-                            </WrapItem>
-                          ))}
+                          {detectedFolders.map((folder) => {
+                            const isSelected = selectedCameras.includes(folder.name);
+                            // Disable unselected checkboxes when limit is reached
+                            const isDisabled = !isSelected && isCameraLimitReached;
+
+                            return (
+                              <WrapItem key={folder.name}>
+                                <Checkbox
+                                  colorScheme="brand"
+                                  isChecked={isSelected}
+                                  onChange={() => handleCameraToggle(folder.name)}
+                                  size="md"
+                                  isDisabled={isDisabled}
+                                  opacity={isDisabled ? 0.5 : 1}
+                                >
+                                  <VStack align="start" spacing="2px" ml="8px">
+                                    <Text fontSize={adaptiveConfig.fontSize.body} fontWeight="500" color={textColor}>
+                                      {folder.name}
+                                    </Text>
+                                    <Text fontSize="10px" color={secondaryText} noOfLines={1}>
+                                      {folder.path}
+                                    </Text>
+                                  </VStack>
+                                </Checkbox>
+                              </WrapItem>
+                            );
+                          })}
                         </Wrap>
                         
-                        {/* Selection Summary */}
+                        {/* Selection Summary with License Limit */}
                         <HStack justify="space-between" align="center" mt="12px" pt="12px" borderTop="1px solid" borderColor={borderColor}>
-                          <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
-                            Selected {selectedCameras.length}/{detectedFolders.length} cameras
-                          </Text>
+                          <VStack align="start" spacing="2px">
+                            <Text fontSize={adaptiveConfig.fontSize.small} color={secondaryText}>
+                              Selected {selectedCameras.length}/{detectedFolders.length} cameras
+                            </Text>
+                            <Text fontSize="10px" color={isCameraLimitReached ? "orange.500" : "green.500"}>
+                              License limit: {selectedCameras.length}/{maxCamerasAllowed}
+                              {isCameraLimitReached && " (Upgrade to Pro for more)"}
+                            </Text>
+                          </VStack>
                           <HStack spacing="8px">
                             <Button
                               size="xs"
                               variant="ghost"
                               colorScheme="brand"
                               onClick={() => {
-                                const allNames = detectedFolders.map(f => f.name);
+                                // Select up to max allowed cameras only
+                                const allNames = detectedFolders.map(f => f.name).slice(0, maxCamerasAllowed);
                                 setSelectedCameras(allNames);
                                 if (onStepChange) {
                                   onStepChange('video_source', {
@@ -983,9 +1026,10 @@ function VideoSourceCanvas({ adaptiveConfig, onStepChange }: CanvasComponentProp
                                     selectedCameras: allNames
                                   });
                                 }
+                                saveVideoSourceConfig('local_storage', inputPath, detectedFolders, allNames);
                               }}
                             >
-                              Select All
+                              Select All (Max {maxCamerasAllowed})
                             </Button>
                             <Button
                               size="xs"
