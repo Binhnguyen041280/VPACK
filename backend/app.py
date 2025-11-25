@@ -579,7 +579,8 @@ def health_check():
                 'note': 'Payment integration not available'
             }
         
-        status_code = 200 if health_data['status'] == 'healthy' else 503
+        # Return 200 for both healthy and degraded (backend is still functional)
+        status_code = 200 if health_data['status'] in ['healthy', 'degraded'] else 503
         return jsonify(health_data), status_code
         
     except Exception as e:
