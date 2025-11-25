@@ -32,23 +32,25 @@ class LicenseRepository(BaseRepository):
     
     # ==================== LICENSE CRUD OPERATIONS ====================
     
-    def create_license(self, license_key: str, customer_email: str, 
+    def create_license(self, license_key: str, customer_email: str,
                       payment_transaction_id: Optional[int] = None,
-                      product_type: str = 'desktop', 
-                      features: Optional[List[str]] = None, 
-                      expires_days: int = 365) -> Optional[int]:
+                      product_type: str = 'desktop',
+                      features: Optional[List[str]] = None,
+                      expires_days: int = 365,
+                      expires_at: Optional[str] = None) -> Optional[int]:
         """
         Create new license record - UNIFIED CREATION
         ELIMINATES: Duplicate creation logic from License.create()
-        
+
         Args:
             license_key: Generated license key
             customer_email: Customer email address
             payment_transaction_id: Associated payment transaction ID
             product_type: Type of product license
             features: List of enabled features
-            expires_days: Number of days until expiration
-            
+            expires_days: Number of days until expiration (used only if expires_at not provided)
+            expires_at: Exact expiration datetime (SSOT - if provided, used directly)
+
         Returns:
             int: License ID if created successfully, None otherwise
         """
@@ -59,30 +61,37 @@ class LicenseRepository(BaseRepository):
                 'customer_email': customer_email,
                 'product_type': product_type
             }
-            
+
             if not self._validate_required_fields(license_data, self.get_required_fields()):
                 logger.error("❌ License creation failed: Missing required fields")
                 return None
-            
-            # Calculate expiration date
-            expires_at = self._format_datetime(
-                datetime.now() + timedelta(days=expires_days)
-            )
+
+            # Use provided expires_at (SSOT) or calculate from expires_days (fallback)
+            if expires_at:
+                # Use exact expiration time from cloud (no recalculation!)
+                expires_at_str = expires_at
+                logger.debug(f"📅 Using provided expires_at: {expires_at}")
+            else:
+                # Fallback: Calculate from expires_days
+                expires_at_str = self._format_datetime(
+                    datetime.now() + timedelta(days=expires_days)
+                )
+                logger.debug(f"📅 Calculated expires_at from {expires_days} days")
             
             # Prepare features JSON
             features_json = json.dumps(features or ['full_access'])
-            
+
             # Create license record
             insert_query = """
-                INSERT INTO licenses 
-                (license_key, customer_email, payment_transaction_id, 
+                INSERT INTO licenses
+                (license_key, customer_email, payment_transaction_id,
                  product_type, features, status, expires_at, activated_at)
                 VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
             """
-            
+
             params = (
                 license_key, customer_email, payment_transaction_id,
-                product_type, features_json, expires_at, 
+                product_type, features_json, expires_at_str,
                 self._format_datetime(datetime.now())
             )
             

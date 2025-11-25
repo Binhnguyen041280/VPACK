@@ -279,24 +279,22 @@ class AutoTrialService:
                 logger.error("❌ No trial license key in CloudFunction response")
                 return False
 
-            # Calculate expires_days for License.create()
-            if expires_at:
-                try:
-                    expiry_date = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
-                    expires_days = (expiry_date - datetime.now()).days
-                except:
-                    expires_days = 14  # Default fallback
-            else:
-                expires_days = 14
+            # SSOT: Use expires_at directly from CloudFunction (no recalculation!)
+            # This ensures we get the exact 14-day trial without losing fractional days
+            if not expires_at:
+                # Fallback only if cloud didn't provide expires_at
+                logger.warning("⚠️ No expires_at from cloud, using 14 days fallback")
+                expires_at = None  # Will trigger repository to calculate from expires_days
 
-            # Create local license record
+            # Create local license record with SSOT expires_at
             license_id = License.create(
                 license_key=license_key,
                 customer_email=customer_email,
                 payment_transaction_id=None,  # No payment for trial
                 product_type=product_type,
                 features=features,
-                expires_days=expires_days
+                expires_days=14,  # Fallback only (used if expires_at is None)
+                expires_at=expires_at  # SSOT from cloud (used directly if provided)
             )
 
             if license_id:
