@@ -19,6 +19,7 @@ export interface LicenseStatus {
   hasValidLicense: boolean;
   isTrialActive: boolean;
   daysRemaining: number | null;
+  expiryDate: string | null;  // NEW: ISO date string for display
   isExpired: boolean;
   isLoading: boolean;
   licenseType: string | null;
@@ -54,6 +55,7 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
     hasValidLicense: false,
     isTrialActive: false,
     daysRemaining: null,
+    expiryDate: null,
     isExpired: false,
     isLoading: true,
     licenseType: null,
@@ -84,18 +86,27 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
       if (response.license) {
         const { license: licenseData, trial_status } = response;
 
-        // Calculate days remaining
+        // Calculate time remaining - FIX: Check timestamp directly for minute-based licenses
         let daysRemaining = null;
+        let expiryDate: string | null = null;
+        let isExpired = false;
+
         if (licenseData.expires_at) {
-          const expiryDate = new Date(licenseData.expires_at);
+          expiryDate = licenseData.expires_at;  // Store for display
+          const expiryTime = new Date(licenseData.expires_at);
           const now = new Date();
-          daysRemaining = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          const timeRemainingMs = expiryTime.getTime() - now.getTime();
+
+          // FIX: Check actual timestamp, not rounded days (handles minute-based licenses)
+          isExpired = timeRemainingMs <= 0;
+
+          // Calculate days for backward compatibility (but don't use for validation)
+          daysRemaining = Math.max(0, Math.ceil(timeRemainingMs / (1000 * 60 * 60 * 24)));
         }
 
-        // Determine license validity
-        const hasValidLicense = licenseData.is_active && (daysRemaining === null || daysRemaining > 0);
+        // FIX: Determine license validity using timestamp, not days
+        const hasValidLicense = licenseData.is_active && (expiryDate === null || !isExpired);
         const isTrialActive = !!(licenseData.is_trial && hasValidLicense);
-        const isExpired = daysRemaining !== null && daysRemaining <= 0;
 
         // Extract features from license data or determine from package type
         const packageType = licenseData.package_type?.toLowerCase() || '';
@@ -124,6 +135,7 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
           hasValidLicense,
           isTrialActive,
           daysRemaining,
+          expiryDate,
           isExpired,
           isLoading: false,
           licenseType: licenseData.package_type || null,
@@ -148,6 +160,7 @@ export const LicenseProvider: React.FC<LicenseProviderProps> = ({ children }) =>
             hasValidLicense: false,
             isTrialActive: false,
             daysRemaining: null,
+            expiryDate: null,
             isExpired: false,
             isLoading: false,
             licenseType: null,

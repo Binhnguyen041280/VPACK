@@ -164,9 +164,9 @@ const MyPlan: React.FC = () => {
       setError(null);
 
       try {
-        // Load in parallel
+        // Load in parallel - ALWAYS fetch fresh packages from Firestore (SSOT)
         const [packagesRes, licenseRes, userRes] = await Promise.allSettled([
-          PaymentService.getPackages(),
+          PaymentService.getUpgradePackages(),  // Changed: Always fetch fresh from CloudFunction/Firestore
           PaymentService.getLicenseStatus(),
           AccountService.getUserProfile()
         ]);
@@ -174,13 +174,19 @@ const MyPlan: React.FC = () => {
         // Handle packages
         if (packagesRes.status === 'fulfilled' && packagesRes.value.success) {
           setPackages(packagesRes.value.packages);
+          console.log('📦 Loaded packages from SSOT:', Object.keys(packagesRes.value.packages));
         } else {
           console.warn('Failed to load packages:', packagesRes);
         }
 
         // Handle license
         if (licenseRes.status === 'fulfilled' && licenseRes.value.success) {
-          setCurrentLicense(licenseRes.value.license || null);
+          const license = licenseRes.value.license;
+          setCurrentLicense(license || null);
+          if (license && packagesRes.status === 'fulfilled') {
+            console.log('🔑 Current license package_type:', license.package_type);
+            console.log('📋 Package name lookup:', packagesRes.value.packages?.[license.package_type]?.name);
+          }
 
           // NEW: Capture trial status from enhanced API response
           if (licenseRes.value.trial_status) {
@@ -265,12 +271,30 @@ const MyPlan: React.FC = () => {
     });
   };
 
-  // Calculate days remaining
+  // Format expiry date for display (like Claude style with timezone)
+  const formatExpiryDate = (isoDate: string): string => {
+    const date = new Date(isoDate);
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZoneName: 'short'  // Adds "GMT+7" or "ICT"
+    });
+  };
+
+  // Calculate expiry status - FIX: Use timestamp for minute-based licenses
+  const isExpired = currentLicense?.expires_at
+    ? new Date(currentLicense.expires_at) < new Date()
+    : false;
+
+  // Calculate days remaining for display (but use isExpired for logic)
   const daysRemaining = currentLicense?.expires_at
     ? AccountService.getDaysRemaining(currentLicense.expires_at)
     : 0;
 
-  const statusColor = AccountService.getStatusColor(daysRemaining);
+  const statusColor = isExpired ? 'red' : (currentLicense ? 'green' : 'gray');
 
   if (isLoading) {
     return (
@@ -324,18 +348,22 @@ const MyPlan: React.FC = () => {
             />
             <VStack align="start" spacing={1}>
               <Text fontWeight="bold" color={textColor}>
-                {currentLicense ?
-                  (packages[currentLicense.package_type]?.name ||
-                    (currentLicense.package_type === 'trial_7d' ? '14 Days Free Trial' :
-                      (currentLicense.package_type || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + ' Plan')) :
-                  'No Active License'
-                }
+                {currentLicense ? (
+                  // Try to get package name from packages object first
+                  packages[currentLicense.package_type]?.name ||
+                  // Fallback: Handle special cases
+                  (currentLicense.package_type === 'trial_14d' ? '14 Days Free Trial' :
+                   currentLicense.package_type === 'test_10m' ? '10 Minutes Test' :
+                   // Default: Format package type string
+                   (currentLicense.package_type || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + ' Plan')
+                ) : 'No Active License'}
               </Text>
-              <Text fontSize="sm" color={secondaryText}>
-                {currentLicense?.expires_at ?
-                  `${daysRemaining} days left` :
-                  'Start with a plan below'
-                }
+              <Text fontSize="sm" color={!isExpired ? 'green.600' : (currentLicense?.expires_at ? 'red.600' : secondaryText)} fontWeight="500">
+                {currentLicense?.expires_at ? (
+                  !isExpired ?
+                    `✅ Active • Expires ${formatExpiryDate(currentLicense.expires_at)}` :
+                    `❌ Expired • ${formatExpiryDate(currentLicense.expires_at)}`
+                ) : 'Start with a plan below'}
               </Text>
             </VStack>
           </HStack>
