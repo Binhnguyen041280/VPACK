@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Flex, Text, useColorModeValue, Icon } from '@chakra-ui/react';
 import { MdPerson } from 'react-icons/md';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
-import { VPackIcon } from '@/components/icons/VPackIcon';
+import { EPackIcon } from '@/components/icons/EPackIcon';
 
 interface ChatMessageProps {
   content: string;
@@ -59,9 +59,9 @@ const ChatMessage = ({ content, type, timestamp }: ChatMessageProps) => {
 
   return (
     <Flex w="100%" mb="16px" align="flex-start">
-      {/* VPackIcon directly as bot avatar without circular container */}
-      <VPackIcon 
-        size="30px" 
+      {/* EPackIcon directly as bot avatar without circular container */}
+      <EPackIcon
+        size="30px"
         collapsed={false}
       />
       <Box me="12px" />  {/* Spacer for proper alignment */}

@@ -328,7 +328,7 @@ const MyPlan: React.FC = () => {
       {paymentFlow.currentStep === 'packages' && currentLicense && daysRemaining > 300 && (
         <Alert status="success">
           <AlertIcon />
-          <AlertTitle>Welcome to your upgraded V_Track!</AlertTitle>
+          <AlertTitle>Welcome to your upgraded ePACK!</AlertTitle>
           <AlertDescription>
             Your {currentLicense.package_type || 'Unknown'} license is now active with all premium features.
           </AlertDescription>

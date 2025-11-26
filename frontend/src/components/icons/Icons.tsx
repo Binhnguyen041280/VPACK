@@ -7,7 +7,7 @@ export const VPackLogo = createIcon({
   path: (
     <g fill="currentColor" xmlns="http://www.w3.org/2000/svg">
       <text x="0" y="20" fontSize="20" fontWeight="bold" fontFamily="Arial, sans-serif">
-        V.PACK
+        ePACK
       </text>
     </g>
   ),
