@@ -253,7 +253,7 @@ const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
 
                   <VStack spacing={2}>
                     <Text fontSize="sm" color="green.700">
-                      🚀 Ready to start using V_Track with your new license!
+                      🚀 Ready to start using ePACK with your new license!
                     </Text>
                     <Text fontSize="sm" color="green.600">
                       Redirecting to Trace page in {redirectCountdown} seconds...

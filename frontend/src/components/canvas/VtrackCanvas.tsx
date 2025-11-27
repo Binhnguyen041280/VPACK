@@ -49,7 +49,7 @@ export default function VtrackCanvas({ isVisible, onClose }: VtrackCanvasProps) 
       {/* Header */}
       <Flex justify="space-between" align="center" mb="20px">
         <Text fontSize="lg" fontWeight="700" color={textColor}>
-          V.PACK Configuration
+          ePACK Configuration
         </Text>
         <Button
           variant="ghost"

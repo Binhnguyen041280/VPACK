@@ -2,7 +2,7 @@
 // Chakra imports
 import { Flex, useColorModeValue, Box, Text } from '@chakra-ui/react';
 
-import { VPackIcon } from '@/components/icons/VPackIcon';
+import { EPackIcon } from '@/components/icons/EPackIcon';
 import { HSeparator } from '@/components/separator/Separator';
 import { useColorTheme } from '@/contexts/ColorThemeContext';
 
@@ -18,7 +18,7 @@ export function SidebarBrand({ collapsed = false }: SidebarBrandProps) {
   if (collapsed) {
     return (
       <Flex alignItems="center" justifyContent="center" my="18px">
-        <VPackIcon size="27px" collapsed={true} />
+        <EPackIcon size="27px" collapsed={true} />
       </Flex>
     );
   }
@@ -40,7 +40,7 @@ export function SidebarBrand({ collapsed = false }: SidebarBrandProps) {
         boxShadow={`0px 21px 27px -10px ${currentColors.primary}48`}
         minW="120px"
       >
-        <Text fontWeight="bold" fontSize="md">V.PACK</Text>
+        <Text fontWeight="bold" fontSize="md">ePACK</Text>
       </Box>
       <HSeparator mb="20px" w="256px" />
     </Flex>
