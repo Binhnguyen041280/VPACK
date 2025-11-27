@@ -3,8 +3,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: vtrack-backend:phase2
-    container_name: vtrack-backend
+    image: epack-backend
+    container_name: epack-backend
     platform: linux/arm64
     ports:
     - 8080:8080
@@ -49,8 +49,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    image: vtrack-frontend:phase3
-    container_name: vtrack-frontend
+    image: epack-frontend
+    container_name: epack-frontend
     platform: linux/arm64
     ports:
     - 3000:3000
