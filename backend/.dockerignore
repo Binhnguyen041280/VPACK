@@ -33,6 +33,7 @@ venv.bak/
 
 # Testing & Coverage
 tests/
+test/
 pytest.ini
 .pytest_cache/
 .coverage
@@ -45,16 +46,23 @@ coverage.xml
 .hypothesis/
 TEST_SUITE_PROGRESS.md
 
-# Logs
+# Cache directories
+__pycache__/
+*.pyc
+.cache/
+
+# Logs (exclude entire directory)
 *.log
 logs/
 *.log.*
 
-# Database temporary files
-database/*.db-wal
-database/*.db-shm
-database/backups/*.db-wal
-database/backups/*.db-shm
+# Database files (exclude entire directory - runtime data only)
+# Database will be mounted as volume or created at runtime
+database/
+database/**
+*.db
+*.db-wal
+*.db-shm
 
 # IDE & Editors
 .vscode/
