@@ -25,29 +25,37 @@ def app():
 
     Creates a temporary database and configures app for testing mode.
     """
-    from app import create_app
-    from database import init_db
+    from flask import Flask
+    from modules.payments.payment_routes import payment_bp
 
-    # Create temporary database
+    # Create temporary directories for database and session
     db_fd, db_path = tempfile.mkstemp(suffix='.db')
+    session_dir = tempfile.mkdtemp()
 
-    # Configure app for testing
-    app = create_app({
+    # Create minimal Flask app for testing
+    app = Flask(__name__)
+    app.config.update({
         'TESTING': True,
         'DATABASE': db_path,
         'SECRET_KEY': 'test-secret-key',
         'WTF_CSRF_ENABLED': False,
+        'SESSION_TYPE': 'filesystem',
+        'SESSION_FILE_DIR': session_dir,
     })
 
-    # Initialize database
-    with app.app_context():
-        init_db()
+    # Register payment blueprint
+    app.register_blueprint(payment_bp)
 
     yield app
 
     # Cleanup
     os.close(db_fd)
     os.unlink(db_path)
+
+    # Cleanup session directory
+    import shutil
+    if os.path.exists(session_dir):
+        shutil.rmtree(session_dir)
 
 
 @pytest.fixture
