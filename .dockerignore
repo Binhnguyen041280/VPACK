@@ -70,9 +70,15 @@ docs/
 LICENSE
 
 # Testing
+backend/tests/
+frontend/tests/
+backend/pytest.ini
+frontend/jest.config.ts
+frontend/jest.setup.ts
 coverage/
 .pytest_cache/
 .nyc_output/
+COMPREHENSIVE_TEST_SUITE.md
 
 # Build outputs
 dist/

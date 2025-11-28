@@ -20,6 +20,9 @@ build/
 !.env.example
 
 # Testing
+tests/
+jest.config.ts
+jest.setup.ts
 coverage/
 .nyc_output/
 

@@ -32,6 +32,8 @@ env.bak/
 venv.bak/
 
 # Testing & Coverage
+tests/
+pytest.ini
 .pytest_cache/
 .coverage
 .coverage.*
@@ -41,6 +43,7 @@ htmlcov/
 coverage.xml
 *.cover
 .hypothesis/
+TEST_SUITE_PROGRESS.md
 
 # Logs
 *.log
