@@ -18,5 +18,10 @@ __pycache__/
 database.db
 cookies.txt
 
-# Test scripts (use tests/ folder)
-test_*.py
+# Test scripts in root directory only (tests/ folder is tracked)
+/test_*.py
+
+# Coverage reports
+.coverage
+coverage.json
+htmlcov/

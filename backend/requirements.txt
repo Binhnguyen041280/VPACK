@@ -84,3 +84,47 @@ pytz>=2023.3
 #   - Added google-api-core==2.25.1 (was missing)
 #   - Updated all utilities to exact installed versions
 # ============================================================================
+
+# ============================================================================
+# Testing Dependencies (2025-11-28)
+# Added for comprehensive test suite (60-70% coverage target)
+# ============================================================================
+
+# Core Testing Framework
+pytest==7.4.0
+pytest-cov==4.1.0           # Coverage reporting
+pytest-mock==3.11.1         # Mocking support
+pytest-asyncio==0.21.1      # Async test support
+pytest-timeout==2.1.0       # Test timeout management
+
+# Time Manipulation
+freezegun==1.2.2            # Time mocking for tests
+
+# Test Utilities
+faker==19.13.0              # Generate test data
+responses==0.24.0           # Mock HTTP responses
+
+# ============================================================================
+# Testing Notes:
+#
+# Run tests:
+#   pytest                              # Run all tests
+#   pytest -v                           # Verbose output
+#   pytest --cov                        # With coverage
+#   pytest -m unit                      # Only unit tests
+#   pytest -m integration               # Only integration tests
+#   pytest --runslow                    # Include slow tests
+#   pytest --runinternet                # Include internet tests
+#
+# Coverage report:
+#   pytest --cov --cov-report=html      # HTML report in htmlcov/
+#   pytest --cov --cov-report=term      # Terminal report
+#
+# Test markers:
+#   @pytest.mark.unit                   # Unit test
+#   @pytest.mark.integration            # Integration test
+#   @pytest.mark.api                    # API endpoint test
+#   @pytest.mark.slow                   # Slow test
+#   @pytest.mark.requires_internet      # Needs internet
+#   @pytest.mark.requires_cloud         # Needs CloudFunction
+# ============================================================================
