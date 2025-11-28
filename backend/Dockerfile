@@ -16,12 +16,15 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_DEFAULT_TIMEOUT=100
 
-# Install system dependencies required for OpenCV, MediaPipe, and runtime
+# Install RUNTIME system dependencies for OpenCV, MediaPipe, and Flask
 # Critical: libgl1-mesa-glx, libglib2.0-0 for OpenCV
 # ffmpeg for video processing
-# libzbar0 for QR code scanning (pyzbar)
-# gcc/g++/make for building Python packages with native extensions
-# docker.io for Docker CLI (to restart container via Docker socket)
+# curl for healthcheck and debugging
+# docker.io for Docker CLI (required by docker_management_bp.py)
+#
+# NOTE: Build tools (gcc/g++/make) moved to BUILDER stage only (-~200MB)
+# NOTE: libzbar0 removed - using cv2.wechat_qrcode instead of pyzbar (-~2MB)
+# NOTE: wget removed - healthcheck uses curl (-~3MB)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1-mesa-glx \
     libglib2.0-0 \
@@ -30,12 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender-dev \
     libgomp1 \
     ffmpeg \
-    wget \
     curl \
-    gcc \
-    g++ \
-    make \
-    libzbar0 \
     docker.io \
     && rm -rf /var/lib/apt/lists/*
 
@@ -45,6 +43,14 @@ WORKDIR /app
 # Stage 2: BUILDER - Install Python Dependencies
 # ============================================================================
 FROM base AS builder
+
+# Install build tools (only needed during pip install)
+# These will NOT be copied to production stage (saves ~200MB)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    make \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy only requirements first for better layer caching
 COPY requirements.txt .

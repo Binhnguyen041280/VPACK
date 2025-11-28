@@ -7,8 +7,8 @@
 # Core AI/Computer Vision
 mediapipe==0.10.14
 opencv-contrib-python==4.10.0.84
-pyzbar==0.1.9
 pandas==2.2.3
+# NOTE: pyzbar removed - not used in code, using cv2.wechat_qrcode instead
 
 # Scheduler & Background Jobs
 APScheduler==3.11.0
