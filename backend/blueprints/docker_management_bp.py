@@ -74,6 +74,12 @@ def update_env_file(local_video_path: str) -> dict:
         Dictionary with success status and message
     """
     try:
+        # Normalize path - ensure it starts with /
+        # Frontend may send path without leading slash
+        if local_video_path and not local_video_path.startswith('/'):
+            local_video_path = '/' + local_video_path
+            logger.info(f"📝 Normalized path (added leading /): {local_video_path}")
+
         # Find .env file (should be in parent directory of docker-compose.yml)
         env_file = '/app/../.env'  # Mounted from host
 

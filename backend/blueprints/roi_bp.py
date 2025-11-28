@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, send_file, make_response
 from modules.technician.hand_detection import finalize_roi
-from modules.path_utils import get_paths
+from modules.path_utils import get_paths, convert_host_to_container_path
 import os
 import glob
 import json
@@ -38,20 +38,27 @@ def run_select_roi():
         logging.info(f"[RUN-SELECT-ROI] Received data: {data}")
         
         video_path = data.get('video_path') or data.get('videoPath')
-        camera_id = data.get('camera_id') or data.get('cameraId') 
+        camera_id = data.get('camera_id') or data.get('cameraId')
         step = data.get('step', 'packing')
-        
+
         if not video_path or not camera_id:
             return jsonify({
-                "success": False, 
+                "success": False,
                 "error": "video_path and camera_id required"
             }), 400
-        
-        if not os.path.exists(video_path):
+
+        # Convert HOST path to CONTAINER path for Docker environment
+        container_path = convert_host_to_container_path(video_path)
+        logging.info(f"[RUN-SELECT-ROI] Path conversion: {video_path} → {container_path}")
+
+        if not os.path.exists(container_path):
             return jsonify({
                 "success": False,
-                "error": f"Video file not found: {video_path}"
+                "error": f"Video file not found: {container_path}"
             }), 404
+
+        # Use container path for processing
+        video_path = container_path
         
         # Import and call hand detection directly
         try:
@@ -100,8 +107,15 @@ def finalize_roi_endpoint():
         if not video_path or not camera_id or not rois:
             return jsonify({"success": False, "error": "Thiếu videoPath, cameraId hoặc rois."}), 400
 
-        if not os.path.exists(video_path):
-            return jsonify({"success": False, "error": "Đường dẫn video không tồn tại."}), 404
+        # Convert HOST path to CONTAINER path for Docker environment
+        container_path = convert_host_to_container_path(video_path)
+        logging.info(f"[FINALIZE-ROI] Path conversion: {video_path} → {container_path}")
+
+        if not os.path.exists(container_path):
+            return jsonify({"success": False, "error": f"Đường dẫn video không tồn tại: {container_path}"}), 404
+
+        # Use container path for processing
+        video_path = container_path
 
         # Extract ROI areas from rois array (HTML5 Canvas approach)
         packing_area = [0, 0, 0, 0]

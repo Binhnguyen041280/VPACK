@@ -41,7 +41,7 @@ from modules.db_utils import find_project_root
 from modules.db_utils.safe_connection import safe_db_connection
 from modules.config.logging_config import get_logger
 from modules.utils.simple_timezone import get_system_timezone_from_db
-from modules.path_utils import get_paths, get_logs_dir
+from modules.path_utils import get_paths, get_logs_dir, convert_host_to_container_path
 from modules.license.license_manager import LicenseManager
 from .file_lister import run_file_scan, get_db_path
 from .batch_scheduler import BatchScheduler
@@ -262,12 +262,20 @@ def program():
             if not custom_path:
                 logger.error("Custom path required for Custom")
                 return jsonify({"error": "Custom path required for Custom"}), 400
-            
-            # Validate custom path exists
-            abs_path = os.path.abspath(custom_path)
-            if not os.path.exists(abs_path):
-                logger.error(f"Custom path {abs_path} does not exist")
-                return jsonify({"error": f"Custom path {abs_path} does not exist"}), 400
+
+            # Convert HOST path to CONTAINER path for Docker environment
+            # Frontend may send HOST path (e.g., /Users/.../Inputvideo/file.mov)
+            # Backend needs CONTAINER path (e.g., /app/resources/input/file.mov)
+            container_path = convert_host_to_container_path(custom_path)
+            logger.info(f"📂 Path validation: {custom_path} → {container_path}")
+
+            # Validate custom path exists in container filesystem
+            if not os.path.exists(container_path):
+                logger.error(f"Custom path {container_path} does not exist (original: {custom_path})")
+                return jsonify({"error": f"Custom path {container_path} does not exist"}), 400
+
+            # Use container path for processing
+            abs_path = container_path
             try:
                 # Check if file has already been processed to avoid duplicates
                 with db_rwlock:

@@ -192,3 +192,54 @@ def get_tmp_dir():
     tmp_dir = paths["TMP_DIR"]
     os.makedirs(tmp_dir, exist_ok=True)
     return tmp_dir
+
+
+def convert_host_to_container_path(path: str) -> str:
+    """Convert HOST filesystem path to CONTAINER path for Docker environment.
+
+    When running in Docker, frontend may send HOST paths (e.g., /Users/annhu/.../file.mov)
+    but backend needs CONTAINER paths (e.g., /app/resources/input/file.mov) to validate
+    and access files through mounted volumes.
+
+    This function handles the path conversion by:
+    1. Checking if path starts with HOST base (LOCAL_VIDEO_PATH env var)
+    2. Extracting relative path from HOST base
+    3. Converting to CONTAINER base (VTRACK_INPUT_DIR env var)
+
+    Args:
+        path: Path that may be from host filesystem or already a container path
+
+    Returns:
+        Container filesystem path that can be validated with os.path.exists()
+
+    Example:
+        HOST path:      /Users/annhu/vtrack_app/V_Track/resources/Inputvideo/Mau1.mov
+        CONTAINER path: /app/resources/input/Mau1.mov
+
+    Notes:
+        - If path doesn't match HOST base, assumes it's already a container path
+        - Handles nested paths (e.g., Cam1D/video.mp4)
+        - If not in Docker mode, returns path unchanged
+    """
+    # Get environment variables for path conversion
+    host_base = os.getenv('LOCAL_VIDEO_PATH', '').rstrip('/')
+    container_base = os.getenv('VTRACK_INPUT_DIR', '/app/resources/input').rstrip('/')
+
+    # If no host base configured or not in docker, return path unchanged
+    if not host_base or get_deployment_mode() != 'docker':
+        return path
+
+    # If path starts with host base, convert to container path
+    if path.startswith(host_base):
+        # Extract relative path after host base
+        relative_path = path[len(host_base):].lstrip('/')
+        # Convert to container path
+        result = os.path.join(container_base, relative_path) if relative_path else container_base
+        return result
+
+    # If path already starts with container base, return as-is
+    if path.startswith(container_base):
+        return path
+
+    # Otherwise assume it's already a container path or relative path
+    return path

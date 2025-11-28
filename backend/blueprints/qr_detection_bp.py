@@ -8,6 +8,7 @@ from modules.technician.camera_health_checker import (
     evaluate_camera_health_checklist
 )
 from modules.db_utils.safe_connection import safe_db_connection
+from modules.path_utils import convert_host_to_container_path
 import os
 import json
 import logging
@@ -938,11 +939,18 @@ def camera_health_check():
                 'error': 'camera_name and video_path required'
             }), 400
 
-        if not os.path.exists(video_path):
+        # Convert HOST path to CONTAINER path for Docker environment
+        container_path = convert_host_to_container_path(video_path)
+        logger.info(f"[QR-HEALTH-CHECK] Path conversion: {video_path} → {container_path}")
+
+        if not os.path.exists(container_path):
             return jsonify({
                 'success': False,
-                'error': f'Video not found: {video_path}'
+                'error': f'Video not found: {container_path}'
             }), 404
+
+        # Use container path for processing
+        video_path = container_path
 
         # Run health check
         result = run_health_check(camera_name, video_path)
